@@ -1,0 +1,1184 @@
+<div class="doc-title"><h1>Brimwood Innovation — Full-Stack Web Framework</h1></div>
+<p><strong>Official technical report · Version 1.1 · 30 September 2026</strong> <strong>Status:</strong> Draft for founder review · <strong>Classification:</strong> Internal — do not publish</p>
+<p>Prepared as the audit, architecture design, and implementation plan for evolving brimwoodinnovation.com from its current static "coming soon" site into a fully functional, full-stack website (Home, Blogs, About Us, Academy, introduction requests, newsletter, members area, admin publishing) on Cloudflare infrastructure.</p>
+<p><strong>Design authorities for this report</strong></p>
+<ul>
+<li>Brimwood Brand Kit v1.0 (<code>~/workspace/company/brand/Brimwood-Brand-Kit-v1.0/</code>) — final authority on logo, colours, type, voice, and content. Nothing in this framework overrides it.</li>
+<li>Brimwood entity profile (<code>~/workspace/company/entity-profile.md</code>) — invite/referral-only positioning, "Build a business. Build yourself.", members anonymous by default, internal business model never published.</li>
+<li>Canadian spelling throughout. No income promises, no hype language, no competitor criticism — including in sample copy and schemas.</li>
+</ul>
+<p><strong>Document version history</strong></p>
+<ul>
+<li><strong>v1.1 · 30 September 2026</strong> — Founder constraints folded in: open-source</li>
+<p>and free evaluation of every stack component (§4.4); 2026 best-practice notes (§4.5); performance budget with Core Web Vitals targets (§5); discoverability section covering SEO, AEO, and GEO (§8); supply-chain hardening (§18); Decap CMS (MIT, $0) as the recommended CMS (§4.1, §14, §22); cost section reworked to a hard C$0 target with free-tier guardrails (§20); C$0 operating target added as design principle 8. No other changes.</p>
+<li><strong>v1.0 · 30 September 2026</strong> — Initial official report: audit, architecture,</li>
+<p>sitemap, flows, data model, API spec, auth, CMS plan, migration, ops, roadmap.</p>
+</ul>
+<hr class="sec-divider">
+<section class="report-section" id="sec-table-of-contents">
+<h2><span class="sec-num"></span> Table of contents</h2>
+<ol>
+<li><a href="#1-executive-summary">Executive summary</a></li>
+<li><a href="#2-audit-findings--current-state">Audit findings — current state</a></li>
+<li><a href="#3-design-principles-and-constraints">Design principles and constraints</a></li>
+<li><a href="#4-recommended-stack">Recommended stack</a></li>
+<li><a href="#5-performance-budget">Performance budget</a></li>
+<li><a href="#6-sitemap-and-url-structure">Sitemap and URL structure</a></li>
+<li><a href="#7-section-designs">Section designs</a></li>
+<li><a href="#8-discoverability-seo-aeo-and-geo">Discoverability: SEO, AEO, and GEO</a></li>
+<li><a href="#9-user-flows">User flows</a></li>
+<li><a href="#10-system-architecture">System architecture</a></li>
+<li><a href="#11-data-model">Data model</a></li>
+<li><a href="#12-rest-api-specification">REST API specification</a></li>
+<li><a href="#13-authentication-and-authorisation">Authentication and authorisation</a></li>
+<li><a href="#14-cms-and-publishing-workflow">CMS and publishing workflow</a></li>
+<li><a href="#15-media-strategy">Media strategy</a></li>
+<li><a href="#16-migration-path-from-the-current-site">Migration path from the current site</a></li>
+<li><a href="#17-environments-deployment-pipeline-and-backups">Environments, deployment pipeline, and backups</a></li>
+<li><a href="#18-security-hardening">Security hardening</a></li>
+<li><a href="#19-monitoring-and-analytics">Monitoring and analytics</a></li>
+<li><a href="#20-cost-estimate">Cost estimate</a></li>
+<li><a href="#21-phased-build-roadmap">Phased build roadmap</a></li>
+<li><a href="#22-open-decisions-for-the-founder">Open decisions for the founder</a></li>
+<li><a href="#23-appendix-a--verification-notes-and-assumptions">Appendix A — verification notes and assumptions</a></li>
+</ol>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-executive-summary">
+<h2><span class="sec-num">1</span> Executive summary</h2>
+<p>Brimwood's web presence today is a single static page on Cloudflare Pages, backed by one Cloudflare Worker that handles introduction requests and a double opt-in newsletter through Resend. It works, it is on-brand, and the email system is verified end to end. It is not a platform: there is no database, no user accounts, no content management, and no way to publish a blog post or an academy lesson without hand-editing HTML and re-uploading a zip file.</p>
+<p>This report designs the full-stack successor, staying Cloudflare-native so the team keeps one vendor, one dashboard, and near-zero server maintenance:</p>
+<ul>
+<li><strong>Frontend:</strong> Astro (static-first, content collections for blogs and academy) on Cloudflare Pages.</li>
+<li><strong>Backend:</strong> a Hono API on Cloudflare Workers (<code>brimwood-api</code>), replacing and absorbing the current <code>brimwood-introduction</code> Worker.</li>
+<li><strong>Database:</strong> Cloudflare D1 (SQLite) for posts, academy content, users, introductions, and subscribers.</li>
+<li><strong>KV:</strong> sessions, rate limits (already in use), and cache.</li>
+<li><strong>R2:</strong> media storage (blog covers, academy video, uploads).</li>
+<li><strong>Email:</strong> Resend, reusing the existing branded templates and double opt-in logic.</li>
+</ul>
+<p>Everything the founder approved stays: the living dot-grid hero, the brand system, the introduction funnel, the newsletter with double opt-in, and the invite-only posture — which becomes a first-class auth model (magic-link sign-in, invite codes, no passwords).</p>
+<p>The build is phased across five milestones so value ships early: the content site first, then the API and database, then Academy, then the admin CMS, then hardening and launch. The countdown element retires naturally after the 30 October 2026 launch date; the framework treats launch as a content change, not a rebuild.</p>
+<p>Two hard constraints shape every choice below. <strong>Cost:</strong> the founder already owns the domain and hosting, so the operating target is <strong>C$0 total</strong> — open-source code and free tiers only, with a named open alternative for every proprietary piece (§4.4) and guardrails that keep usage inside free limits (§20). <strong>Speed:</strong> a formal performance budget (§5) caps page weight and Core Web Vitals, enforced in CI. <strong>Discoverability:</strong> SEO, answer-engine (AEO), and generative-engine (GEO) optimisation are engineered into the content model from day one (§8).</p>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-audit-findings-current-state">
+<h2><span class="sec-num">2</span> Audit findings — current state</h2>
+<p>All claims below were verified against files in <code>~/workspace/company/</code> on 30 September 2026. Items that could not be verified from files are marked <strong>(assumption)</strong>.</p>
+<h3>2.1 What exists and works</h3>
+<div class="table-wrap"><table>
+<thead><tr>
+<th>Component</th>
+<th>Location / detail</th>
+<th>State</th>
+</tr></thead>
+<tbody>
+<tr><td>Live site</td><td>Cloudflare Pages project <code>brimwood-coming-soon</code>; <code>brimwoodinnovation.com</code> + <code>www</code></td><td>Live, deployment <code>brimwood-coming-soon-v7.zip</code></td></tr>
+<tr><td>Build source</td><td><code>~/workspace/company/website/build/index.html</code> (single file, ~1,100 lines with the v7 engine)</td><td>Current</td></tr>
+<tr><td>Hero</td><td>Living dot-grid canvas (v7): evolving wave field, 96 re-cast actor dots, 65-second life cycle (drift → gather → shapes → BUILD/DREAM/BRIMWOOD words → divide → fight → army → release), light trails, firefly breathing, cursor response, tap-to-summon, left-arrow disabled</td><td>Live, approved</td></tr>
+<tr><td>Countdown</td><td>Targets Friday 30 October 2026, 19:00 viewer-local; label "Expected to launch"</td><td>Live</td></tr>
+<tr><td>Introduction form</td><td><code>POST /api/introduction</code> (JSON), honeypot field, inline error state, thank-you panel</td><td>Live, verified</td></tr>
+<tr><td>Email hub Worker</td><td><code>~/workspace/company/website/worker-introduction.js</code> → Worker <code>brimwood-introduction</code>, route <code>brimwoodinnovation.com/api/*</code></td><td>Deployed (dashboard)</td></tr>
+<tr><td>Email endpoints</td><td><code>POST /api/introduction</code>, <code>POST /api/newsletter</code>, <code>GET /api/newsletter/verify?token=…</code>, <code>GET /api/newsletter/unsubscribe?email=…&amp;token=…</code></td><td>Verified in source</td></tr>
+<tr><td>Resend delivery</td><td>Sending-only key in Worker secret <code>RESEND_API_KEY</code>; branded templates in Worker source</td><td>Verified working</td></tr>
+<tr><td>Newsletter storage</td><td>KV namespace <code>brimwood-newsletter</code>, binding <code>NEWSLETTER</code>; keys <code>sub:&lt;email&gt;</code>, <code>pending:&lt;token&gt;</code>, <code>rl:&lt;key&gt;</code></td><td>In use</td></tr>
+<tr><td>Rate limiting</td><td>KV-backed: 5 introduction / 3 newsletter signups per IP per hour (429 beyond)</td><td>Verified in source</td></tr>
+<tr><td>Brand assets</td><td>Logos (colour, reversed, stacked, symbol), favicons, app icons, Plus Jakarta Sans, colour spec</td><td>Kit v1.0, final</td></tr>
+<tr><td>Email previews</td><td><code>~/workspace/company/email/previews/*.html</code>, regenerated from real template code</td><td>Current</td></tr>
+<tr><td>Content pillars</td><td>Micro business 30% / AI in practice 30% / Owner mindset 20% / Members and hub 20%</td><td>Final per kit</td></tr>
+</tbody>
+</table></div>
+<h3>2.2 Gaps for a full-stack site</h3>
+<ol>
+<li><strong>No database.</strong> Newsletter subscribers live in KV (fine at this scale, but not queryable: no admin list, no segmentation, no export). Introduction requests exist only as emails to <code>info@</code>.</li>
+<li><strong>No user accounts or sessions.</strong> Nothing to build a members area or Academy progress tracking on.</li>
+<li><strong>No content management.</strong> Publishing means editing HTML/JS by hand and uploading a zip through the dashboard. No drafts, no scheduling, no revisions.</li>
+<li><strong>No blog, About, or Academy surfaces.</strong> The sitemap is one page.</li>
+<li><strong>Deployment is manual.</strong> Dashboard direct-upload of zips; no Git history, no preview environments, no rollback beyond manual re-upload. (Earlier zips v2–v7 are archived locally — that is the only version history.)</li>
+<li><strong>No media pipeline.</strong> Images are committed into the zip; no uploads, no optimisation, no video hosting.</li>
+<li><strong>Analytics is manual.</strong> Visitor counts come from occasional dashboard checks; the dashboard artifact is refreshed by a scheduled job reading CLI tools.</li>
+<li><strong>Legal pages absent.</strong> No privacy policy or terms — required before accounts, newsletters at scale, and analytics.</li>
+</ol>
+<h3>2.3 What must be preserved</h3>
+<ul>
+<li>The v7 hero engine (extract as a reusable component, not a rewrite).</li>
+<li>The brand CSS variables and layout language.</li>
+<li>The email templates, double opt-in flow, and rate-limiting behaviour.</li>
+<li>The introduction funnel copy and honeypot pattern.</li>
+<li>The invite-only positioning — the framework must not introduce "Sign up" / "Join now" language anywhere public.</li>
+</ul>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-design-principles-and-constraints">
+<h2><span class="sec-num">3</span> Design principles and constraints</h2>
+<ol>
+<li><strong>Cloudflare-native.</strong> Pages + Workers + D1 + KV + R2. One vendor, one identity plane, no servers to patch, generous free tiers.</li>
+<li><strong>Small-team maintainable.</strong> The founder plus occasional contractors. Favour boring, well-documented choices over clever ones. Content editing must not require a developer once the CMS phase lands.</li>
+<li><strong>Brand-kit supremacy.</strong> Every template, email, and admin screen uses the kit: Emerald-led palette, Plus Jakarta Sans, exact logo files, Canadian spelling, short sentences.</li>
+<li><strong>Invite-only by construction.</strong> Public surfaces never offer self-registration. Accounts are created by invitation, approved introduction, or admin action. The word "signup" does not appear on public pages (newsletter subscription is the deliberate exception — it is a mailing list, not membership).</li>
+<li><strong>Privacy by default.</strong> Members anonymous unless they give written permission. Minimal data collection. No third-party trackers beyond Cloudflare's own analytics.</li>
+<li><strong>Progressive enhancement.</strong> The public site works without JavaScript for reading; interactivity (forms, progress) layers on top. The hero canvas already respects <code>prefers-reduced-motion</code>.</li>
+<li><strong>Content longevity.</strong> Blog posts and academy lessons are Markdown/MDX source of truth in version control, renderable for decades, exportable in minutes.</li>
+<li><strong>C$0 operating target.</strong> The domain and hosting are already owned, so the</li>
+<p>entire build — code, CMS, tooling, email, media — must run at zero marginal cost. Every component is open-source or on a free tier with a documented open alternative (§4.4); free-tier guardrails are part of the design (§20). No paid tier is adopted without the founder's explicit approval.</p>
+</ol>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-recommended-stack">
+<h2><span class="sec-num">4</span> Recommended stack</h2>
+<h3>4.1 The recommendation</h3>
+<div class="table-wrap"><table>
+<thead><tr>
+<th>Layer</th>
+<th>Choice</th>
+<th>Why</th>
+</tr></thead>
+<tbody>
+<tr><td>Public site</td><td><strong>Astro</strong> on Cloudflare Pages</td><td>Static-first; content collections give typed Markdown/MDX blogs with zero CMS to maintain; partial hydration ("islands") keeps pages fast; the existing vanilla hero drops in as an island unchanged.</td></tr>
+<tr><td>API</td><td><strong>Hono</strong> on Cloudflare Workers (<code>brimwood-api</code>)</td><td>The standard Workers API framework: Express-like routing the team already writes, tiny bundle, first-class D1/KV/R2 bindings. Absorbs <code>brimwood-introduction</code> so there is one API surface.</td></tr>
+<tr><td>Database</td><td><strong>Cloudflare D1</strong> (SQLite)</td><td>Relational data the site needs (posts, courses, users, leads) without operating Postgres. Migrations are SQL files in the repo.</td></tr>
+<tr><td>Sessions / rate limits / cache</td><td><strong>Cloudflare KV</strong></td><td>Already in use for rate limiting and newsletter state; sessions and HTML/JSON caches fit naturally.</td></tr>
+<tr><td>Media</td><td><strong>Cloudflare R2</strong></td><td>S3-compatible object storage with zero egress fees — ideal for blog covers and academy video.</td></tr>
+<tr><td>Email</td><td><strong>Resend</strong> (keep)</td><td>Already verified; branded templates exist. Keep the sending domain and warm reputation.</td></tr>
+<tr><td>Auth</td><td><strong>Magic-link codes</strong> (email, 6-digit, 10-minute expiry), sessions in KV</td><td>No passwords to store, reset, or leak. Fits invite-only: codes only go to known addresses.</td></tr>
+<tr><td>Styling</td><td>Brand CSS variables + hand-written CSS (keep current approach)</td><td>The current CSS is clean and on-brand; no framework needed. Optionally adopt Tailwind later — not recommended now (adds build complexity for little gain).</td></tr>
+<tr><td>CMS</td><td><strong>Decap CMS</strong> (MIT, git-based, $0)</td><td>The open-source git CMS: Markdown stays the source of truth, publishing stays a git merge, non-technical publishing without a paid seat. Configured in the Astro site; auth via a small open-source GitHub OAuth Worker.</td></tr>
+<tr><td>Forms protection</td><td>Cloudflare Turnstile</td><td>Free, privacy-friendly CAPTCHA replacement for public forms.</td></tr>
+<tr><td>Repo &amp; deploys</td><td>GitHub + Git-connected Pages; <code>wrangler</code> for Workers/D1</td><td>Replaces zip uploads with preview deployments per branch and one-command production deploys.</td></tr>
+</tbody>
+</table></div>
+<h3>4.2 Alternatives considered (and why not)</h3>
+<ul>
+<li><strong>Next.js on Pages.</strong> Heavier runtime, edge-compatibility caveats, and overkill for a content-led marketing site. Revisit only if the team hires React specialists.</li>
+<li><strong>WordPress / Ghost (hosted).</strong> Fast to start, but a second vendor, PHP/Node server to maintain, theming fights the brand kit, and member data leaves Cloudflare.</li>
+<li><strong>Supabase / Firebase.</strong> Excellent products, but they duplicate what D1 + Workers already cover and add a vendor to the trust boundary.</li>
+<li><strong>Passwords + OAuth logins.</strong> Passwords create reset flows, breach liability, and support load. Social logins dilute the invite-only brand. Magic codes are simpler and sufficient.</li>
+<li><strong>A full SPA (React/Vue) frontend.</strong> Worse SEO, worse first paint, more JavaScript to maintain — for a site that is mostly reading.</li>
+<li><strong>Paid-tier CMS products (Contentful, Sanity growth tiers, etc.).</strong> Rejected</li>
+<p>under the C$0 constraint: per-seat pricing and usage meters the founder does not need. Decap CMS does the job at $0 with Markdown as the source of truth.</p>
+</ul>
+<h3>4.3 Repository layout (proposed)</h3>
+<div class="codeblock"><button class="copy-btn" type="button">Copy</button><pre><code class="language-text">brimwood-web/                  # one monorepo
+├── site/                      # Astro — public website (Pages)
+│   ├── src/
+│   │   ├── components/        # Hero.astro (v7 canvas island), Header, Footer, Cards…
+│   │   ├── content/           # blog posts, academy lessons (MDX, git-managed)
+│   │   │   ├── blog/
+│   │   │   └── academy/
+│   │   ├── layouts/
+│   │   ├── pages/             # index, about, blog, academy, introduce, legal…
+│   │   └── styles/            # brand.css (variables + components)
+│   └── astro.config.mjs
+├── api/                       # Hono — brimwood-api Worker
+│   ├── src/
+│   │   ├── routes/            # posts, academy, auth, admin, forms, newsletter
+│   │   ├── lib/               # db, email (Resend + templates), rateLimit, auth
+│   │   └── index.ts
+│   ├── migrations/            # D1 migrations (0001_init.sql, …)
+│   └── wrangler.toml
+├── admin/                     # Decap CMS (MIT) config served at /admin — no separate app
+└── docs/                      # this report, runbooks, content guide</code></pre></div>
+<p>TypeScript for the API (Hono is TS-first); the Astro site can stay mostly <code>.astro</code> + vanilla JS, reusing the current scripts.</p>
+<h3>4.4 Open-source and free evaluation</h3>
+<p>Every component is either open-source or free-tier with a named open alternative. Nothing in the recommended stack requires a paid tier at Brimwood's scale, and no new proprietary paid dependency is introduced. (Licence and free-tier figures below are per public project records as of September 2026 — re-verify at build time; flagged as <strong>(assumption)</strong> where they drive cost.)</p>
+<div class="table-wrap"><table>
+<thead><tr>
+<th>Component</th>
+<th>Licence / cost</th>
+<th>If it ever stops being free — open alternative</th>
+</tr></thead>
+<tbody>
+<tr><td>Astro (site)</td><td><strong>MIT</strong>, free</td><td>n/a — already open</td></tr>
+<tr><td>Hono (API)</td><td><strong>MIT</strong>, free</td><td>n/a — already open</td></tr>
+<tr><td>TypeScript / Zod</td><td>Apache-2.0 / <strong>MIT</strong>, free</td><td>n/a — already open</td></tr>
+<tr><td><code>wrangler</code> CLI</td><td><strong>Apache-2.0</strong>, free</td><td>n/a — already open</td></tr>
+<tr><td>Decap CMS (admin publishing)</td><td><strong>MIT</strong>, free, git-based</td><td>n/a — already open</td></tr>
+<tr><td>D1 (database)</td><td>Proprietary, <strong>C$0</strong> on free tier</td><td>libSQL (<strong>MIT</strong>, self-hostable SQLite fork) — keep D1: zero servers to run, co-located with Workers</td></tr>
+<tr><td>KV (sessions, limits, cache)</td><td>Proprietary, <strong>C$0</strong> on free tier</td><td>Valkey (<strong>BSD-3-Clause</strong>, self-hosted) — keep KV: already in use, generous free tier</td></tr>
+<tr><td>R2 (media)</td><td>Proprietary, <strong>C$0</strong>, zero egress fees</td><td>MinIO (<strong>AGPL-3.0</strong>, self-hosted S3) — keep R2: no server to run, egress is the expensive part and R2 charges none</td></tr>
+<tr><td>Resend (email)</td><td>Proprietary, <strong>C$0</strong> (3,000 emails/mo free)</td><td>Brevo free tier (300/day) as the free fallback — keep Resend: verified working, branded templates exist, projected volume fits (see §20)</td></tr>
+<tr><td>Turnstile (bot protection)</td><td>Proprietary, <strong>free unlimited</strong></td><td>mCaptcha (<strong>AGPL-3.0</strong>, self-hosted) — keep Turnstile: free, privacy-friendly, zero maintenance; honeypot already exists as a second layer</td></tr>
+<tr><td>GitHub (repo, Actions)</td><td>Proprietary, <strong>free</strong> (private repos, 2,000 Actions min/mo)</td><td>Forgejo (<strong>MIT</strong>, self-hosted) — keep GitHub: free minutes cover Astro builds, no server to maintain</td></tr>
+</tbody>
+</table></div>
+<p>Net: the entire build toolchain and runtime are <strong>C$0</strong> — open-source code on top of Cloudflare's free tiers, with a documented open alternative for every proprietary piece. The domain is already owned (sunk cost, excluded from the build budget).</p>
+<h3>4.5 Why this is 2026 best practice</h3>
+<ul>
+<li><strong>Astro:</strong> the static-first standard for content sites — islands</li>
+<p>architecture (zero JS by default, hydrate only the hero), typed content collections, and built-in view transitions.</p>
+<li><strong>Hono:</strong> the de-facto API framework on Cloudflare Workers — Express-like</li>
+<p>ergonomics in a sub-15 KB bundle, first-class D1/KV/R2 bindings.</p>
+<li><strong>D1:</strong> serverless SQLite at the edge — relational data with plain SQL</li>
+<p>migrations, no Postgres to operate.</p>
+<li><strong>Magic-link codes:</strong> the current passwordless standard for small</li>
+<p>communities — no password database to breach, fits invite-only.</p>
+<li><strong>Decap CMS:</strong> the standard git-based open-source CMS — Markdown stays</li>
+<p>the source of truth, publishing stays a git merge.</p>
+<li><strong>Turnstile:</strong> the privacy-friendly CAPTCHA replacement — no Google</li>
+<p>reCAPTCHA tracking on public forms.</p>
+<li><strong>Static-first + edge-dynamic:</strong> pages are pre-rendered HTML (fast, SEO);</li>
+<p>Workers only run where state is needed (forms, auth, progress). This split is what keeps both the performance budget (§5) and the C$0 target (§20) achievable.</p>
+</ul>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-performance-budget">
+<h2><span class="sec-num">5</span> Performance budget</h2>
+<p>Lightning-fast is a feature, and Core Web Vitals are a Google ranking factor — so speed is budgeted like money. Every page ships against these caps; Lighthouse CI fails the build when a pull request breaks them.</p>
+<h3>5.1 Core Web Vitals targets</h3>
+<p>Measured on a Moto G4-class mobile profile with 4G throttling (lab), and on real visitors via Cloudflare Web Analytics (free, privacy-friendly, no cookies — field data).</p>
+<div class="table-wrap"><table>
+<thead><tr>
+<th>Metric</th>
+<th>Must not exceed</th>
+<th>Target</th>
+</tr></thead>
+<tbody>
+<tr><td>Largest Contentful Paint (LCP)</td><td>2.5 s</td><td>≤ 1.8 s</td></tr>
+<tr><td>Interaction to Next Paint (INP)</td><td>200 ms</td><td>≤ 100 ms</td></tr>
+<tr><td>Cumulative Layout Shift (CLS)</td><td>0.1</td><td>0</td></tr>
+</tbody>
+</table></div>
+<p>Static-first Astro pages pre-render to HTML, so LCP is typically the hero text or logo — both instant. The canvas hero never blocks first paint: it initialises after the content is on screen.</p>
+<h3>5.2 Page-weight budgets (transfer size)</h3>
+<div class="table-wrap"><table>
+<thead><tr>
+<th>Page</th>
+<th>Total cap</th>
+<th>JavaScript cap</th>
+<th>CSS cap</th>
+</tr></thead>
+<tbody>
+<tr><td>Home (<code>/</code>)</td><td>200 KB</td><td>60 KB</td><td>30 KB</td></tr>
+<tr><td>Blog post (<code>/blog/[slug]</code>)</td><td>150 KB</td><td>20 KB</td><td>30 KB</td></tr>
+<tr><td>Academy lesson</td><td>200 KB</td><td>40 KB</td><td>30 KB</td></tr>
+<tr><td>Admin (<code>/admin</code>)</td><td>400 KB</td><td>250 KB</td><td>50 KB</td></tr>
+</tbody>
+</table></div>
+<p>Budgets exclude responsive images below the fold (lazy-loaded) and video (streamed on demand). Gzip/Brotli is on by default via Cloudflare.</p>
+<h3>5.3 The v7 hero stays a lightweight island</h3>
+<p>The living dot-grid engine is already close to ideal: vanilla JavaScript, zero dependencies, roughly 30 KB unminified (~12 KB gzipped). As an Astro island on the home page only:</p>
+<ul>
+<li>No framework runtime ships to run it — the existing engine drops in</li>
+<p>unchanged inside a <code>client:load</code> island.</p>
+<li><code>devicePixelRatio</code> is capped at 2 (already in the engine); <code>requestAnimationFrame</code></li>
+<p>pauses automatically when the tab is hidden, so background tabs cost nothing.</p>
+<li><code>prefers-reduced-motion</code> renders one static frame (already implemented) —</li>
+<p>no animation, no CPU cost, no vestibular risk.</p>
+<li>Pointer tracking is already smoothed through the engine's eased cursor</li>
+<p>values; no per-event layout work.</p>
+</ul>
+<h3>5.4 Fonts</h3>
+<p>Plus Jakarta Sans is final per the brand kit. Strategy:</p>
+<ul>
+<li><strong>Self-host</strong> the woff2 files (latin subset) from the repo — the kit</li>
+<p>supplies the font, so the Google Fonts request disappears entirely. One fewer third party, one fewer render-blocking request, better privacy (supports design principle 5).</p>
+<li>Preload only the weights used above the fold (400, 700); <code>font-display: swap</code>.</li>
+<li>Font budget: ≤ 80 KB total for the subsets served.</li>
+</ul>
+<h3>5.5 CSS: hand-rolled, no frameworks</h3>
+<p>The brand system is CSS custom properties plus hand-written components — keep it that way. Heavy CSS frameworks (Tailwind, Bootstrap) are rejected: they add build complexity and ship unused utilities, while the current approach is already small, readable, and exactly on-brand. Astro inlines critical CSS automatically. Keep selector specificity low and never <code>@import</code> at runtime.</p>
+<h3>5.6 Responsive and reduced motion</h3>
+<ul>
+<li>Breakpoints stay mobile-first: 560 px and 860 px (existing), plus a</li>
+<p>1200 px content container. The canvas already resizes via <code>ResizeObserver</code>.</p>
+<li>Touch targets ≥ 44 px; no hover-dependent actions on touch layouts.</li>
+<li>Under <code>prefers-reduced-motion</code>: static hero frame, no view-transition</li>
+<p>animation, no autoplaying video, <code>scroll-behavior: auto</code>.</p>
+</ul>
+<h3>5.7 Enforcement (all free, all in CI)</h3>
+<ul>
+<li><strong>Lighthouse CI</strong> on every pull request (GitHub Actions, free minutes):</li>
+<p>asserts the §5.1 targets and §5.2 budgets; red builds do not merge.</p>
+<li><strong>Cloudflare Web Analytics</strong> (free): real-user Core Web Vitals on the</li>
+<p>production domain, reviewed monthly.</p>
+<li><strong>Image discipline</strong> (§15): WebP/AVIF via <code>srcset</code>, lazy loading below</li>
+<p>the fold, covers capped at 1600 px wide.</p>
+</ul>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-sitemap-and-url-structure">
+<h2><span class="sec-num">6</span> Sitemap and URL structure</h2>
+<h3>6.1 Public sitemap</h3>
+<div class="codeblock"><button class="copy-btn" type="button">Copy</button><pre><code class="language-text">/                                  Home — hero (v7), promises, how it works,
+                                   featured posts, academy preview, intro CTA
+/about                             About Us — story, standard, the hub, rhythm
+/about/hub                         (optional sub-page) The physical space
+/blog                              Blog index — featured, categories, search
+/blog/[slug]                       Article page
+/blog/category/[slug]              Category archive
+/blog/tag/[slug]                   Tag archive
+/blog/rss.xml                      RSS feed
+/academy                           Academy catalogue — courses, levels, outcomes
+/academy/[course]                  Course overview (syllabus, preview lessons)
+/academy/[course]/[lesson]         Lesson page (gated: members see full + track progress)
+/introduce                         Introduction request (dedicated page; the home
+                                   section anchors here)
+/newsletter                        Newsletter — what it is, signup, archive of
+                                   past letters (titles + excerpts, optional)
+/newsletter/confirmed              Post-verify landing (Worker can redirect here)
+/privacy                           Privacy policy
+/terms                             Terms of use</code></pre></div>
+<p>Post-launch, the home countdown retires (it is a campaign element for the 30 October 2026 launch, not a permanent fixture). Keep the component in the repo for future campaigns.</p>
+<h3>6.2 Gated sitemap</h3>
+<div class="codeblock"><button class="copy-btn" type="button">Copy</button><pre><code class="language-text">/members                           Member dashboard — my courses, progress,
+                                   resources, upcoming rhythm (Mon/Wed/Fri)
+/members/settings                  Profile, email preferences
+/admin                             Publishing CMS — posts, academy, media,
+                                   introductions inbox, subscribers, invite codes</code></pre></div>
+<h3>6.3 URL conventions</h3>
+<ul>
+<li>Lowercase, hyphenated slugs; no dates in blog URLs (<code>/blog/ship-weekly</code> not <code>/blog/2026/10/ship-weekly</code>).</li>
+<li>Academy URLs nest under the course for context.</li>
+<li>Legacy <code>/api/<em></code> endpoints keep working (the site's forms already call them); new API lives under <code>/api/v1/</em></code>.</li>
+</ul>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-section-designs">
+<h2><span class="sec-num">7</span> Section designs</h2>
+<p>All sections share the site chrome: sticky blurred header (colour logo, "Request an introduction" button), footer (reversed logo, social links, address, legal links), and the brand type/colour system. Signal Green is used for small highlights only, never behind text.</p>
+<h3>7.1 Home (<code>/</code>)</h3>
+<p>Keeps the current page's structure and upgrades it into a living front door:</p>
+<ol>
+<li><strong>Hero</strong> — the v7 living dot-grid canvas, logo lockup, eyebrow ("Toronto · Est. 2026" post-launch), H1 "Build a business. Build yourself.", lede, primary CTA "Request an introduction".</li>
+<li><strong>Belief strip</strong> — "Elite by effort, not by background."</li>
+<li><strong>What every member gets</strong> — the four promise cards (existing).</li>
+<li><strong>How it works</strong> — Introduction → Build → Grow together (existing).</li>
+<li><strong>From the blog</strong> — 3 latest published posts (cards: cover, category, title, excerpt, reading time).</li>
+<li><strong>Academy preview</strong> — course cards with level and lesson count; CTA "Explore the Academy".</li>
+<li><strong>Introduction CTA</strong> — the existing form section (kept verbatim, including honeypot).</li>
+<li><strong>Footer.</strong></li>
+</ol>
+<h3>7.2 About Us (<code>/about</code>)</h3>
+<ul>
+<li><strong>Story:</strong> why Brimwood exists — a selective innovation hub for ambitious people building AI-powered micro businesses. Short paragraphs, one idea each.</li>
+<li><strong>The standard:</strong> "Elite by effort, not by background." What it demands (show up, ship weekly, be generous) — framed as expectations, never hype.</li>
+<li><strong>The hub:</strong> the physical room at 1365 Gerrard St E Unit 2 — build floor, collision hours, demo nights. Photography when available; no renders presented as real.</li>
+<li><strong>The rhythm:</strong> Monday Commit · Wednesday Forge · Friday Show + dine · monthly public demos.</li>
+<li><strong>What we are not:</strong> not a coworking desk rental, not a course factory, not an accelerator that takes a cut and disappears. (States positioning without criticising competitors.)</li>
+<li><strong>CTA:</strong> "Request an introduction."</li>
+<li>Explicitly excluded: the internal business model, revenue percentages, member names or photos without written permission and draft review.</li>
+</ul>
+<h3>7.3 Blogs (<code>/blog</code>)</h3>
+<ul>
+<li><strong>Index:</strong> featured post hero, filter by category (the four content pillars double as categories), tag chips, search box, paginated cards.</li>
+<li><strong>Article page:</strong> title, category, reading time, publish date, cover image, body in readable measure, author card (first name + role only, or "Brimwood Team" — anonymity default), share links, related posts, moderated comments (Phase 2+).</li>
+<li><strong>Voice rules enforced in the CMS:</strong> Canadian spelling check, banned-phrase list (income promises, "10x", "hustle", "guaranteed"), one idea per paragraph. The content guideline's pillar mix (30/30/20/20) is a dashboard metric in the admin.</li>
+<li><strong>RSS</strong> at <code>/blog/rss.xml</code> and per-category feeds for the newsletter pipeline.</li>
+</ul>
+<h3>7.4 Academy (<code>/academy</code>)</h3>
+<ul>
+<li><strong>Catalogue:</strong> course cards — title, tagline, level (Foundations / Builder / Operator), lesson count, total time, visibility badge. Public catalogue; lesson content gated to members (preview lessons open to all).</li>
+<li><strong>Course page:</strong> outcomes ("You will be able to…"), syllabus by module, instructor line ("Taught by Brimwood builders" — no individual claims), enrol button (members) or introduction CTA (visitors).</li>
+<li><strong>Lesson page:</strong> video or written lesson, transcript, resources/downloads, "Mark complete", next-lesson navigation, progress bar. Progress persists per member.</li>
+<li><strong>Positioning:</strong> the Academy teaches the skills from the "four promises" — hands-on AI practice for owner-operators. No certificates-as-status, no income claims, no "become a millionaire" modules.</li>
+</ul>
+<h3>7.5 Introduction (<code>/introduce</code>)</h3>
+<p>The existing form, promoted to a full page: name, email, referral (optional), "What are you building?" message, honeypot, Turnstile. Same API, same emails, same thank-you copy. Adds: what happens next (1. we read every request,</p>
+<ol>
+<li>a conversation, 3. invitation) — sets expectations without promising</li>
+<p>outcomes.</p>
+</ol>
+<h3>7.6 Newsletter (<code>/newsletter</code>)</h3>
+<p>Explains the list ("We write when there is something worth your time — no noise."), signup form (name optional, email, honeypot, Turnstile), double opt-in unchanged. Optional archive of past letters (titles + excerpts only — full letters stay email-exclusive to protect the list's value).</p>
+<h3>7.7 Members (<code>/members</code>, gated)</h3>
+<ul>
+<li>Dashboard: enrolled courses with progress bars, continue-learning links.</li>
+<li>Rhythm: this week's Monday Commit / Wednesday Forge / Friday Show schedule.</li>
+<li>Resources: hub handbook excerpts, useful links (admin-curated).</li>
+<li>Settings: name, email preferences (newsletter on/off), sign out.</li>
+<li>Nothing here is indexed by search engines (<code>noindex</code>, auth-walled).</li>
+</ul>
+<h3>7.8 Admin (<code>/admin</code>, role-gated)</h3>
+<ul>
+<li><strong>Dashboard:</strong> at-a-glance — drafts, scheduled posts, new introduction requests, subscriber count, pillar mix of recent posts.</li>
+<li><strong>Posts:</strong> list, filter by status, rich Markdown editor with preview, cover upload (R2), SEO fields, schedule/publish, pillar tagging.</li>
+<li><strong>Academy:</strong> courses → modules → lessons tree; lesson editor; preview-lesson toggle; reorder by drag or sort-order fields.</li>
+<li><strong>Inbox:</strong> introduction requests table with status workflow (new → contacted → invited → declined / spam), notes field, one-click "create invite code".</li>
+<li><strong>Subscribers:</strong> newsletter list (search, export CSV), manual unsubscribe.</li>
+<li><strong>Invite codes:</strong> generate, set max uses and expiry, see redemption.</li>
+<li><strong>Media library:</strong> R2 browser — upload, alt text, copy URL.</li>
+<li><strong>Audit log:</strong> who published/changed what, when.</li>
+</ul>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-discoverability-seo-aeo-and-geo">
+<h2><span class="sec-num">8</span> Discoverability: SEO, AEO, and GEO</h2>
+<p>The site must be found by search engines, quoted by answer engines, and cited accurately by AI assistants. All three are engineered in — not bolted on — and all tooling is free and open-source.</p>
+<h3>8.1 SEO (search engines)</h3>
+<ul>
+<li><strong>Semantic HTML:</strong> <code>header</code>/<code>main</code>/<code>article</code>/<code>footer</code> landmarks, one <code>h1</code></li>
+<p>per page, logical heading order. Astro outputs clean HTML by default.</p>
+<li><strong>Meta layer:</strong> unique <code>&lt;title&gt;</code> and meta description per page, canonical</li>
+<p>URLs, Open Graph + Twitter cards — via Astro's first-party SEO integrations (MIT-licensed) or a small hand-rolled layout; no paid plugin.</p>
+<li><strong>Crawlability:</strong> <code>robots.txt</code> plus XML sitemaps (Astro sitemap</li>
+<p>integration, MIT) covering posts, categories, courses, and lessons; clean hyphenated slugs (see §6.3); RSS feed for the blog (already planned).</p>
+<li><strong>Structured data (JSON-LD):</strong> <code>Organization</code> on the home page,</li>
+<p><code>BlogPosting</code> on articles, <code>Course</code> on academy courses, <code>FAQPage</code> on FAQ blocks, <code>BreadcrumbList</code> on nested pages. Validate with Google's free Rich Results Test and the Schema.org validator before launch.</p>
+<li><strong>Images:</strong> descriptive alt text required by the CMS (§14); file names</li>
+<p>match slugs.</p>
+<li><strong>Speed as SEO:</strong> the §5 performance budget is part of the SEO plan —</li>
+<p>Core Web Vitals are a ranking factor.</p>
+</ul>
+<h3>8.2 AEO (answer engines — featured snippets, voice answers)</h3>
+<p>Content is structured so machines can lift direct answers:</p>
+<ul>
+<li><strong>Question-led headings:</strong> H2s phrased as the questions readers actually</li>
+<p>ask ("How does Brimwood select members?").</p>
+<li><strong>Direct-answer blocks:</strong> every post opens its key sections with a</li>
+<p>40–60 word self-contained answer before the deeper explanation.</p>
+<li><strong>Definition callouts</strong> and <strong>"Key takeaways"</strong> boxes at the top or</li>
+<p>bottom of each post — the exact shapes featured snippets prefer.</p>
+<li><strong>FAQ schema:</strong> every post carries an FAQ block (see §8.4); FAQPage</li>
+<p>JSON-LD is emitted automatically.</p>
+<li>Tables for comparisons, ordered lists for processes.</li>
+</ul>
+<h3>8.3 GEO (generative engines — being cited by AI assistants)</h3>
+<p>AI assistants cite content that is quotable, factual, and attributable:</p>
+<ul>
+<li><strong>Self-contained factual chunks:</strong> statistics and claims always appear</li>
+<p>with their source in the same paragraph, so a quoted chunk stays true out of context.</p>
+<li><strong>Author expertise signals (E-E-A-T):</strong> every post has a named author</li>
+<p>with a short expertise bio; the About page documents who Brimwood is.</p>
+<li><strong>Consistent entity naming:</strong> always "Brimwood Innovation" — never</li>
+<p>variants — so models resolve one entity.</p>
+<li><strong><code>llms.txt</code>:</strong> a machine-readable site summary at <code>/llms.txt</code></li>
+<p>following the emerging convention (assumption: convention still stabilising — keep the file simple: who we are, what we publish, key URLs), helping AI crawlers represent Brimwood accurately.</p>
+<li><strong>Members area and <code>/admin</code> are <code>noindex</code></strong> — AI answers should cite</li>
+<p>public content only.</p>
+</ul>
+<h3>8.4 CMS enforcement</h3>
+<p>Discoverability is a publishing checklist, not a hope. The content collection schema (Zod) and the Decap CMS config both require, per post:</p>
+<ul>
+<li><code>description</code> (meta description, 120–160 characters),</li>
+<li><code>faq</code> (at least one question/answer pair),</li>
+<li><code>takeaways</code> (3–5 bullets),</li>
+<li><code>coverAlt</code> (image alt text),</li>
+<li>schema fields (<code>datePublished</code>, <code>author</code>).</li>
+</ul>
+<p>A post cannot move to "ready" without them. The editorial guardrails in §14 apply unchanged.</p>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-user-flows">
+<h2><span class="sec-num">9</span> User flows</h2>
+<h3>9.1 Visitor → reader → subscriber → member funnel</h3>
+<div class="diagram-card"><pre class="mermaid">
+flowchart TD
+    A[Visitor lands on /] --&gt; B{Interested?}
+    B --&gt;|Reads| C[/blog or /about]
+    B --&gt;|Wants in| D[/introduce]
+    C --&gt; E{Subscribes?}
+    E --&gt;|Yes| F[/newsletter signup]
+    E --&gt;|No| C
+    F --&gt; G[Double opt-in email]
+    G --&gt; H{Confirms?}
+    H --&gt;|Yes| I[Subscriber — receives letters]
+    H --&gt;|No| J[Pending expires in 3 days]
+    I --&gt; K{Requests introduction?}
+    K --&gt;|Yes| D
+    D --&gt; L[Introduction request stored + emails sent]
+    L --&gt; M[Team reviews — status: new → contacted]
+    M --&gt; N{Fit?}
+    N --&gt;|Yes| O[Invite code issued]
+    N --&gt;|Not now| P[Stays subscriber]
+    O --&gt; Q[Member redeems code → magic-link account]
+    Q --&gt; R[Member dashboard + Academy]
+</pre></div>
+<h3>9.2 Introduction request flow (as built today, carried forward)</h3>
+<div class="diagram-card"><pre class="mermaid">
+flowchart TD
+    A[Visitor submits form] --&gt; B{Honeypot filled?}
+    B --&gt;|Yes| C[Fake success — nothing sent]
+    B --&gt;|No| D{Rate limit OK? 5/hr/IP}
+    D --&gt;|No| E[429 — try later]
+    D --&gt;|Yes| F{Valid name + email?}
+    F --&gt;|No| G[400 — inline error]
+    F --&gt;|Yes| H[Store in D1 introduction_requests]
+    H --&gt; I[Email info@: branded notification, Reply-To = submitter]
+    H --&gt; J[Email submitter: branded confirmation]
+    I --&gt; K[200 ok:true → thank-you panel]
+    J --&gt; K
+</pre></div>
+<p>Change from today: the request is now also stored in D1 (status <code>new</code>) so the admin inbox can triage it. Emails remain the notification channel.</p>
+<h3>9.3 Magic-link sign-in flow</h3>
+<div class="diagram-card"><pre class="mermaid">
+flowchart TD
+    A[User enters email on /members] --&gt; B{Email belongs to member/admin\nor has unused invite code?}
+    B --&gt;|No| C[Generic message: check your inbox\n— never reveals which emails exist]
+    B --&gt;|Yes| D[Generate 6-digit code, 10-min expiry\nstore hash in KV, email via Resend]
+    D --&gt; E[User enters code]
+    E --&gt; F{Code valid?}
+    F --&gt;|No| G[Error — 5 attempts max, then lockout 15 min]
+    F --&gt;|Yes| H[Create session in KV, 30 days\nset HttpOnly Secure SameSite=Lax cookie]
+    H --&gt; I{Invite code supplied?}
+    I --&gt;|Yes| J[Mark code used, create/link user]
+    I --&gt;|No| K[Redirect to /members]
+</pre></div>
+<p>The "generic message" branch matters: the endpoint must not let anyone enumerate which email addresses are members.</p>
+<h3>9.4 Admin publishing flow</h3>
+<div class="diagram-card"><pre class="mermaid">
+flowchart TD
+    A[Admin opens /admin] --&gt; B{Role = admin?}
+    B --&gt;|No| C[403]
+    B --&gt;|Yes| D[Posts list]
+    D --&gt; E[New draft — Markdown editor + preview]
+    E --&gt; F[Set category, tags, pillar, cover, SEO]
+    F --&gt; G{Save}
+    G --&gt; H[Status: draft]
+    H --&gt; I{Publish now or schedule?}
+    I --&gt;|Schedule| J[Status: scheduled — cron publishes]
+    I --&gt;|Now| K[Status: published — cache purged]
+    K --&gt; L[Appears on /blog, RSS, home feed]
+    L --&gt; M[Audit log entry]
+</pre></div>
+<h3>9.5 Academy enrolment and progress flow</h3>
+<div class="diagram-card"><pre class="mermaid">
+flowchart TD
+    A[Member opens /academy] --&gt; B[Catalogue — enrolled vs available]
+    B --&gt; C[Enrol in course]
+    C --&gt; D[Row in enrollments]
+    D --&gt; E[Start lesson — full content + progress bar]
+    E --&gt; F[Mark complete]
+    F --&gt; G[lesson_progress = completed]
+    G --&gt; H{All lessons complete?}
+    H --&gt;|Yes| I[enrollments.completed_at set\ncourse marked complete]
+    H --&gt;|No| J[Next lesson unlocked — suggested]
+    J --&gt; E
+</pre></div>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-system-architecture">
+<h2><span class="sec-num">10</span> System architecture</h2>
+<h3>10.1 Request flow</h3>
+<div class="diagram-card"><pre class="mermaid">
+flowchart LR
+    subgraph Edge[Cloudflare edge]
+        P[Pages: brimwood-site\nAstro static + islands]
+        W[Hono Worker: brimwood-api\n/api/v1/*]
+    end
+    subgraph Data[Cloudflare data]
+        D1[(D1: brimwood-db\nposts, users, academy,\nleads, subscribers)]
+        KV[(KV\nsessions, rate limits,\ncache)]
+        R2[(R2: brimwood-media\ncovers, video, uploads)]
+    end
+    R[Resend\ntransactional email]
+    CF[Cloudflare analytics\n+ Turnstile]
+
+    U[Visitor / member] --&gt;|HTTPS| P
+    P --&gt;|dynamic data| W
+    U --&gt;|API calls| W
+    W --&gt; D1
+    W --&gt; KV
+    W --&gt; R2
+    W --&gt;|send email| R
+    P -.-&gt;|verify| CF
+    W -.-&gt;|verify| CF
+</pre></div>
+<p>Notes:</p>
+<ul>
+<li>Pages serves everything static, including blog/academy pages pre-rendered at build time. The Worker is called only for dynamic behaviour: auth, progress, forms, admin writes.</li>
+<li>The current route <code>brimwoodinnovation.com/api/<em></code> already points at a Worker; the new <code>brimwood-api</code> Worker takes over that route. Legacy endpoints (<code>/api/introduction</code>, <code>/api/newsletter</em></code>) keep working unchanged — the Hono app mounts them first.</li>
+<li>Media is served from R2 via a custom path (<code>/media/*</code>) with cache headers; the Worker signs admin uploads.</li>
+<li>A scheduled Worker (cron trigger, same codebase) publishes scheduled posts and sends the newsletter digest.</li>
+</ul>
+<h3>10.2 Environments</h3>
+<div class="table-wrap"><table>
+<thead><tr>
+<th>Environment</th>
+<th>Frontend</th>
+<th>API</th>
+<th>Database</th>
+</tr></thead>
+<tbody>
+<tr><td>Production</td><td><code>brimwoodinnovation.com</code> (Pages production)</td><td><code>brimwood-api</code> production Worker</td><td><code>brimwood-db</code> (D1 production)</td></tr>
+<tr><td>Preview</td><td><code>*.brimwood-site.pages.dev</code> per branch/PR</td><td>Same Worker, <code>ENV=preview</code></td><td><code>brimwood-db-preview</code> (D1)</td></tr>
+<tr><td>Local</td><td><code>astro dev</code> + <code>wrangler dev</code></td><td><code>wrangler dev</code></td><td>Local D1 (miniflare)</td></tr>
+</tbody>
+</table></div>
+<p>Preview deploys get their own D1 so content experiments never touch production.</p>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-data-model">
+<h2><span class="sec-num">11</span> Data model</h2>
+<h3>11.1 Entity-relationship overview</h3>
+<div class="diagram-card"><pre class="mermaid">
+erDiagram
+    users ||--o{ enrollments : has
+    users ||--o{ lesson_progress : tracks
+    users ||--o{ invite_codes : creates
+    users ||--o{ comments : writes
+    courses ||--o{ modules : contains
+    courses ||--o{ enrollments : has
+    modules ||--o{ lessons : contains
+    lessons ||--o{ lesson_progress : has
+    authors ||--o{ posts : writes
+    categories ||--o{ posts : groups
+    posts ||--o{ post_tags : has
+    tags ||--o{ post_tags : has
+    posts ||--o{ comments : has
+    media_assets ||--o{ posts : illustrates
+</pre></div>
+<h3>11.2 D1 schema (SQLite dialect, apply as migrations)</h3>
+<p>Conventions: <code>TEXT PRIMARY KEY</code> UUIDs (<code>crypto.randomUUID()</code>), timestamps as ISO-8601 UTC text with <code>strftime('%Y-%m-%dT%H:%M:%fZ','now')</code> defaults, soft <code>status</code> enums via <code>CHECK</code>, foreign keys with <code>ON DELETE CASCADE</code> where the child is meaningless without the parent.</p>
+<div class="codeblock lang-sql"><button class="copy-btn" type="button">Copy</button><pre><code class="language-sql">-- 0001_init.sql — users, invites, sessions live in KV (see §13)
+
+CREATE TABLE users (
+  id          TEXT PRIMARY KEY,
+  email       TEXT NOT NULL UNIQUE,
+  name        TEXT NOT NULL,
+  role        TEXT NOT NULL DEFAULT &#x27;member&#x27;
+              CHECK (role IN (&#x27;admin&#x27;, &#x27;member&#x27;)),
+  status      TEXT NOT NULL DEFAULT &#x27;active&#x27;
+              CHECK (status IN (&#x27;active&#x27;, &#x27;suspended&#x27;)),
+  referral    TEXT,                       -- who introduced them (free text)
+  created_at  TEXT NOT NULL DEFAULT (strftime(&#x27;%Y-%m-%dT%H:%M:%fZ&#x27;,&#x27;now&#x27;)),
+  updated_at  TEXT NOT NULL DEFAULT (strftime(&#x27;%Y-%m-%dT%H:%M:%fZ&#x27;,&#x27;now&#x27;))
+);
+CREATE INDEX idx_users_email ON users(email);
+
+CREATE TABLE invite_codes (
+  id          TEXT PRIMARY KEY,
+  code        TEXT NOT NULL UNIQUE,       -- e.g. BRIM-7K2Q-9XD4
+  created_by  TEXT REFERENCES users(id),
+  max_uses    INTEGER NOT NULL DEFAULT 1,
+  uses        INTEGER NOT NULL DEFAULT 0,
+  expires_at  TEXT,                       -- ISO-8601, NULL = no expiry
+  note        TEXT,                       -- e.g. &quot;For Maya&#x27;s referral&quot;
+  created_at  TEXT NOT NULL DEFAULT (strftime(&#x27;%Y-%m-%dT%H:%M:%fZ&#x27;,&#x27;now&#x27;))
+);
+CREATE INDEX idx_invite_codes_code ON invite_codes(code);</code></pre></div>
+<div class="codeblock lang-sql"><button class="copy-btn" type="button">Copy</button><pre><code class="language-sql">-- 0002_blog.sql
+
+CREATE TABLE authors (
+  id            TEXT PRIMARY KEY,
+  name          TEXT NOT NULL,            -- display name or &quot;Brimwood Team&quot;
+  role_title    TEXT,                     -- e.g. &quot;Builder, Cohort 1&quot;
+  bio           TEXT,
+  avatar_r2_key TEXT
+);
+
+CREATE TABLE categories (
+  id          TEXT PRIMARY KEY,
+  slug        TEXT NOT NULL UNIQUE,
+  name        TEXT NOT NULL,
+  description TEXT
+);
+-- Seed: micro-business / ai-in-practice / owner-mindset / members-and-hub
+-- (mirrors the four content pillars)
+
+CREATE TABLE tags (
+  id    TEXT PRIMARY KEY,
+  slug  TEXT NOT NULL UNIQUE,
+  name  TEXT NOT NULL
+);
+
+CREATE TABLE posts (
+  id              TEXT PRIMARY KEY,
+  slug            TEXT NOT NULL UNIQUE,
+  title           TEXT NOT NULL,
+  excerpt         TEXT NOT NULL,
+  body_md         TEXT NOT NULL,          -- Markdown source of truth
+  body_html       TEXT,                   -- rendered cache (rebuilt on save)
+  cover_r2_key    TEXT,
+  author_id       TEXT REFERENCES authors(id),
+  category_id     TEXT REFERENCES categories(id),
+  pillar          TEXT                    -- denormalised pillar for the mix metric
+                  CHECK (pillar IN (&#x27;micro-business&#x27;,&#x27;ai-in-practice&#x27;,
+                                    &#x27;owner-mindset&#x27;,&#x27;members-and-hub&#x27;)),
+  status          TEXT NOT NULL DEFAULT &#x27;draft&#x27;
+                  CHECK (status IN (&#x27;draft&#x27;,&#x27;scheduled&#x27;,&#x27;published&#x27;,&#x27;archived&#x27;)),
+  published_at    TEXT,
+  reading_minutes INTEGER,
+  featured        INTEGER NOT NULL DEFAULT 0,
+  seo_title       TEXT,
+  seo_description TEXT,
+  created_at      TEXT NOT NULL DEFAULT (strftime(&#x27;%Y-%m-%dT%H:%M:%fZ&#x27;,&#x27;now&#x27;)),
+  updated_at      TEXT NOT NULL DEFAULT (strftime(&#x27;%Y-%m-%dT%H:%M:%fZ&#x27;,&#x27;now&#x27;))
+);
+CREATE INDEX idx_posts_status_published ON posts(status, published_at DESC);
+CREATE INDEX idx_posts_category ON posts(category_id, published_at DESC);
+
+CREATE TABLE post_tags (
+  post_id TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  tag_id  TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+  PRIMARY KEY (post_id, tag_id)
+);
+
+CREATE TABLE comments (                         -- Phase 2+
+  id          TEXT PRIMARY KEY,
+  post_id     TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  user_id     TEXT REFERENCES users(id),        -- NULL = guest (name stored)
+  guest_name  TEXT,
+  body        TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT &#x27;pending&#x27;
+              CHECK (status IN (&#x27;pending&#x27;,&#x27;approved&#x27;,&#x27;rejected&#x27;,&#x27;spam&#x27;)),
+  created_at  TEXT NOT NULL DEFAULT (strftime(&#x27;%Y-%m-%dT%H:%M:%fZ&#x27;,&#x27;now&#x27;))
+);
+CREATE INDEX idx_comments_post ON comments(post_id, status, created_at);</code></pre></div>
+<div class="codeblock lang-sql"><button class="copy-btn" type="button">Copy</button><pre><code class="language-sql">-- 0003_academy.sql
+
+CREATE TABLE courses (
+  id              TEXT PRIMARY KEY,
+  slug            TEXT NOT NULL UNIQUE,
+  title           TEXT NOT NULL,
+  tagline         TEXT NOT NULL,
+  description_md  TEXT NOT NULL,
+  cover_r2_key    TEXT,
+  level           TEXT NOT NULL DEFAULT &#x27;foundations&#x27;
+                  CHECK (level IN (&#x27;foundations&#x27;,&#x27;builder&#x27;,&#x27;operator&#x27;)),
+  visibility      TEXT NOT NULL DEFAULT &#x27;members&#x27;
+                  CHECK (visibility IN (&#x27;public&#x27;,&#x27;members&#x27;)),
+  status          TEXT NOT NULL DEFAULT &#x27;draft&#x27;
+                  CHECK (status IN (&#x27;draft&#x27;,&#x27;published&#x27;,&#x27;archived&#x27;)),
+  sort_order      INTEGER NOT NULL DEFAULT 0,
+  created_at      TEXT NOT NULL DEFAULT (strftime(&#x27;%Y-%m-%dT%H:%M:%fZ&#x27;,&#x27;now&#x27;)),
+  updated_at      TEXT NOT NULL DEFAULT (strftime(&#x27;%Y-%m-%dT%H:%M:%fZ&#x27;,&#x27;now&#x27;))
+);
+CREATE INDEX idx_courses_status ON courses(status, sort_order);
+
+CREATE TABLE modules (
+  id          TEXT PRIMARY KEY,
+  course_id   TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+  title       TEXT NOT NULL,
+  sort_order  INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_modules_course ON modules(course_id, sort_order);
+
+CREATE TABLE lessons (
+  id              TEXT PRIMARY KEY,
+  module_id       TEXT NOT NULL REFERENCES modules(id) ON DELETE CASCADE,
+  slug            TEXT NOT NULL,
+  title           TEXT NOT NULL,
+  body_md         TEXT NOT NULL,
+  body_html       TEXT,
+  video_r2_key    TEXT,                   -- NULL = written lesson
+  duration_minutes INTEGER,
+  is_preview      INTEGER NOT NULL DEFAULT 0,  -- open to non-members
+  sort_order      INTEGER NOT NULL DEFAULT 0,
+  status          TEXT NOT NULL DEFAULT &#x27;draft&#x27;
+                  CHECK (status IN (&#x27;draft&#x27;,&#x27;published&#x27;,&#x27;archived&#x27;)),
+  created_at      TEXT NOT NULL DEFAULT (strftime(&#x27;%Y-%m-%dT%H:%M:%fZ&#x27;,&#x27;now&#x27;)),
+  updated_at      TEXT NOT NULL DEFAULT (strftime(&#x27;%Y-%m-%dT%H:%M:%fZ&#x27;,&#x27;now&#x27;)),
+  UNIQUE (module_id, slug)
+);
+CREATE INDEX idx_lessons_module ON lessons(module_id, sort_order);
+
+CREATE TABLE enrollments (
+  id            TEXT PRIMARY KEY,
+  user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  course_id     TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+  enrolled_at   TEXT NOT NULL DEFAULT (strftime(&#x27;%Y-%m-%dT%H:%M:%fZ&#x27;,&#x27;now&#x27;)),
+  completed_at  TEXT,
+  UNIQUE (user_id, course_id)
+);
+
+CREATE TABLE lesson_progress (
+  id            TEXT PRIMARY KEY,
+  user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  lesson_id     TEXT NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+  status        TEXT NOT NULL DEFAULT &#x27;started&#x27;
+                CHECK (status IN (&#x27;started&#x27;,&#x27;completed&#x27;)),
+  completed_at  TEXT,
+  updated_at    TEXT NOT NULL DEFAULT (strftime(&#x27;%Y-%m-%dT%H:%M:%fZ&#x27;,&#x27;now&#x27;)),
+  UNIQUE (user_id, lesson_id)
+);
+CREATE INDEX idx_progress_user ON lesson_progress(user_id);</code></pre></div>
+<div class="codeblock lang-sql"><button class="copy-btn" type="button">Copy</button><pre><code class="language-sql">-- 0004_leads.sql — introduction requests + newsletter move from KV/email-only to D1
+
+CREATE TABLE introduction_requests (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  email       TEXT NOT NULL,
+  referral    TEXT,
+  message     TEXT,
+  ip_hash     TEXT,                       -- SHA-256 of IP, not the IP itself
+  user_agent  TEXT,
+  status      TEXT NOT NULL DEFAULT &#x27;new&#x27;
+              CHECK (status IN (&#x27;new&#x27;,&#x27;contacted&#x27;,&#x27;invited&#x27;,&#x27;declined&#x27;,&#x27;spam&#x27;)),
+  notes       TEXT,                       -- internal triage notes
+  created_at  TEXT NOT NULL DEFAULT (strftime(&#x27;%Y-%m-%dT%H:%M:%fZ&#x27;,&#x27;now&#x27;)),
+  updated_at  TEXT NOT NULL DEFAULT (strftime(&#x27;%Y-%m-%dT%H:%M:%fZ&#x27;,&#x27;now&#x27;))
+);
+CREATE INDEX idx_intro_status ON introduction_requests(status, created_at DESC);
+
+CREATE TABLE newsletter_subscribers (
+  id              TEXT PRIMARY KEY,
+  email           TEXT NOT NULL UNIQUE,
+  name            TEXT,
+  status          TEXT NOT NULL DEFAULT &#x27;pending&#x27;
+                  CHECK (status IN (&#x27;pending&#x27;,&#x27;active&#x27;,&#x27;unsubscribed&#x27;)),
+  confirm_token   TEXT,                   -- pending double opt-in
+  unsub_token     TEXT NOT NULL,
+  source          TEXT,                   -- e.g. &quot;site-footer&quot;, &quot;newsletter-page&quot;
+  subscribed_at   TEXT,
+  unsubscribed_at TEXT,
+  created_at      TEXT NOT NULL DEFAULT (strftime(&#x27;%Y-%m-%dT%H:%M:%fZ&#x27;,&#x27;now&#x27;))
+);
+CREATE INDEX idx_subscribers_status ON newsletter_subscribers(status);
+
+CREATE TABLE email_log (
+  id          TEXT PRIMARY KEY,
+  kind        TEXT NOT NULL,              -- intro-notify, intro-confirm,
+                                          -- newsletter-confirm, newsletter-welcome,
+                                          -- auth-code, digest, …
+  to_email    TEXT NOT NULL,
+  subject     TEXT,
+  status      TEXT NOT NULL CHECK (status IN (&#x27;sent&#x27;,&#x27;failed&#x27;)),
+  provider_id TEXT,                        -- Resend message id
+  error       TEXT,
+  created_at  TEXT NOT NULL DEFAULT (strftime(&#x27;%Y-%m-%dT%H:%M:%fZ&#x27;,&#x27;now&#x27;))
+);
+CREATE INDEX idx_email_log_kind ON email_log(kind, created_at DESC);
+
+CREATE TABLE media_assets (
+  id          TEXT PRIMARY KEY,
+  r2_key      TEXT NOT NULL UNIQUE,
+  filename    TEXT NOT NULL,
+  mime        TEXT NOT NULL,
+  size_bytes  INTEGER NOT NULL,
+  width       INTEGER,
+  height      INTEGER,
+  alt_text    TEXT NOT NULL DEFAULT &#x27;&#x27;,
+  uploaded_by TEXT REFERENCES users(id),
+  created_at  TEXT NOT NULL DEFAULT (strftime(&#x27;%Y-%m-%dT%H:%M:%fZ&#x27;,&#x27;now&#x27;))
+);
+
+CREATE TABLE audit_log (
+  id          TEXT PRIMARY KEY,
+  actor_id    TEXT REFERENCES users(id),  -- NULL = system/cron
+  action      TEXT NOT NULL,              -- post.publish, invite.create, …
+  target      TEXT,                       -- e.g. &quot;post:abc123&quot;
+  detail      TEXT,
+  created_at  TEXT NOT NULL DEFAULT (strftime(&#x27;%Y-%m-%dT%H:%M:%fZ&#x27;,&#x27;now&#x27;))
+);
+CREATE INDEX idx_audit_actor ON audit_log(actor_id, created_at DESC);</code></pre></div>
+<h3>11.3 What lives in KV (not D1)</h3>
+<div class="table-wrap"><table>
+<thead><tr>
+<th>Key pattern</th>
+<th>Contents</th>
+<th>TTL</th>
+</tr></thead>
+<tbody>
+<tr><td><code>sess:&lt;token&gt;</code></td><td><code>{ userId, role, createdAt }</code></td><td>30 days</td></tr>
+<tr><td><code>authcode:&lt;hash&gt;</code></td><td><code>{ email, codeHash, attempts }</code></td><td>10 minutes</td></tr>
+<tr><td><code>rl:&lt;scope&gt;:&lt;ip&gt;</code></td><td>rate-limit counters (existing pattern)</td><td>window</td></tr>
+<tr><td><code>invite:&lt;code&gt;</code></td><td>redeemed-code cache (optional)</td><td>1 hour</td></tr>
+<tr><td><code>cache:post:&lt;slug&gt;</code></td><td>rendered public JSON/HTML fragments</td><td>5 minutes, purged on publish</td></tr>
+<tr><td><code>pending:&lt;token&gt;</code> / <code>sub:&lt;email&gt;</code></td><td>legacy newsletter keys — <strong>migrated to D1 in Phase 2</strong>, then removed</td><td>—</td></tr>
+</tbody>
+</table></div>
+<p>Sessions stay in KV (not D1) because they are ephemeral, high-churn, and benefit from KV's edge reads; revocation is a delete.</p>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-rest-api-specification">
+<h2><span class="sec-num">12</span> REST API specification</h2>
+<p>Base: <code>https://brimwoodinnovation.com/api/v1</code>. JSON everywhere. Public <code>GET</code>s are cacheable (<code>Cache-Control: public, max-age=300</code>, purged on publish). Mutations require the session cookie; admin routes require <code>role = admin</code>. Legacy <code>/api/introduction</code> and <code>/api/newsletter*</code> keep their current behaviour (no version bump for the site's own forms).</p>
+<h3>12.1 Public — blog and academy catalogue</h3>
+<div class="table-wrap"><table>
+<thead><tr>
+<th>Method</th>
+<th>Endpoint</th>
+<th>Auth</th>
+<th>Notes</th>
+</tr></thead>
+<tbody>
+<tr><td>GET</td><td><code>/posts?status=published&amp;category=&amp;tag=&amp;q=&amp;page=&amp;per=</code></td><td>—</td><td>Paginated; <code>q</code> searches title/excerpt</td></tr>
+<tr><td>GET</td><td><code>/posts/:slug</code></td><td>—</td><td>Full body; 404 for non-published</td></tr>
+<tr><td>GET</td><td><code>/categories</code>, <code>/tags</code></td><td>—</td><td>With post counts</td></tr>
+<tr><td>GET</td><td><code>/courses?status=published</code></td><td>—</td><td>Catalogue; members see enrolment state</td></tr>
+<tr><td>GET</td><td><code>/courses/:slug</code></td><td>—</td><td>Overview + module/lesson list (lesson bodies excluded unless preview or enrolled)</td></tr>
+</tbody>
+</table></div>
+<h3>12.2 Public — forms (existing behaviour, D1-backed)</h3>
+<div class="table-wrap"><table>
+<thead><tr>
+<th>Method</th>
+<th>Endpoint</th>
+<th>Notes</th>
+</tr></thead>
+<tbody>
+<tr><td>POST</td><td><code>/introduction</code> (legacy) and <code>/v1/introductions</code></td><td>Honeypot, Turnstile, 5/hr/IP; stores row, sends both emails</td></tr>
+<tr><td>POST</td><td><code>/newsletter</code> (legacy) and <code>/v1/newsletter/subscriptions</code></td><td>Honeypot, Turnstile, 3/hr/IP; double opt-in</td></tr>
+<tr><td>GET</td><td><code>/newsletter/verify?token=</code> (legacy) and <code>/v1/newsletter/confirm?token=</code></td><td>Activates subscription</td></tr>
+<tr><td>GET</td><td><code>/newsletter/unsubscribe?email=&amp;token=</code> (legacy) and <code>/v1/newsletter/unsubscribe</code></td><td>Deactivates</td></tr>
+</tbody>
+</table></div>
+<h3>12.3 Auth</h3>
+<div class="table-wrap"><table>
+<thead><tr>
+<th>Method</th>
+<th>Endpoint</th>
+<th>Notes</th>
+</tr></thead>
+<tbody>
+<tr><td>POST</td><td><code>/v1/auth/request-code</code></td><td><code>{ email }</code> — always returns 200 with a generic message (no enumeration)</td></tr>
+<tr><td>POST</td><td><code>/v1/auth/verify-code</code></td><td><code>{ email, code, inviteCode? }</code> — sets session cookie</td></tr>
+<tr><td>POST</td><td><code>/v1/auth/logout</code></td><td>Clears session</td></tr>
+<tr><td>GET</td><td><code>/v1/auth/me</code></td><td>Current user or 401</td></tr>
+</tbody>
+</table></div>
+<h3>12.4 Member</h3>
+<div class="table-wrap"><table>
+<thead><tr>
+<th>Method</th>
+<th>Endpoint</th>
+<th>Auth</th>
+<th>Notes</th>
+</tr></thead>
+<tbody>
+<tr><td>GET</td><td><code>/v1/me</code></td><td>member</td><td>Profile + enrolments + progress summary</td></tr>
+<tr><td>PATCH</td><td><code>/v1/me</code></td><td>member</td><td>Name, email preferences</td></tr>
+<tr><td>POST</td><td><code>/v1/courses/:id/enroll</code></td><td>member</td><td>Creates enrolment (idempotent)</td></tr>
+<tr><td>GET</td><td><code>/v1/courses/:slug/lessons/:lessonSlug</code></td><td>member</td><td>Full lesson body (or preview for visitors)</td></tr>
+<tr><td>POST</td><td><code>/v1/lessons/:id/complete</code></td><td>member</td><td>Marks complete; sets course <code>completed_at</code> when done</td></tr>
+<tr><td>POST</td><td><code>/v1/lessons/:id/progress</code></td><td>member</td><td><code>{ status: started }</code> heartbeat (optional)</td></tr>
+</tbody>
+</table></div>
+<h3>12.5 Admin (<code>role = admin</code>)</h3>
+<div class="table-wrap"><table>
+<thead><tr>
+<th>Method</th>
+<th>Endpoint</th>
+<th>Notes</th>
+</tr></thead>
+<tbody>
+<tr><td>GET/POST</td><td><code>/v1/admin/posts</code>, <code>/v1/admin/posts/:id</code></td><td>Full CRUD incl. drafts; `action=publish\</td><td>schedule\</td><td>unpublish`</td></tr>
+<tr><td>GET/POST</td><td><code>/v1/admin/courses</code>, <code>/modules</code>, <code>/lessons</code> (+ <code>/:id</code>)</td><td>Nested CRUD, reorder via <code>sort_order</code></td></tr>
+<tr><td>GET/PATCH</td><td><code>/v1/admin/introductions</code>, <code>/v1/admin/introductions/:id</code></td><td>Triage: status + notes</td></tr>
+<tr><td>GET</td><td><code>/v1/admin/subscribers?status=&amp;q=</code></td><td>Search + CSV export (<code>?format=csv</code>)</td></tr>
+<tr><td>POST</td><td><code>/v1/admin/media/sign</code></td><td>Returns R2 presigned upload URL + key</td></tr>
+<tr><td>GET/DELETE</td><td><code>/v1/admin/media</code></td><td>Library, delete</td></tr>
+<tr><td>GET/POST</td><td><code>/v1/admin/invites</code></td><td>Generate codes (<code>{ maxUses, expiresAt, note }</code>)</td></tr>
+<tr><td>GET</td><td><code>/v1/admin/metrics</code></td><td>Pillar mix, publishing cadence, funnel counts</td></tr>
+<tr><td>GET</td><td><code>/v1/admin/audit</code></td><td>Audit log</td></tr>
+</tbody>
+</table></div>
+<h3>12.6 Error format</h3>
+<div class="codeblock"><button class="copy-btn" type="button">Copy</button><pre><code class="language-json">{ &quot;ok&quot;: false, &quot;error&quot;: &quot;human-readable message&quot;, &quot;code&quot;: &quot;RATE_LIMITED&quot; }</code></pre></div>
+<p>HTTP statuses: 200/201 success, 400 validation, 401 unauthenticated, 403 forbidden, 404 not found, 409 conflict (e.g. already enrolled), 429 rate limited. Validation errors return <code>fields: { email: "…" }</code>.</p>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-authentication-and-authorisation">
+<h2><span class="sec-num">13</span> Authentication and authorisation</h2>
+<p><strong>Model: invite-only, magic codes, no passwords.</strong></p>
+<ol>
+<li><strong>How accounts come to exist.</strong> (a) Admin creates a user directly;</li>
+<p>(b) an introduction request is approved → admin issues an invite code; (c) admin generates a code for a referral. There is no public registration endpoint — this is enforced in code (no route), not just in copy.</p>
+<li><strong>Sign-in.</strong> The user enters their email at <code>/members</code>. If the email maps</li>
+<p>to an active user (or they supply a valid unused invite code), a 6-digit code is emailed (10-minute expiry, SHA-256 hash stored, 5 attempts then 15-minute lockout). Correct code → KV session (30 days) → <code>HttpOnly</code>, <code>Secure</code>, <code>SameSite=Lax</code> cookie (<code>__Host-brimwood-sess</code>).</p>
+<li><strong>Roles.</strong> <code>admin</code> (full CMS + user management), <code>member</code> (Academy,</li>
+<p>dashboard). Roles live on the user row and are copied into the session.</p>
+<li><strong>Invite codes.</strong> Format <code>BRIM-XXXX-XXXX</code> (Crockford base32, no ambiguous</li>
+<p>characters). <code>max_uses</code>, <code>uses</code>, optional expiry. Single-use default. Redemption links the code to the new user row for audit.</p>
+<li><strong>Admin allowlist.</strong> The first admin is seeded via a Worker env var</li>
+<p>(<code>ADMIN_EMAILS</code>); further admins are promoted inside <code>/admin</code>.</p>
+<li><strong>Session security.</strong> Tokens are 256-bit random, stored hashed in KV;</li>
+<p>logout deletes; password-change equivalent is "sign out everywhere" (deletes all <code>sess:</code> keys for the user — store a <code>sessidx:&lt;userId&gt;</code> set).</p>
+<li><strong>Bot protection.</strong> Turnstile on code request and all public forms;</li>
+<p>per-IP rate limits in KV (reuse the existing <code>checkRateLimit</code> helper).</p>
+</ol>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-cms-and-publishing-workflow">
+<h2><span class="sec-num">14</span> CMS and publishing workflow</h2>
+<p><strong>Phase 1 (no admin UI): git-managed content.</strong> Blog posts and academy lessons live as MDX files in <code>site/src/content/</code> with Zod-validated frontmatter (title, excerpt, category, pillar, tags, status, publishedAt, cover). Publishing = merge to <code>main</code> → Pages builds → pre-rendered pages. This is free, versioned, and reviewable — and it matches how the founder already works (careful, deliberate publishing).</p>
+<p><strong>Phase 2 (admin UI): Decap CMS — free, open-source, git-based.</strong> The <code>/admin</code> route serves Decap CMS (MIT, $0), configured against the same git repo: posts and lessons remain MDX files, publishing remains a git merge, and the Astro build stays exactly as in Phase 1. Authentication uses a small open-source GitHub OAuth Worker (no paid auth service); only allowlisted admin emails can reach the CMS. The editor gets live preview, cover upload to R2, pillar tagging with the 30/30/20/20 mix meter, and the SEO/AEO/GEO fields below. D1-backed publishing is deferred indefinitely — it adds a database write path and operational surface the project does not need while Decap covers the workflow at $0. (Paid CMS products are explicitly rejected under the C$0 constraint — see §4.2.)</p>
+<p><strong>Editorial guardrails (both phases):</strong></p>
+<ul>
+<li>Canadian spelling lint on save (custom word list: organize→organise, etc.).</li>
+<li>Banned-phrase check: income promises, "guaranteed", "10x", "hustle",</li>
+<p>"get rich", competitor names in a critical context.</p>
+<li>Required fields before publish: excerpt, cover alt text, category, pillar.</li>
+<li><strong>Discoverability checklist (§8):</strong> every post must carry <code>description</code></li>
+<p>(120–160 chars), at least one <code>faq</code> question/answer pair, 3–5 <code>takeaways</code>, <code>coverAlt</code>, and schema fields (<code>datePublished</code>, <code>author</code>). The CMS blocks "ready" status until they are present.</p>
+<li>Members anonymous by default: the CMS warns when a draft names a person;</li>
+<p>publishing a name requires the "permission confirmed" checkbox (recorded in the audit log).</p>
+<li>Every publish/schedule/unpublish writes to <code>audit_log</code>.</li>
+</ul>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-media-strategy">
+<h2><span class="sec-num">15</span> Media strategy</h2>
+<ul>
+<li><strong>Storage:</strong> R2 bucket <code>brimwood-media</code>. Key layout:</li>
+<p><code>blog/&lt;year&gt;/&lt;slug&gt;/cover-&lt;width&gt;.webp</code>, <code>academy/&lt;course&gt;/&lt;lesson&gt;/video-720p.mp4</code>, <code>uploads/&lt;yyyy-mm&gt;/&lt;uuid&gt;-&lt;filename&gt;</code>.</p>
+<li><strong>Images:</strong> upload original → Worker generates responsive WebP/AVIF</li>
+<p>variants (480/960/1600px) at publish time; <code>&lt;img srcset&gt;</code> in templates. Alt text required.</p>
+<li><strong>Video:</strong> academy video stored in R2; streamed with range requests.</li>
+<p>(If the catalogue grows, evaluate Cloudflare Stream — decision deferred to Phase 3; R2 is fine to start.)</p>
+<li><strong>Logos/brand:</strong> kit files stay in the repo (they are code, not content) —</li>
+<p>never uploaded through the CMS, never transformed.</p>
+<li><strong>Retention:</strong> media rows in <code>media_assets</code> reference R2 keys; deleting a</li>
+<p>post unlinks but never auto-deletes shared assets (admin confirms).</p>
+</ul>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-migration-path-from-the-current-site">
+<h2><span class="sec-num">16</span> Migration path from the current site</h2>
+<div class="table-wrap"><table>
+<thead><tr>
+<th>Current asset</th>
+<th>Disposition in the framework</th>
+</tr></thead>
+<tbody>
+<tr><td><code>build/index.html</code> structure + CSS</td><td>Becomes Astro <code>src/layouts</code> + <code>src/styles/brand.css</code> (variables kept verbatim)</td></tr>
+<tr><td>v7 living dot-grid engine</td><td>Extracted to <code>src/components/Hero.astro</code> as an island (<code>client:visible</code>); countdown logic kept as a prop-driven component, retired from home after launch</td></tr>
+<tr><td>Logos, favicons, <code>logo-email.png</code></td><td>Copied unchanged into <code>site/public/</code></td></tr>
+<tr><td><code>worker-introduction.js</code></td><td>Becomes <code>api/src/routes/legacy.ts</code> inside the Hono app — same handlers, same templates, same rate limits; then extended with D1 writes</td></tr>
+<tr><td><code>RESEND_API_KEY</code> secret, <code>NEWSLETTER</code> KV</td><td>Kept; KV namespace renamed conceptually to sessions/cache (<code>brimwood-kv</code>) with legacy keys migrated</td></tr>
+<tr><td>Newsletter subscribers in KV</td><td>One-time migration script (Phase 2): read <code>sub:*</code> keys → insert into <code>newsletter_subscribers</code> with status <code>active</code>, preserving <code>unsubToken</code></td></tr>
+<tr><td>Introduction requests (email-only today)</td><td>From Phase 2, also stored in <code>introduction_requests</code>; historical ones stay as email archive</td></tr>
+<tr><td>Zip uploads via dashboard</td><td>Replaced by Git-connected Pages + <code>wrangler deploy</code>; zips v2–v7 archived as rollback artefacts</td></tr>
+<tr><td>Countdown (30 Oct 2026)</td><td>Stays until launch; post-launch the home hero becomes evergreen and the countdown component is reserved for future campaigns</td></tr>
+</tbody>
+</table></div>
+<p><strong>Zero-downtime cutover:</strong> the new Pages project deploys to <code>*.pages.dev</code> first; the custom domain moves only after the founder clicks through the staging URL. The API Worker takes over <code>brimwoodinnovation.com/api/*</code> in one route change; legacy endpoints are byte-compatible so the old static page would keep working even mid-migration.</p>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-environments-deployment-pipeline-and-backups">
+<h2><span class="sec-num">17</span> Environments, deployment pipeline, and backups</h2>
+<h3>17.1 Pipeline</h3>
+<div class="diagram-card"><pre class="mermaid">
+flowchart LR
+    A[Feature branch] --&gt; B[PR → Pages preview deploy\n+ D1 preview database]
+    B --&gt; C[Review on *.pages.dev]
+    C --&gt; D[Merge to main]
+    D --&gt; E[Pages production deploy]
+    D --&gt; F[&quot;wrangler deploy (API Worker)\n+ d1 migrations apply&quot;]
+    E --&gt; G[Smoke tests: home, /api/v1/posts,\nform submit to staging]
+</pre></div>
+<ul>
+<li><code>wrangler.toml</code> per environment; secrets via <code>wrangler secret put</code></li>
+<p>(never in the repo, never in chat).</p>
+<li>D1 migrations are sequential SQL files, applied with</li>
+<p><code>wrangler d1 migrations apply brimwood-db --remote</code>.</p>
+</ul>
+<h3>17.2 Backups</h3>
+<ul>
+<li><strong>D1:</strong> nightly export via a scheduled Worker → <code>brimwood-backups</code> R2</li>
+<p>bucket (<code>d1/&lt;date&gt;/brimwood-db.sql</code>), 30-day retention. D1 also keeps point-in-time snapshots (Cloudflare-managed).</p>
+<li><strong>KV:</strong> sessions are ephemeral (no backup); rate limits are ephemeral.</li>
+<li><strong>R2 media:</strong> versioning on the bucket; cross-region replication is</li>
+<p>Cloudflare-managed.</p>
+<li><strong>Repo:</strong> GitHub is the source of truth for code and Markdown content.</li>
+<li><strong>Restore drill:</strong> quarterly — restore a D1 export to the preview database</li>
+<p>and verify the site renders. Logged in the runbook.</p>
+</ul>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-security-hardening">
+<h2><span class="sec-num">18</span> Security hardening</h2>
+<div class="table-wrap"><table>
+<thead><tr>
+<th>Area</th>
+<th>Measure</th>
+</tr></thead>
+<tbody>
+<tr><td>Transport</td><td>HSTS, TLS 1.2+ (Cloudflare-managed); <code>__Host-</code> cookie prefix</td></tr>
+<tr><td>Headers</td><td><code>_headers</code> on Pages: strict CSP (self + fonts.googleapis.com + resend assets), <code>frame-ancestors 'none'</code>, <code>referrer-policy</code>, <code>X-Content-Type-Options</code></td></tr>
+<tr><td>Forms</td><td>Turnstile + honeypot (keep) + per-IP rate limits (keep, extend to auth)</td></tr>
+<tr><td>Input</td><td>Zod validation on every API input; HTML-escaped email templates (existing <code>esc()</code> kept); Markdown rendered with sanitisation (no raw HTML in posts)</td></tr>
+<tr><td>Auth</td><td>No passwords; hashed codes; 5-attempt lockout; session revocation; admin allowlist</td></tr>
+<tr><td>Data</td><td>D1 access only via the Worker (no public connection string); PII minimised (IP stored as hash); members area <code>noindex</code></td></tr>
+<tr><td>Dependencies</td><td><code>npm audit</code> in CI (fail on high/critical); pin versions; Dependabot alerts on the repo</td></tr>
+<tr><td>Supply chain — lockfile</td><td>Exact versions in <code>package.json</code>, lockfile committed, <code>npm ci</code> in CI (never <code>npm install</code>); lockfile changes reviewed like code</td></tr>
+<tr><td>Supply chain — minimal deps</td><td>Dependency budget: API ≤ 15 direct dependencies, site ≤ 5; every new dependency needs a written justification in the pull request; prefer stdlib and the existing stack before adding</td></tr>
+<tr><td>Supply chain — provenance</td><td>Only widely-used, actively-maintained packages; no install scripts where avoidable; new packages checked against typosquatting (exact name, publisher, download history)</td></tr>
+<tr><td>Secrets</td><td><code>wrangler secret put</code> only; secret rotation runbook (Resend key every 12 months or on suspicion)</td></tr>
+<tr><td>Abuse</td><td>429s logged; repeated offenders flagged in admin; newsletter keeps double opt-in + List-Unsubscribe (existing)</td></tr>
+<tr><td>Incident</td><td>Runbook: rotate Resend key → revoke sessions (delete <code>sess:*</code> for affected users) → audit log review → founder notification</td></tr>
+</tbody>
+</table></div>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-monitoring-and-analytics">
+<h2><span class="sec-num">19</span> Monitoring and analytics</h2>
+<ul>
+<li><strong>Privacy-first analytics:</strong> Cloudflare Web Analytics (free, no cookies, no</li>
+<p>personal data) on the Pages site. No Google Analytics, no Meta Pixel — consistent with the brand's restraint.</p>
+<li><strong>API observability:</strong> Workers Logs + Tail for live debugging; key metrics</li>
+<p>(request volume, error rate, p95 latency, 429 counts) on the Cloudflare dashboard; weekly digest emailed to <code>info@</code> (Phase 3+).</p>
+<li><strong>Uptime:</strong> Cloudflare's edge is the uptime story; add an external check</li>
+<p>(e.g. a 5-minute cron hitting <code>/api/v1/health</code>) that alerts via email on failure.</p>
+<li><strong>Content metrics in <code>/admin</code>:</strong> pillar mix vs 30/30/20/20, publishing</li>
+<p>cadence, introduction funnel (new → contacted → invited), subscriber growth, academy completion rates. The existing analytics-dashboard artifact can read these from the API instead of CLI scrapes.</p>
+<li><strong>Deliverability:</strong> keep Google Postmaster Tools; watch Resend bounce/</li>
+<p>complaint webhooks → auto-suppress in D1 (Phase 3).</p>
+</ul>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-cost-estimate-the-c0-target">
+<h2><span class="sec-num">20</span> Cost estimate — the C$0 target</h2>
+<p>Hard constraint: the founder already owns the domain and hosting, so the build and operating target is <strong>C$0 total, every month</strong>. The domain is a sunk cost and is excluded from the build budget below. Free-tier figures are approximate (assumption) — verify current pricing before build, and treat any paid tier as requiring the founder's explicit approval, never a default.</p>
+<div class="table-wrap"><table>
+<thead><tr>
+<th>Service</th>
+<th>Free tier (approx.)</th>
+<th>Brimwood usage</th>
+<th>Guardrail that keeps it at C$0</th>
+</tr></thead>
+<tbody>
+<tr><td>Pages</td><td>Unlimited sites, 500 builds/mo</td><td>1 site, low build volume</td><td>Builds on merge-to-main + PR previews only; well under 500/mo</td></tr>
+<tr><td>Workers</td><td>100k requests/day</td><td>Static-first: Pages serves HTML, the Worker only handles forms, auth, and progress — projected hundreds/day</td><td>KV-cache dynamic JSON; alert at 80k/day sustained; Paid ($5/mo) is never enabled without founder approval</td></tr>
+<tr><td>D1</td><td>~5M rows read / 100k written per day, 5 GB</td><td>Thousands of rows; catalogue pre-rendered at build</td><td>D1 only for dynamic reads/writes (auth, progress, forms); catalogue never queried per-request</td></tr>
+<tr><td>KV</td><td>100k reads / 1k writes per day, 1 GB</td><td>Sessions + rate limits + cache</td><td>Short TTLs on cache; session rows small and expiring</td></tr>
+<tr><td>R2</td><td>10 GB storage, 1M Class A / 10M Class B ops per month, zero egress</td><td>Covers + lesson media</td><td>WebP/AVIF, 720p video, <code>srcset</code>; monitor bucket metrics monthly</td></tr>
+<tr><td>Turnstile</td><td>Unlimited</td><td>All public forms</td><td>n/a — unlimited</td></tr>
+<tr><td>Resend</td><td>3,000 emails/mo (100/day)</td><td>Intros (~dozens/mo) + magic-link codes (tiny) + newsletter</td><td>Monthly cap math: at 2 issues/month the free tier covers ~1,400 subscribers; sends counted from <code>email_log</code> with an admin alert at 80% (2,400/mo). Free fallback if ever needed: Brevo free tier (300/day). No action now.</td></tr>
+<tr><td>GitHub</td><td>Private repos, 2,000 Actions min/mo</td><td>1 repo; Astro builds take minutes</td><td>Keep workflows lean; cache dependencies</td></tr>
+<tr><td>Decap CMS</td><td>$0 (MIT, self-hosted in the site)</td><td>Admin publishing</td><td>n/a — no meter</td></tr>
+</tbody>
+</table></div>
+<p>Operating rule: **no paid tier is ever enabled without the founder's explicit approval.** Every paid trigger above has a ceiling, a guardrail, and a free fallback or mitigation — there is no path in this plan where a bill appears by surprise. If the newsletter ever outgrows Resend's free tier, that is a founder decision with a free fallback ready, not an automatic upgrade.</p>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-phased-build-roadmap">
+<h2><span class="sec-num">21</span> Phased build roadmap</h2>
+<div class="table-wrap"><table>
+<thead><tr>
+<th>Phase</th>
+<th>Scope</th>
+<th>Ships</th>
+<th>Exit criteria</th>
+</tr></thead>
+<tbody>
+<tr><td><strong>0 — Foundations</strong> (1–2 wks)</td><td>Monorepo, GitHub, Git-connected Pages, <code>wrangler</code> project, D1/KV/R2 provisioning, <code>_headers</code>, privacy/terms pages</td><td>Repo + staging URL</td><td>Staging renders current home; CI green</td></tr>
+<tr><td><strong>1 — Content site</strong> (2–3 wks)</td><td>Astro migration of current page; v7 hero as island; <code>/about</code>; blog via content collections + RSS; <code>/newsletter</code> page; countdown retired post-launch</td><td>Public site v2 on production domain</td><td>Founder approves About copy; 3 seed posts published</td></tr>
+<tr><td><strong>2 — API + data</strong> (2–3 wks)</td><td>Hono <code>brimwood-api</code>; D1 migrations 0001–0004; legacy endpoints D1-backed; KV→D1 newsletter migration; magic-link auth; <code>/members</code> shell</td><td>Members can sign in; introductions land in admin inbox</td><td>Auth reviewed; migration verified row-for-row</td></tr>
+<tr><td><strong>3 — Academy</strong> (3–4 wks)</td><td>Courses/modules/lessons; enrolment + progress; R2 video; member dashboard; scheduled-post cron; weekly digest email</td><td>First full course live</td><td>Founder completes a course end-to-end as a test member</td></tr>
+<tr><td><strong>4 — Admin CMS (Decap)</strong> (2–3 wks)</td><td>Decap CMS (MIT, $0) at <code>/admin</code>: posts, academy tree, media library, invites, subscribers, metrics, audit log; editorial guardrails (spelling, banned phrases, anonymity check, SEO/AEO/GEO checklist)</td><td>Non-technical publishing</td><td>Founder publishes a post without developer help</td></tr>
+<tr><td><strong>5 — Harden + launch</strong> (1–2 wks)</td><td>Turnstile everywhere, security headers audit, backup/restore drill, monitoring + uptime check, runbooks, docs handover</td><td>Production launch</td><td>Checklist signed; old zip workflow retired</td></tr>
+</tbody>
+</table></div>
+<p>Total: roughly <strong>11–17 weeks</strong> at a sustainable pace for a small team; Phases 0–1 alone deliver visible public value within a month.</p>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-open-decisions-for-the-founder">
+<h2><span class="sec-num">22</span> Open decisions for the founder</h2>
+<ol>
+<li><strong>Stack confirmation.</strong> This report recommends Astro + Hono. If you would</li>
+<p>rather the team work in React/Next.js, say so now — it changes Phase 0.</p>
+<li><strong>CMS timing.</strong> Git-managed Markdown (Phase 1) vs Decap CMS (Phase 4,</li>
+<p>MIT, $0) before publishing blogs. Recommendation: start with Markdown — it is fast and free; add Decap when non-technical publishing is needed. Paid CMS products are rejected under the C$0 constraint.</p>
+<li><strong>Academy access.</strong> Members-only lessons with public previews (recommended),</li>
+<p>or fully public catalogue? This affects the auth scope in Phase 2.</p>
+<li><strong>Comments.</strong> On with moderation, or off until there is an audience?</li>
+<p>Default: off; schema is ready.</p>
+<li><strong>Academy pricing.</strong> Included with membership (recommended — matches the</li>
+<p>platform model) or priced separately? Never publish pricing without your explicit approval.</p>
+<li><strong>Countdown retirement.</strong> After 30 October 2026, the home hero becomes</li>
+<p>evergreen. Confirm you want the countdown removed rather than repurposed.</p>
+<li><strong>First admin(s).</strong> Which email address(es) seed the admin allowlist?</li>
+<li><strong>Newsletter archive.</strong> Publish past letters on <code>/newsletter</code> (titles +</li>
+<p>excerpts), or keep letters email-exclusive?</p>
+<li><strong>Analytics dashboard artifact.</strong> Point it at the new API metrics endpoint</li>
+<p>(recommended) or keep the CLI-scrape job?</p>
+<li><strong>Video hosting.</strong> R2 to start (free tier, zero egress — fits the C$0</li>
+<p>target), or go straight to Cloudflare Stream when the Academy launches? Stream is a paid product, so it is rejected unless you explicitly approve the spend later. Recommendation: R2 with 720p + range requests; revisit only if the catalogue outgrows it.</p>
+</ol>
+<hr class="sec-divider">
+</section>
+<section class="report-section" id="sec-appendix-a-verification-notes-and-assumptions">
+<h2><span class="sec-num">23</span> Appendix A — verification notes and assumptions</h2>
+<p><strong>Verified from files (30 Sep 2026):</strong> <code>build/index.html</code> (structure, v7 engine, countdown target, form behaviour, honeypot); <code>worker-introduction.js</code> (all four endpoints, Resend usage, KV rate-limit logic and limits, email templates); <code>email/README.md</code> (endpoint table, KV namespace, preview regeneration); entity profile (positioning, pillars, anonymity rule, internal business model); brand kit colours file (all eight hex values) and directory contents (logos, fonts, favicon, social assets).</p>
+<p><strong>Assumptions (marked where used):</strong> Cloudflare free-tier quotas, Resend's 3,000/mo free tier, and GitHub's free Actions minutes are approximate — verify current pricing before budgeting or building. Open-source licence attributions in §4.4 are per the projects' public records as of September 2026 — re-verify at build time. The <code>llms.txt</code> convention (§8.3) is still stabilising; keep the file simple. The <code>brimwood-coming-soon</code> Pages project and <code>brimwood-introduction</code> Worker are assumed to keep their current bindings; the Cloudflare re-invite noted in project history is assumed resolved or resolvable before Phase 0 (Git connection needs dashboard access). Team size is assumed small (founder + contractors), which drives the "boring technology" recommendations. No credentials, secrets, or API keys appear in this report by design.</p>
+</section>

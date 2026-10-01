@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brimwood Innovation — Coming soon</title>
+<meta name="description" content="Brimwood Innovation is a selective innovation hub in Toronto for ambitious people building AI-powered micro businesses. Build a business. Build yourself.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://brimwoodinnovation.com/">
+<meta property="og:title" content="Brimwood Innovation — Build a business. Build yourself.">
+<meta property="og:description" content="A selective innovation hub in Toronto for ambitious people building AI-powered micro businesses. Build a business. Build yourself.">
+<meta property="og:image" content="https://brimwoodinnovation.com/logo-email.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Brimwood Innovation — Build a business. Build yourself.">
+<meta name="twitter:description" content="A selective innovation hub in Toronto for ambitious people building AI-powered micro businesses.">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --emerald:#0C9463; --emerald-deep:#075E40; --forest:#0A3D2B;
+    --signal:#34E08E; --mint:#DDF5E9;
+    --ink:#121A16; --stone:#5B6862; --paper:#F6F8F7;
+    --brand:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{font-family:var(--brand);color:var(--ink);background:var(--paper);
+    -webkit-font-smoothing:antialiased;line-height:1.6}
+  img{max-width:100%}
+
+  /* header */
+  header{position:sticky;top:0;z-index:20;display:flex;align-items:center;
+    justify-content:space-between;padding:14px 32px;
+    background:rgba(246,248,247,.86);backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);border-bottom:1px solid rgba(18,26,22,.08)}
+  header img.logo{height:38px;width:auto;display:block}
+  .btn{display:inline-block;background:var(--emerald);color:#fff;text-decoration:none;
+    font-weight:600;font-size:14px;padding:12px 26px;border-radius:10px;border:0;cursor:pointer;
+    transition:background .2s,transform .15s;font-family:var(--brand)}
+  .btn:hover{background:var(--emerald-deep);transform:translateY(-1px)}
+  .btn.small{padding:9px 20px;font-size:13px}
+
+  /* hero */
+  .hero{background:radial-gradient(120% 90% at 20% 0%,#15B57A 0%,var(--emerald) 45%,var(--emerald-deep) 100%);
+    color:#fff;text-align:center;padding:96px 24px 88px;position:relative;overflow:hidden}
+  .hero img.lockup{width:min(430px,80vw);height:auto;margin:0 auto 34px;display:block}
+  .eyebrow{font-size:12px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;
+    color:rgba(255,255,255,.75);margin-bottom:18px}
+  .hero h1{font-size:clamp(34px,5.4vw,56px);font-weight:700;letter-spacing:-.025em;
+    line-height:1.12;max-width:18ch;margin:0 auto 18px}
+  .hero p.lede{font-size:clamp(16px,2.2vw,19px);color:rgba(255,255,255,.88);
+    max-width:52ch;margin:0 auto 34px}
+  .hero .btn{background:#fff;color:var(--emerald-deep)}
+  .hero .btn:hover{background:var(--mint)}
+  .hero .dots{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none;opacity:.22}
+
+  /* countdown */
+  .countdown{margin-top:44px}
+  .cd-lbl{font-size:11px;letter-spacing:.3em;text-transform:uppercase;
+    color:rgba(255,255,255,.72);margin-bottom:12px}
+  .cd-digits{display:flex;gap:26px;justify-content:center}
+  .cd-digits span{display:flex;flex-direction:column;min-width:64px}
+  .cd-digits b{font-size:clamp(28px,4.6vw,42px);font-weight:700;font-variant-numeric:tabular-nums}
+  .cd-digits i{font-style:normal;font-size:10px;letter-spacing:.28em;text-transform:uppercase;
+    color:rgba(255,255,255,.65);margin-top:4px}
+
+  /* belief strip */
+  .belief{background:var(--mint);text-align:center;padding:34px 24px}
+  .belief p{font-size:clamp(17px,2.4vw,21px);font-weight:600;color:var(--forest);
+    letter-spacing:-.01em}
+
+  /* sections */
+  section.block{max-width:1080px;margin:0 auto;padding:88px 24px 24px}
+  section.block:last-of-type{padding-bottom:88px}
+  .kicker{font-size:12px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;
+    color:var(--emerald);margin-bottom:12px}
+  h2.sec{font-size:clamp(26px,3.6vw,34px);font-weight:700;letter-spacing:-.02em;
+    margin-bottom:12px;color:var(--ink)}
+  p.sec-lede{color:var(--stone);max-width:62ch;margin-bottom:40px;font-size:16.5px}
+
+  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+  .card{background:#fff;border:1px solid rgba(18,26,22,.08);border-radius:16px;
+    padding:30px 24px;transition:transform .2s,box-shadow .2s}
+  .card:hover{transform:translateY(-3px);box-shadow:0 14px 34px rgba(10,61,43,.1)}
+  .card .n{font-size:12px;font-weight:700;letter-spacing:.18em;color:var(--emerald);margin-bottom:12px}
+  .card h3{font-size:18px;font-weight:600;margin-bottom:8px}
+  .card p{font-size:14.5px;color:var(--stone)}
+
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:44px;counter-reset:step}
+  .step{background:#fff;border:1px solid rgba(18,26,22,.08);border-radius:16px;padding:32px 28px;position:relative}
+  .step .num{width:40px;height:40px;border-radius:50%;background:var(--emerald);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;margin-bottom:16px}
+  .step h3{font-size:18px;font-weight:600;margin-bottom:8px}
+  .step p{font-size:14.5px;color:var(--stone)}
+  .step .arrow{position:absolute;right:-31px;top:50%;transform:translateY(-50%);
+    color:var(--emerald);font-size:22px;font-weight:700;z-index:2}
+
+  /* CTA */
+  .cta{background:var(--forest);border-radius:24px;color:#fff;text-align:center;
+    padding:72px 32px;margin-top:64px}
+  .cta h2{font-size:clamp(26px,3.6vw,36px);font-weight:700;letter-spacing:-.02em;margin-bottom:12px}
+  .cta p{color:rgba(255,255,255,.82);max-width:52ch;margin:0 auto 32px;font-size:16px}
+  form.intro{max-width:460px;margin:0 auto;text-align:left}
+  form.intro label{display:block;font-size:12px;font-weight:500;letter-spacing:.14em;
+    text-transform:uppercase;color:rgba(255,255,255,.65);margin:18px 0 8px}
+  form.intro input,form.intro textarea{width:100%;padding:14px 16px;border-radius:10px;border:1px solid rgba(255,255,255,.22);
+    background:rgba(255,255,255,.08);color:#fff;font-family:var(--brand);font-size:15px;outline:none}
+  form.intro input::placeholder,form.intro textarea::placeholder{color:rgba(255,255,255,.45)}
+  form.intro input:focus,form.intro textarea:focus{border-color:var(--signal)}
+  form.intro .btn{width:100%;margin-top:26px;padding:15px;font-size:15px;background:var(--signal);color:var(--forest)}
+  form.intro .btn:hover{background:#5CEBA3}
+  .thanks{display:none;max-width:460px;margin:0 auto;background:rgba(255,255,255,.08);
+    border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:30px;font-size:16px}
+  .form-err{margin-top:18px;font-size:14px;color:rgba(255,255,255,.85);line-height:1.5}
+
+  /* footer */
+  footer{background:var(--forest);color:#fff;margin-top:88px}
+  .foot-inner{max-width:1080px;margin:0 auto;padding:56px 24px 32px}
+  .foot-top{display:flex;justify-content:space-between;align-items:flex-start;gap:32px;flex-wrap:wrap;margin-bottom:40px}
+  .foot-top img{height:44px;width:auto}
+  .foot-links{display:flex;gap:26px;flex-wrap:wrap}
+  .foot-links a{color:rgba(255,255,255,.7);text-decoration:none;font-size:13.5px}
+  .foot-links a:hover{color:#fff}
+  .foot-bottom{border-top:1px solid rgba(255,255,255,.14);padding-top:24px;display:flex;
+    justify-content:space-between;gap:16px;flex-wrap:wrap;font-size:12.5px;color:rgba(255,255,255,.55)}
+
+  @media(max-width:860px){
+    .cards{grid-template-columns:repeat(2,1fr)}
+    .steps{grid-template-columns:1fr}
+    .step .arrow{display:none}
+  }
+  @media(max-width:560px){
+    header{padding:12px 18px}
+    header img.logo{height:32px}
+    .cards{grid-template-columns:1fr}
+    .hero{padding:72px 20px 64px}
+    section.block{padding:64px 20px 16px}
+    .cd-digits{gap:14px}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <img class="logo" src="logo-colour.svg" alt="Brimwood Innovation">
+  <a class="btn small" href="#introduce">Request an introduction</a>
+</header>
+
+<div class="hero">
+  <canvas class="dots" id="dotgrid" aria-hidden="true"></canvas>
+  <img class="lockup" src="logo-reversed.svg" alt="Brimwood Innovation logo">
+  <div class="eyebrow">Toronto &middot; Coming soon</div>
+  <h1>Build a business.<br>Build yourself.</h1>
+  <p class="lede">Brimwood Innovation is a selective innovation hub for ambitious people building AI-powered micro businesses. A beautiful room, real skills, a vetted community, and a team that builds alongside you.</p>
+  <a class="btn" href="#introduce">Request an introduction</a>
+  <div class="countdown">
+    <div class="cd-lbl">Expected to launch</div>
+    <div class="cd-digits">
+      <span><b id="cdD">00</b><i>days</i></span>
+      <span><b id="cdH">00</b><i>hrs</i></span>
+      <span><b id="cdM">00</b><i>min</i></span>
+      <span><b id="cdS">00</b><i>sec</i></span>
+    </div>
+  </div>
+</div>
+
+<div class="belief">
+  <p>Elite by effort, not by background.</p>
+</div>
+
+<section class="block">
+  <div class="kicker">The four promises</div>
+  <h2 class="sec">What every member gets</h2>
+  <p class="sec-lede">We give ambitious people the space, skills, community, and partnership to build something of their own.</p>
+  <div class="cards">
+    <div class="card"><div class="n">01</div><h3>Space</h3><p>A beautiful, physical hub to work, meet, and build. Not just a group chat.</p></div>
+    <div class="card"><div class="n">02</div><h3>Skills</h3><p>Hands-on AI training from people who use it every day in real businesses.</p></div>
+    <div class="card"><div class="n">03</div><h3>Community</h3><p>A small, vetted group of builders who push each other to be better.</p></div>
+    <div class="card"><div class="n">04</div><h3>Partnership</h3><p>Support and backing from a team that builds alongside you.</p></div>
+  </div>
+</section>
+
+<section class="block">
+  <div class="kicker">How it works</div>
+  <h2 class="sec">Small teams, powered by AI</h2>
+  <p class="sec-lede">Small teams, powered by AI, backed by a community that makes each other better.</p>
+  <div class="steps">
+    <div class="step"><div class="num">1</div><h3>Introduction</h3><p>Membership is by invitation or referral. Know someone who belongs here? Introduce them.</p><div class="arrow">&rarr;</div></div>
+    <div class="step"><div class="num">2</div><h3>Build</h3><p>Work from the hub on your own schedule. Learn AI hands-on, ship weekly, and grow alongside other owners.</p><div class="arrow">&rarr;</div></div>
+    <div class="step"><div class="num">3</div><h3>Grow together</h3><p>When you grow, we grow together. Building a business is one of the best ways to build yourself.</p></div>
+  </div>
+</section>
+
+<section class="block" id="introduce">
+  <div class="cta">
+    <h2>Membership is by invitation.</h2>
+    <p>We build our reputation so the right people want in. If you, or someone you know, belongs at Brimwood, request an introduction and tell us a little about yourself.</p>
+    <form class="intro" id="introForm">
+      <label for="fName">Your name</label>
+      <input id="fName" type="text" name="name" placeholder="Jane Appleseed" required>
+      <label for="fEmail">Email</label>
+      <input id="fEmail" type="email" name="email" placeholder="you@example.com" required>
+      <label for="fRef">Who referred you? <span style="text-transform:none;letter-spacing:0">(optional)</span></label>
+      <input id="fRef" type="text" name="referral" placeholder="A member's name, or how you heard of us">
+      <label for="fMsg">What are you building?</label>
+      <textarea id="fMsg" name="message" rows="3" placeholder="A line or two is plenty."></textarea>
+      <input type="text" name="website" id="fSite" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
+      <button class="btn" type="submit">Request an introduction</button>
+      <p class="form-err" id="formErr" style="display:none">Something went wrong on our end. Please email <a href="mailto:info@brimwoodinnovation.com" style="color:#fff;text-decoration:underline">info@brimwoodinnovation.com</a> directly and we will take it from there.</p>
+    </form>
+    <div class="thanks" id="thanksMsg">Thank you. Your introduction request is on its way &mdash; we read every one personally and will be in touch.</div>
+  </div>
+</section>
+
+<footer>
+  <div class="foot-inner">
+    <div class="foot-top">
+      <img src="logo-reversed.svg" alt="Brimwood Innovation">
+      <div class="foot-links">
+        <a href="https://instagram.com/brimwoodinnovation" target="_blank" rel="noopener">Instagram</a>
+        <a href="https://www.threads.com/@brimwoodinnovation" target="_blank" rel="noopener">Threads</a>
+        <a href="https://facebook.com/brimwoodinnovation" target="_blank" rel="noopener">Facebook</a>
+        <a href="https://x.com/brimwoodai" target="_blank" rel="noopener">X</a>
+        <a href="https://www.linkedin.com/in/brimwoodinnovation/" target="_blank" rel="noopener">LinkedIn</a>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>&copy; 2026 Brimwood Innovation</span>
+      <span>1365 Gerrard St E Unit 2, Toronto</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+// --- demo-night countdown (fixed target: Friday 2026-10-30 19:00 viewer-local) ---
+const demoAt = new Date(2026, 9, 30, 19, 0, 0, 0);
+const cdD = document.getElementById('cdD'), cdH = document.getElementById('cdH'),
+      cdM = document.getElementById('cdM'), cdS = document.getElementById('cdS');
+const p2 = n => String(n).padStart(2, '0');
+function tick(){
+  let diff = demoAt - new Date();
+  if (diff < 0) diff = 0;
+  cdD.textContent = p2(Math.round(diff / 864e5));
+  cdH.textContent = p2(Math.floor(diff / 36e5) % 24);
+  cdM.textContent = p2(Math.floor(diff / 6e4) % 60);
+  cdS.textContent = p2(Math.floor(diff / 1e3) % 60);
+}
+tick(); setInterval(tick, 1000);
+
+// --- introduction form (POSTs to our own /api/introduction; Worker sends via Resend) ---
+document.getElementById('introForm').addEventListener('submit', async function(e){
+  e.preventDefault();
+  const v = id => document.getElementById(id).value.trim();
+  const btn = this.querySelector('button[type=submit]');
+  const err = document.getElementById('formErr');
+  err.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Sending\u2026';
+  try {
+    if (v('fSite')){ // honeypot filled: bot — silently accept, send nothing
+      document.getElementById('introForm').style.display = 'none';
+      document.getElementById('thanksMsg').style.display = 'block';
+      return;
+    }
+    const res = await fetch('/api/introduction', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'accept': 'application/json' },
+      body: JSON.stringify({
+        name: v('fName'), email: v('fEmail'),
+        referral: v('fRef'), message: v('fMsg'),
+        website: ''
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error('send failed');
+    document.getElementById('introForm').style.display = 'none';
+    document.getElementById('thanksMsg').style.display = 'block';
+  } catch (ex) {
+    btn.disabled = false;
+    btn.textContent = 'Request an introduction';
+    err.style.display = 'block';
+  }
+});
+</script>
+<script>
+// --- living dots v7: vortex + fireflies + secret life + words + trails + summon ---
+(function(){
+  var cv = document.getElementById('dotgrid');
+  if(!cv) return;
+  var ctx = cv.getContext('2d');
+  var GAP = 46, R = 3, MAXA = 96;
+  var dots = [], actors = [], W = 0, H = 0, dpr = 1, CX = 0, CY = 0;
+  var mx = -9999, my = -9999, smx = -9999, smy = -9999;
+  var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var t0 = performance.now(), nowT = 0;
+  var ripples = [];
+  var summon = {until:-1, x:0, y:0, shape:'heart', pts:[]};
+  // evolving wave field: retunes itself every ~20s so the pattern never repeats
+  var field = {wl:90, sp:1.1, tang:14, rad:9, rot:0, rotSp:0.05,
+               tWl:90, tSp:1.1, tTang:14, tRad:9, tRotSp:0.05, next:14};
+  var lastCyc = -1;
+
+  // ---------- director ----------
+  var SCENES = [
+    {n:'drift', d:7}, {n:'gather', d:6}, {n:'shape', d:13}, {n:'word', d:12},
+    {n:'divide', d:6}, {n:'fight', d:7}, {n:'army', d:9}, {n:'release', d:5}
+  ];
+  var TOTAL = 0, si;
+  for(si = 0; si < SCENES.length; si++) TOTAL += SCENES[si].d;
+  var dir = {idx:-1, P:{x:0,y:0}, Q:{x:0,y:0}, shape:'atom', pts:[], S:130,
+             word:'BUILD', wpts:[], wS:14, wcount:0};
+
+  // ---------- 5x7 pixel font (letters needed for BUILD / DREAM / BRIMWOOD) ----------
+  var FONT = {
+    A:['.###.','#...#','#...#','#####','#...#','#...#','#...#'],
+    B:['####.','#...#','#...#','####.','#...#','#...#','####.'],
+    D:['####.','#...#','#...#','#...#','#...#','#...#','####.'],
+    E:['#####','#....','#....','####.','#....','#....','#####'],
+    I:['#####','..#..','..#..','..#..','..#..','..#..','#####'],
+    L:['#....','#....','#....','#....','#....','#....','#####'],
+    M:['#...#','##.##','#.#.#','#.#.#','#...#','#...#','#...#'],
+    O:['.###.','#...#','#...#','#...#','#...#','#...#','.###.'],
+    R:['####.','#...#','#...#','####.','#.#..','#..#.','#...#'],
+    U:['#...#','#...#','#...#','#...#','#...#','#...#','.###.'],
+    W:['#...#','#...#','#...#','#.#.#','#.#.#','##.##','#...#']
+  };
+  function wordPoints(word){
+    var pts = [], li, r, c, g = [];
+    for(li = 0; li < word.length; li++) g.push(FONT[word[li]]);
+    var widths = word.length * 6 - 1;
+    for(li = 0; li < g.length; li++)
+      for(r = 0; r < 7; r++)
+        for(c = 0; c < 5; c++)
+          if(g[li][r][c] === '#') pts.push({x:(li * 6 + c) - widths / 2, y:r - 3});
+    return {pts:pts, widths:widths};
+  }
+
+  // ---------- shape templates (unit coords ~[-1,1]) ----------
+  function shapePoints(kind){
+    var P = [], i, k, u, a, th;
+    function pt(x, y, w){ P.push({x:x, y:y, w:w||0}); }
+    if(kind === 'bird'){
+      for(i = 0; i < 16; i++){ u = -1 + 2 * i / 15; pt(u, 0.42 * Math.abs(u) - 0.28, Math.abs(u) > 0.15 ? (u < 0 ? -1 : 1) : 0); }
+      pt(-0.06, 0.02, 0); pt(0.06, 0.02, 0); pt(0, 0.14, 0);
+    } else if(kind === 'butterfly'){
+      for(k = 0; k < 7; k++){ a = k / 7 * Math.PI * 2; pt(-0.42 + Math.cos(a) * 0.34, -0.3 + Math.sin(a) * 0.44, -1); }
+      for(k = 0; k < 7; k++){ a = k / 7 * Math.PI * 2; pt(0.42 + Math.cos(a) * 0.34, -0.3 + Math.sin(a) * 0.44, 1); }
+      for(k = 0; k < 5; k++){ a = k / 5 * Math.PI * 2; pt(-0.36 + Math.cos(a) * 0.26, 0.36 + Math.sin(a) * 0.32, -1); }
+      for(k = 0; k < 5; k++){ a = k / 5 * Math.PI * 2; pt(0.36 + Math.cos(a) * 0.26, 0.36 + Math.sin(a) * 0.32, 1); }
+      for(i = 0; i < 4; i++){ pt(0, -0.5 + i * 0.33, 0); }
+    } else if(kind === 'fish'){
+      for(k = 0; k < 10; k++){ a = k / 10 * Math.PI * 2; pt(Math.cos(a) * 0.68, Math.sin(a) * 0.34, 0); }
+      pt(0.68, 0, 0); pt(0.98, -0.3, 0); pt(0.98, 0.3, 0); pt(0.83, 0, 0);
+      pt(-0.42, -0.06, 0);
+    } else if(kind === 'tree'){
+      for(i = 0; i < 4; i++){ pt(0, 0.25 + i * 0.22, 0); }
+      for(k = 0; k < 12; k++){ a = k / 12 * Math.PI * 2; pt(Math.cos(a) * 0.55, -0.28 + Math.sin(a) * 0.5, 0); }
+      pt(0, -0.28, 0); pt(-0.2, -0.3, 0); pt(0.2, -0.3, 0);
+    } else if(kind === 'book'){
+      for(i = 0; i <= 4; i++){ u = -0.62 + 1.24 * i / 4; pt(u, -0.45, 0); pt(u, 0.45, 0); }
+      for(i = 1; i < 4; i++){ u = -0.45 + 0.9 * i / 3; pt(-0.62, u, 0); pt(0.62, u, 0); }
+      for(i = 0; i < 4; i++){ pt(0, -0.34 + i * 0.23, 0); }
+    } else if(kind === 'brain'){
+      for(k = 0; k < 12; k++){ a = k / 12 * Math.PI * 2; pt(Math.cos(a) * (0.68 + 0.06 * Math.sin(a * 3)), Math.sin(a) * (0.62 + 0.06 * Math.cos(a * 2)), 0); }
+      for(k = 0; k < 4; k++){ a = -0.6 + k * 0.4; pt(Math.cos(a) * 0.34, Math.sin(a) * 0.4, 0); }
+      for(k = 0; k < 4; k++){ a = Math.PI - 0.6 + k * 0.4; pt(Math.cos(a) * 0.34, Math.sin(a) * 0.4, 0); }
+    } else if(kind === 'heart'){
+      for(k = 0; k < 22; k++){
+        th = k / 22 * Math.PI * 2;
+        pt((16 * Math.pow(Math.sin(th), 3)) / 17, -(13 * Math.cos(th) - 5 * Math.cos(2 * th) - 2 * Math.cos(3 * th) - Math.cos(4 * th)) / 17, 0);
+      }
+      pt(0, -0.1, 0); pt(-0.25, 0.1, 0); pt(0.25, 0.1, 0);
+    } else if(kind === 'star'){
+      for(k = 0; k < 10; k++){
+        a = -Math.PI / 2 + k * Math.PI / 5;
+        var rad = (k % 2 === 0) ? 0.95 : 0.42;
+        pt(Math.cos(a) * rad, Math.sin(a) * rad, 0);
+      }
+      pt(0, 0, 0); pt(-0.2, 0.1, 0); pt(0.2, 0.1, 0);
+    } else if(kind === 'lightbulb'){
+      for(k = 0; k < 12; k++){ a = k / 12 * Math.PI * 2; pt(Math.cos(a) * 0.52, -0.18 + Math.sin(a) * 0.52, 0); }
+      pt(-0.3, 0.32, 0); pt(0.3, 0.32, 0); pt(-0.24, 0.5, 0); pt(0.24, 0.5, 0);
+      pt(-0.24, 0.66, 0); pt(0.24, 0.66, 0); pt(0, 0.78, 0);
+      pt(-0.75, -0.75, 0); pt(0.75, -0.75, 0); pt(0, -0.95, 0);
+    } else if(kind === 'rocket'){
+      for(k = 0; k < 8; k++){ a = k / 8 * Math.PI * 2; pt(Math.cos(a) * 0.3, -0.1 + Math.sin(a) * 0.45, 0); }
+      pt(0, -0.75, 0); pt(-0.12, -0.55, 0); pt(0.12, -0.55, 0);
+      pt(0, -0.25, 0);
+      pt(-0.3, 0.35, 0); pt(-0.42, 0.62, 0); pt(0.3, 0.35, 0); pt(0.42, 0.62, 0);
+      pt(0, 0.55, 0); pt(0, 0.75, 0);
+    } else if(kind === 'leaf'){
+      var half = [[0,-1],[0.16,-0.7],[0.48,-0.82],[0.4,-0.52],[0.72,-0.5],[0.52,-0.28],[0.86,-0.12],[0.52,0.06],[0.66,0.34],[0.32,0.3],[0.28,0.66],[0.1,0.42],[0.08,0.95]];
+      for(i = 0; i < half.length; i++){ pt(half[i][0], half[i][1], 0); pt(-half[i][0], half[i][1], 0); }
+      pt(0, -0.5, 0); pt(0, 0, 0); pt(0, 0.4, 0);
+    }
+    return P;
+  }
+
+  function enterScene(i){
+    dir.idx = i;
+    var n = SCENES[i].n;
+    dir.P = {x: W * (0.3 + Math.random() * 0.4), y: H * (0.32 + Math.random() * 0.36)};
+    dir.Q = {x: W * (0.3 + Math.random() * 0.4), y: H * (0.32 + Math.random() * 0.36)};
+    if(n === 'shape'){
+      var kinds = ['atom','bird','butterfly','fish','tree','book','brain','quark','heart','star','lightbulb','rocket','leaf'];
+      dir.shape = kinds[Math.floor(Math.random() * kinds.length)];
+      dir.pts = shapePoints(dir.shape);
+    }
+    if(n === 'word'){
+      var words = ['BUILD', 'DREAM', 'BRIMWOOD'];
+      dir.word = words[dir.wcount % words.length]; dir.wcount++;
+      var wp = wordPoints(dir.word);
+      dir.wS = Math.min(17, (W * 0.86) / wp.widths, (H * 0.5) / 7);
+      var pts = wp.pts, na = Math.max(1, actors.length);
+      if(pts.length > na){
+        var sub = [], stp = pts.length / na;
+        for(var s2 = 0; s2 < na; s2++) sub.push(pts[Math.floor(s2 * stp)]);
+        dir.wpts = sub;
+      } else dir.wpts = pts;
+    }
+  }
+  function sceneNow(t){
+    var ct = t % TOTAL, acc = 0;
+    for(var i = 0; i < SCENES.length; i++){
+      acc += SCENES[i].d;
+      if(ct < acc) return {i:i, local: ct - (acc - SCENES[i].d)};
+    }
+    return {i:0, local:0};
+  }
+  function spiralOff(i, scale){
+    var a = i * 2.39996, r = (scale || 13) * Math.sqrt(i);
+    return {x: Math.cos(a) * r, y: Math.sin(a) * r};
+  }
+  function haloTarget(ai, Px, Py, radius){
+    var ha = ai * 2.4, hr = radius;
+    return {x: Px + Math.cos(ha) * hr, y: Py + Math.sin(ha) * hr};
+  }
+  // shape target (absolute px) for actor ai
+  function shapeTarget(d, ai, t, Px, Py, shape, pts){
+    var S = dir.S, tx, ty;
+    if(shape === 'atom'){
+      if(ai === 0) return {x: Px, y: Py};
+      var ring = ai % 2, kk = Math.floor(ai / 2);
+      var per = Math.max(1, Math.ceil((actors.length - 1) / 2));
+      var ang = t * 0.9 + kk * (Math.PI * 2 / per) + ring * 0.6;
+      return {
+        x: Px + Math.cos(ang) * S * (ring ? 0.95 : 0.62),
+        y: Py + Math.sin(ang) * S * 0.3 * (ring ? 1 : -1)
+      };
+    }
+    if(shape === 'quark'){
+      if(ai < 3){
+        var qa = ai * 2.094 + t * 0.6, qr = 15 + 7 * Math.sin(t * 2 + ai);
+        return {x: Px + Math.cos(qa) * qr, y: Py + Math.sin(qa) * qr};
+      }
+      var s = spiralOff(ai - 3, 20);
+      return {x: Px + s.x, y: Py + s.y};
+    }
+    if(ai < pts.length){
+      var p0 = pts[ai];
+      tx = Px + p0.x * S; ty = Py + p0.y * S;
+      if(p0.w !== 0) ty += Math.sin(t * 2.4) * 13 * Math.abs(p0.x);
+    } else {
+      var h = haloTarget(ai, Px, Py, S * 1.45); tx = h.x; ty = h.y;
+    }
+    return {x: tx, y: ty};
+  }
+  // target offset (relative to home) for actor d
+  function actorTarget(d, ai, t, scI, local, force){
+    var n = SCENES[scI].n, s, g;
+    if(force){
+      g = shapeTarget(d, ai, t, force.x, force.y, force.shape, force.pts);
+      return {x: g.x - d.bx, y: g.y - d.by};
+    }
+    if(n === 'drift'){
+      return {x: Math.sin(t * 0.25 + d.jit) * 26, y: Math.cos(t * 0.2 + d.jit * 1.3) * 26};
+    }
+    if(n === 'gather'){
+      s = spiralOff(ai);
+      return {x: dir.P.x - d.bx + s.x, y: dir.P.y - d.by + s.y};
+    }
+    if(n === 'shape'){
+      g = shapeTarget(d, ai, t, dir.P.x, dir.P.y, dir.shape, dir.pts);
+      return {x: g.x - d.bx, y: g.y - d.by};
+    }
+    if(n === 'word'){
+      var tx2, ty2;
+      if(ai < dir.wpts.length){ tx2 = dir.P.x + dir.wpts[ai].x * dir.wS; ty2 = dir.P.y + dir.wpts[ai].y * dir.wS; }
+      else { var h2 = haloTarget(ai, dir.P.x, dir.P.y, dir.wS * 9); tx2 = h2.x; ty2 = h2.y; }
+      return {x: tx2 - d.bx, y: ty2 - d.by};
+    }
+    if(n === 'divide'){
+      var C = (ai % 2 === 0) ? dir.P : dir.Q;
+      s = spiralOff(ai >> 1);
+      return {x: C.x - d.bx + s.x, y: C.y - d.by + s.y};
+    }
+    if(n === 'fight'){
+      var midX = (dir.P.x + dir.Q.x) / 2, midY = (dir.P.y + dir.Q.y) / 2;
+      if(local < 3){
+        return {x: midX - d.bx + Math.sin(d.jit * 7 + t * 3) * 22, y: midY - d.by + Math.cos(d.jit * 5 + t * 3) * 22};
+      }
+      var dxs = d.bx - midX, dys = d.by - midY;
+      var dl = Math.sqrt(dxs * dxs + dys * dys) || 1;
+      var fl = 95 + ((d.jit * 37) % 55);
+      return {x: dxs / dl * fl, y: dys / dl * fl};
+    }
+    if(n === 'army'){
+      var col = ai % 8, row = Math.floor(ai / 8) % 12;
+      return {
+        x: dir.P.x + Math.sin(t * 0.35) * 70 + (col - 3.5) * 26 - d.bx,
+        y: dir.P.y + (row - 5.5) * 26 - d.by
+      };
+    }
+    return {x: 0, y: 0};
+  }
+
+  // cast a fresh set of lead dots: every cycle, different dots get a purpose
+  function repickActors(){
+    var d, k;
+    for(k = 0; k < actors.length; k++){ d = actors[k]; d.actor = false; d.ai = -1; d.ax = 0; d.ay = 0; d.trail = []; }
+    actors = [];
+    var picked = {}, n = 0, guard = 0;
+    while(n < MAXA && guard < dots.length * 4){
+      guard++;
+      var idx = Math.floor(Math.random() * dots.length);
+      if(picked[idx]) continue;
+      picked[idx] = 1;
+      d = dots[idx];
+      d.actor = true; d.ai = actors.length;
+      actors.push(d); n++;
+    }
+  }
+
+  function build(){
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var r = cv.parentElement.getBoundingClientRect();
+    W = r.width; H = r.height;
+    CX = W / 2; CY = H / 2;
+    cv.width = Math.max(1, Math.round(W * dpr));
+    cv.height = Math.max(1, Math.round(H * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    dots = []; actors = [];
+    var nx = Math.ceil(W / GAP) + 2, ny = Math.ceil(H / GAP) + 2;
+    for(var j = 0; j < ny; j++){
+      for(var i = 0; i < nx; i++){
+        dots.push({
+          bx: i * GAP + 6, by: j * GAP + 6,
+          ox: 0, oy: 0,
+          br: 2.2 + Math.random() * 3.4,
+          bp: Math.random() * Math.PI * 2,
+          bd: 0.45 + Math.random() * 0.35,
+          leader: Math.random() < 0.06,
+          actor: false, ai: -1, ax: 0, ay: 0,
+          eag: 0.028 + Math.random() * 0.03,
+          jit: Math.random() * Math.PI * 2,
+          trail: []
+        });
+      }
+    }
+    repickActors();
+    dir.idx = -1;
+    lastCyc = -1;
+    if(reduced) draw(0);
+  }
+
+  function draw(t){
+    ctx.clearRect(0, 0, W, H);
+    if(!reduced){
+      // the wave field retunes itself: new wavelength, speed, swirl and drift, eased in
+      if(t > field.next){
+        field.tWl = 60 + Math.random() * 80;
+        field.tSp = 0.6 + Math.random() * 1.0;
+        field.tTang = 8 + Math.random() * 12;
+        field.tRad = 5 + Math.random() * 10;
+        field.tRotSp = (Math.random() - 0.5) * 0.16;
+        field.next = t + 16 + Math.random() * 10;
+      }
+      var fe = 0.02;
+      field.wl += (field.tWl - field.wl) * fe;
+      field.sp += (field.tSp - field.sp) * fe;
+      field.tang += (field.tTang - field.tang) * fe;
+      field.rad += (field.tRad - field.rad) * fe;
+      field.rotSp += (field.tRotSp - field.rotSp) * fe;
+      field.rot += field.rotSp / 60;
+      if(field.rot > Math.PI * 2) field.rot -= Math.PI * 2;
+      if(field.rot < -Math.PI * 2) field.rot += Math.PI * 2;
+      // new cycle, new cast: different dots take the lead each time
+      var cyc = Math.floor(t / TOTAL);
+      if(cyc !== lastCyc){ lastCyc = cyc; repickActors(); }
+    }
+    smx += (mx - smx) * 0.08; smy += (my - smy) * 0.08;
+    var sc = reduced ? null : sceneNow(t);
+    if(sc && sc.i !== dir.idx) enterScene(sc.i);
+    var force = (!reduced && summon.until > t) ? summon : null;
+    var scName = sc ? SCENES[sc.i].n : '';
+    var dimCrowd = (force || scName === 'shape' || scName === 'word') ? 0.5 : 1;
+    var R2 = 130 * 130, k, d;
+    ctx.fillStyle = '#ffffff';
+
+    // summon ripples
+    for(var ri = ripples.length - 1; ri >= 0; ri--){
+      var age = t - ripples[ri].t0;
+      if(age > 1.4){ ripples.splice(ri, 1); continue; }
+      ctx.globalAlpha = (1 - age / 1.4) * 0.4;
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(ripples[ri].x, ripples[ri].y, 12 + age * 230, 0, 6.2832); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    for(k = 0; k < dots.length; k++){
+      d = dots[k];
+      // vortex drift
+      var dx0 = d.bx - CX, dy0 = d.by - CY;
+      var rr = Math.sqrt(dx0 * dx0 + dy0 * dy0) || 1;
+      var ang = Math.atan2(dy0, dx0) + field.rot;
+      var ph = (rr / field.wl) * Math.PI * 2 - t * field.sp;
+      var x = d.bx + (-Math.sin(ang)) * Math.sin(ph) * field.tang + Math.cos(ang) * Math.sin(ph * 0.5 + 1.3) * field.rad;
+      var y = d.by + (Math.cos(ang)) * Math.sin(ph) * field.tang + Math.sin(ang) * Math.sin(ph * 0.5 + 1.3) * field.rad;
+      // firefly breath
+      var swell = Math.pow(0.5 + 0.5 * Math.sin(t * (Math.PI * 2 / d.br) + d.bp), 1.6);
+      var a = (1 - d.bd) + d.bd * swell;
+      a *= 0.85 + 0.15 * Math.sin(ph);
+      if(d.leader) a = Math.min(1, a * 1.25);
+      // the secret life
+      if(d.actor && (sc || force)){
+        var tg = actorTarget(d, d.ai, t, sc ? sc.i : 0, sc ? sc.local : 0, force);
+        d.ax += (tg.x - d.ax) * d.eag;
+        d.ay += (tg.y - d.ay) * d.eag;
+        x += d.ax; y += d.ay;
+      } else {
+        a *= dimCrowd;
+      }
+      // cursor: nearby fireflies startle brighter and shy away
+      var dx = x - smx, dy = y - smy, q = dx * dx + dy * dy;
+      if(q < R2){
+        var dist = Math.sqrt(q) || 1;
+        var f = 1 - dist / 130;
+        var push = f * 7;
+        d.ox += ((dx / dist) * push - d.ox) * 0.12;
+        d.oy += ((dy / dist) * push - d.oy) * 0.12;
+        a = Math.min(1, a + f * 0.3);
+      } else {
+        d.ox *= 0.94; d.oy *= 0.94;
+      }
+      var fx = x + d.ox, fy = y + d.oy;
+      // comet trails for actors
+      if(d.actor && !reduced){
+        var tr = d.trail, last = tr[tr.length - 1];
+        var spd = last ? Math.sqrt((fx - last.x) * (fx - last.x) + (fy - last.y) * (fy - last.y)) : 99;
+        if(spd > 0.6){ tr.push({x: fx, y: fy}); if(tr.length > 10) tr.shift(); }
+        for(var ti = 0; ti < tr.length - 1; ti++){
+          var f2 = ti / (tr.length - 1);
+          ctx.globalAlpha = a * 0.32 * f2;
+          ctx.beginPath(); ctx.arc(tr[ti].x, tr[ti].y, R * (0.3 + 0.55 * f2), 0, 6.2832); ctx.fill();
+        }
+      }
+      ctx.globalAlpha = a;
+      ctx.beginPath();
+      ctx.arc(fx, fy, R, 0, 6.2832);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function frame(now){
+    nowT = (now - t0) / 1000;
+    draw(nowT);
+    requestAnimationFrame(frame);
+  }
+
+  cv.parentElement.addEventListener('pointermove', function(e){
+    var r = cv.getBoundingClientRect();
+    mx = e.clientX - r.left; my = e.clientY - r.top;
+  });
+  cv.parentElement.addEventListener('pointerleave', function(){ mx = -9999; my = -9999; });
+  // left arrow key disabled on this page (text fields keep caret movement)
+  window.addEventListener('keydown', function(e){
+    if(e.key !== 'ArrowLeft') return;
+    var t = e.target;
+    if(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    e.preventDefault();
+  });
+  cv.parentElement.addEventListener('pointerdown', function(e){
+    var r = cv.getBoundingClientRect();
+    var px = e.clientX - r.left, py = e.clientY - r.top;
+    ripples.push({x: px, y: py, t0: nowT});
+    if(ripples.length > 6) ripples.shift();
+    var kinds = ['heart','star','lightbulb','rocket','leaf','bird','butterfly','fish'];
+    summon.shape = kinds[Math.floor(Math.random() * kinds.length)];
+    summon.pts = shapePoints(summon.shape);
+    summon.x = px; summon.y = py;
+    summon.until = nowT + 9;
+  });
+
+  if(window.ResizeObserver){
+    new ResizeObserver(build).observe(cv.parentElement);
+  } else {
+    window.addEventListener('resize', build);
+  }
+  build();
+  if(!reduced) requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

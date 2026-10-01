@@ -1,0 +1,17 @@
+# Retired / quarantined files (may contain exposed keys) — never commit
+drafts/
+
+# Deployment artifacts — built from build/, not versioned
+*.zip
+
+# Local environment and secrets
+.env
+.env.*
+secrets/
+*.pem
+*.key
+
+# Editor / OS noise
+.DS_Store
+.vscode/
+*.log
