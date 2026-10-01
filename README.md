@@ -1,8 +1,25 @@
 # brimwoodinnovation.com website
 
-Source of the Brimwood Innovation "coming soon" site, deployed via Cloudflare Pages
-project `brimwood-coming-soon` (custom domains brimwoodinnovation.com and
-www.brimwoodinnovation.com).
+Source of the Brimwood Innovation "coming soon" site. Public repo:
+`Brimwood-Innovation/brimwood-website` — every change to the site flows
+through GitHub; there are no more zip uploads.
+
+## Workflow (enforced)
+
+- `main` → **production**. Cloudflare Pages auto-deploys `main` to
+  brimwoodinnovation.com on every push. Never push or merge to `main`
+  without the founder's explicit sign-off.
+- Any other branch (or pull request) → **preview**. Cloudflare Pages
+  builds a preview URL automatically, e.g.
+  `brimwood-website-<hash>.pages.dev`. Develop and review there first.
+- Push access: SSH key "Brimmy VM" on the brimwoodai GitHub account.
+
+```bash
+git checkout -b feature/my-change   # develop here
+git push -u origin feature/my-change # get a preview URL from Cloudflare
+# founder reviews the preview, then:
+git checkout main && git merge feature/my-change && git push  # ships to production
+```
 
 ## Layout
 
@@ -17,12 +34,12 @@ www.brimwoodinnovation.com).
 
 ## Deploying
 
-```bash
-cd build && zip -r ../site.zip . -x '*.DS_Store'
-```
+Deployments are automatic from GitHub — do not upload zips by hand.
+Pushing to `main` redeploys production within a minute or two; pushing
+any other branch produces a preview URL on the Cloudflare Pages dashboard.
 
-Upload `site.zip` in the Cloudflare Pages dashboard → `brimwood-coming-soon` →
-"Upload assets". Production rule: never deploy without the founder's sign-off.
+The old zip-upload flow is retired. `brimwood-coming-soon-*.zip` files in
+this directory are kept for history only.
 
 ## Brand
 
