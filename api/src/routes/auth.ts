@@ -162,6 +162,108 @@ app.post("/logout", async (c) => {
   return c.json({ ok: true });
 });
 
+/* Invite redemption (T28): POST /api/auth/redeem-invite {email, name, code}
+ * Validates the invite code (not expired, uses remaining), creates the user
+ * as a member, increments the code's use count, then sends a magic sign-in
+ * code so they can sign in immediately. */
+app.post("/redeem-invite", async (c) => {
+  const { DB, RATE_LIMIT_KV } = c.env;
+  if (!(await checkRateLimit(RATE_LIMIT_KV, "redeem:" + clientIp(c.req.raw), 5, 3600))) {
+    return c.json({ ok: false, error: "Too many requests. Please try again later." }, 429);
+  }
+
+  let data: Record<string, unknown>;
+  try {
+    data = await c.req.json();
+  } catch {
+    return c.json({ ok: false }, 400);
+  }
+  const email = cleanStr(data.email, 200).toLowerCase();
+  const name = cleanStr(data.name, 100);
+  const code = cleanStr(data.code, 50).toUpperCase().replace(/[^A-Z0-9-]/g, "");
+  if (!isEmail(email) || !name || !code) {
+    return c.json({ ok: false, error: "Please include your name, email, and invite code." }, 400);
+  }
+
+  // Check for existing user.
+  const existing = await DB.prepare("SELECT id FROM users WHERE email = ?")
+    .bind(email)
+    .first<{ id: string }>();
+  if (existing) {
+    return c.json({ ok: false, error: "This email is already registered. Please sign in." }, 400);
+  }
+
+  // Validate the invite code.
+  const invite = await DB.prepare(
+    `SELECT id, code, max_uses, uses, expires_at FROM invite_codes WHERE code = ?`
+  )
+    .bind(code)
+    .first<{ id: string; code: string; max_uses: number; uses: number; expires_at: string | null }>();
+  if (!invite) {
+    return c.json({ ok: false, error: "Invalid invite code." }, 400);
+  }
+  if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
+    return c.json({ ok: false, error: "This invite code has expired." }, 400);
+  }
+  if (invite.uses >= invite.max_uses) {
+    return c.json({ ok: false, error: "This invite code has already been used." }, 400);
+  }
+
+  // Create the user.
+  const userId = crypto.randomUUID();
+  await DB.prepare(
+    `INSERT INTO users (id, email, name, role, status) VALUES (?, ?, ?, 'member', 'active')`
+  )
+    .bind(userId, email, name)
+    .run();
+
+  // Consume one use of the invite code.
+  await DB.prepare("UPDATE invite_codes SET uses = uses + 1 WHERE id = ?")
+    .bind(invite.id)
+    .run();
+
+  // Audit log.
+  await DB.prepare(
+    "INSERT INTO audit_log (id, actor_id, action, target) VALUES (?, ?, 'invite.redeem', ?)"
+  )
+    .bind(crypto.randomUUID(), userId, email)
+    .run()
+    .catch(() => {});
+
+  // Send a magic sign-in code so they can sign in immediately.
+  const resendKey = (c.env as Env).RESEND_API_KEY;
+  if (resendKey) {
+    const rand = new Uint32Array(1);
+    crypto.getRandomValues(rand);
+    const magicCode = String(100000 + (rand[0] % 900000));
+    const key = await codeKey(email);
+    await c.env.SESSIONS_KV.put(
+      "authcode:" + key,
+      JSON.stringify({
+        email,
+        codeHash: await sha256Hex("code:" + magicCode),
+        attempts: 0,
+      }),
+      { expirationTtl: CODE_TTL }
+    );
+    const html = shell(
+      "Your Brimwood sign-in code",
+      "Welcome to Brimwood.",
+      "<p style=\"margin:0 0 8px;\">Welcome" + (name ? ", " + esc(name) : "") + ". Your invite code worked — here is your sign-in code:</p>" +
+        '<p style="font-size:36px;font-weight:700;letter-spacing:0.3em;color:#0C9463;margin:16px 0;">' + magicCode + "</p>" +
+        '<p style="font-size:13px;color:#5B6862;margin:16px 0 0;">Use this code within 10 minutes. Build a business. Build yourself.</p>'
+    );
+    await sendEmail(resendKey, {
+      to: email,
+      subject: "Welcome to Brimwood — your sign-in code",
+      html,
+      text: "Welcome to Brimwood, " + name + ".\n\nYour sign-in code is: " + magicCode + "\n\nIt expires in 10 minutes.",
+    }).catch(() => {});
+  }
+
+  return c.json({ ok: true });
+});
+
 app.get("/me", async (c) => {
   const cookie = c.req.header("cookie") || "";
   const m = cookie.match(new RegExp(COOKIE + "=([^;]+)"));

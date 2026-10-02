@@ -1,9 +1,11 @@
-/* Scheduled tasks (T25): publish scheduled posts + weekly digest.
+/* Scheduled tasks (T25, T33): publish scheduled posts + weekly digest + health monitoring.
  *
- * Runs on Cloudflare Cron Triggers. Two jobs:
+ * Runs on Cloudflare Cron Triggers. Three jobs:
  * 1. Every 15 min: publish posts where status='scheduled' AND published_at <= now.
  * 2. Weekly (Monday 09:00 UTC): digest email to active subscribers with
  *    the week's new published posts + lessons.
+ * 3. Every 5 min: health check — ping key endpoints, log to D1,
+ *    email the founder on failure.
  */
 import { sendEmail, shell, esc } from "./lib/email";
 import { INBOX } from "./lib/email";
@@ -11,6 +13,12 @@ import { INBOX } from "./lib/email";
 export async function handleScheduled(event: ScheduledEvent, env: any) {
   const { DB, RESEND_API_KEY } = env;
   const cron = event.cron;
+
+  // Job 3: health monitoring (runs every 5 min).
+  if (cron === "*/5 * * * *") {
+    await runHealthCheck(DB, RESEND_API_KEY, env);
+    return;
+  }
 
   // Job 1: publish due scheduled posts (runs every 15 min).
   if (cron === "*/15 * * * *") {
@@ -116,5 +124,93 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
     )
       .bind(crypto.randomUUID(), `${sent} subscribers`, "This week at Brimwood")
       .run();
+  }
+}
+
+/* Job 3 (T33): health monitoring.
+ * Pings the site + key API endpoints every 5 min. Logs results to D1
+ * (health_checks table). On failure, emails the founder once per hour
+ * (rate-limited via KV-style timestamp in D1). */
+async function runHealthCheck(DB: D1Database, resendKey: string | undefined, env: any) {
+  const site = (env.SITE_URL || "https://brimwood-website-preview.pages.dev").replace(/\/$/, "");
+  const apiBase = "https://brimwood-api.adamsayani.workers.dev";
+
+  const checks: { name: string; url: string }[] = [
+    { name: "site-home", url: site + "/" },
+    { name: "api-courses", url: apiBase + "/api/courses" },
+    { name: "api-oauth-auth", url: apiBase + "/api/oauth/auth" },
+  ];
+
+  const failures: string[] = [];
+  for (const check of checks) {
+    const start = Date.now();
+    try {
+      const res = await fetch(check.url, {
+        method: "HEAD",
+        redirect: "manual",
+        signal: AbortSignal.timeout(10000),
+      });
+      const ms = Date.now() - start;
+      // 2xx, 3xx (redirects like oauth), and 404 (route exists) all count as "up".
+      const up = res.status < 500;
+      await DB.prepare(
+        `INSERT INTO health_checks (id, name, url, status_code, response_ms, ok, checked_at)
+         VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))`
+      )
+        .bind(crypto.randomUUID(), check.name, check.url, res.status, ms, up ? 1 : 0)
+        .run();
+      if (!up) failures.push(`${check.name} → HTTP ${res.status}`);
+    } catch (e) {
+      const ms = Date.now() - start;
+      await DB.prepare(
+        `INSERT INTO health_checks (id, name, url, status_code, response_ms, ok, checked_at)
+         VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))`
+      )
+        .bind(crypto.randomUUID(), check.name, check.url, 0, ms, 0)
+        .run();
+      failures.push(`${check.name} → ${String((e as Error)?.message || e).slice(0, 100)}`);
+    }
+  }
+
+  // Prune old checks (keep 7 days).
+  await DB.prepare(
+    "DELETE FROM health_checks WHERE checked_at < strftime('%Y-%m-%dT%H:%M:%fZ','now','-7 days')"
+  ).run();
+
+  if (failures.length === 0) return;
+
+  // Rate-limit alerts: at most one email per hour.
+  const lastAlert = await DB.prepare(
+    "SELECT value FROM kv_meta WHERE key = 'last_health_alert'"
+  ).first<{ value: string }>().catch(() => null);
+  const lastTime = lastAlert ? parseInt(lastAlert.value, 10) : 0;
+  if (Date.now() - lastTime < 3600000) return;
+
+  await DB.prepare(
+    "INSERT OR REPLACE INTO kv_meta (key, value) VALUES ('last_health_alert', ?)"
+  ).bind(String(Date.now())).run().catch(() => {});
+
+  if (!resendKey) {
+    console.error("health: failures but RESEND_API_KEY not set", failures);
+    return;
+  }
+
+  const html = shell(
+    "Brimwood health alert",
+    "Something needs attention.",
+    "<p style=\"margin:0 0 16px;\">Health check failures detected:</p>" +
+      "<ul>" + failures.map((f) => "<li>" + esc(f) + "</li>").join("") + "</ul>" +
+      '<p style="font-size:13px;color:#5B6862;">Checked at ' + new Date().toISOString() + "</p>"
+  );
+  try {
+    await sendEmail(resendKey, {
+      to: INBOX,
+      subject: "⚠ Brimwood health alert — " + failures.length + " check(s) failing",
+      html,
+      text: "Brimwood health alert\n\nFailures:\n" + failures.join("\n"),
+    });
+    console.log("health: alert sent", failures);
+  } catch (e) {
+    console.error("health: alert email failed", e);
   }
 }

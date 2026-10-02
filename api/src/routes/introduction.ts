@@ -7,6 +7,8 @@ import { sendEmail, shell, fieldRow, esc, INBOX } from "../lib/email";
 import { cleanStr, isEmail, clientIp, sha256Hex } from "../lib/validate";
 import { checkRateLimit } from "../lib/ratelimit";
 
+import { verifyTurnstile } from "../lib/turnstile";
+
 const app = new Hono<{ Bindings: Bindings }>();
 
 app.post("/", async (c) => {
@@ -26,6 +28,16 @@ app.post("/", async (c) => {
   }
   if (cleanStr(data.website, 200)) {
     return c.json({ ok: true }); // honeypot: bot — pretend success, store nothing
+  }
+
+  // Turnstile bot check (fails closed).
+  const turnstile = await verifyTurnstile(
+    data["cf-turnstile-response"],
+    (c.env as Bindings & { TURNSTILE_SECRET_KEY?: string }).TURNSTILE_SECRET_KEY,
+    clientIp(c.req.raw)
+  );
+  if (!turnstile.ok) {
+    return c.json({ ok: false, error: turnstile.error }, 400);
   }
 
   const name = cleanStr(data.name, 100);

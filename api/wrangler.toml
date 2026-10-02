@@ -33,6 +33,7 @@ bucket_name = "brimwood-media"
 [vars]
 SITE_URL = "https://brimwood-website-preview.pages.dev"
 
-# Cron triggers (T25): publish scheduled posts every 15 min; weekly digest Mondays 09:00 UTC.
+# Cron triggers (T25, T33): health check every 5 min; publish scheduled posts
+# every 15 min; weekly digest Mondays 09:00 UTC.
 [triggers]
-crons = ["*/15 * * * *", "0 9 * * 1"]
+crons = ["*/5 * * * *", "*/15 * * * *", "0 9 * * 1"]

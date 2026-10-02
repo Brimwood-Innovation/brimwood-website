@@ -72,6 +72,7 @@ import HeroDots from "../components/HeroDots.astro";
         <label for="fMsg">What are you building?</label>
         <textarea id="fMsg" name="message" rows="3" placeholder="A line or two is plenty."></textarea>
         <input type="text" name="website" id="fSite" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true" />
+        <div class="cf-turnstile" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx" style="margin:16px 0;"></div>
         <button class="btn" type="submit">Request an introduction</button>
         <p class="form-err" id="formErr" style="display:none">Something went wrong on our end. Please email <a href="mailto:info@brimwoodinnovation.com" style="color:#fff;text-decoration:underline">info@brimwoodinnovation.com</a> directly and we will take it from there.</p>
       </form>
@@ -118,11 +119,12 @@ document.getElementById('introForm').addEventListener('submit', async function(e
       body: JSON.stringify({
         name: v('fName'), email: v('fEmail'),
         referral: v('fRef'), message: v('fMsg'),
-        website: ''
+        website: '',
+        'cf-turnstile-response': (document.querySelector('[name="cf-turnstile-response"]') || {}).value || ''
       })
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.ok) throw new Error('send failed');
+    if (!res.ok || !data.ok) throw new Error(data.error || 'send failed');
     document.getElementById('introForm').style.display = 'none';
     document.getElementById('thanksMsg').style.display = 'block';
   } catch (ex) {

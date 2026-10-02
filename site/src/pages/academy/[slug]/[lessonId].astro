@@ -127,24 +127,66 @@ try {
         </script>
       </>
     ) : gated ? (
-      <div style="text-align:center;padding:48px 0;">
+      <div style="text-align:center;padding:48px 0;" id="gateWrap">
         <div class="kicker">Members only</div>
         <h2 class="sec">This lesson is for members.</h2>
         <p class="sec-lede" style="margin-inline:auto;" id="gateMsg"><a href="/members">Sign in</a> to continue learning.</p>
-        <div id="lessonBody" style="display:none;text-align:left;"></div>
-        <script define:vars={{ lessonId, apiBase }}>
-          (async () => {
-            try {
-              const r = await fetch(apiBase + "/api/courses/lessons/" + encodeURIComponent(lessonId), {
-                headers: { accept: "application/json" },
-                credentials: "include",
-              });
-              const d = await r.json();
-              if (d.ok && d.lesson) location.reload();
-            } catch {}
-          })();
-        </script>
       </div>
+      <div id="lessonBody" style="display:none;text-align:left;"></div>
+      <script define:vars={{ lessonId, apiBase, slug }}>
+        (async () => {
+          try {
+            const r = await fetch(apiBase + "/api/courses/lessons/" + encodeURIComponent(lessonId), {
+              headers: { accept: "application/json" },
+              credentials: "include",
+            });
+            const d = await r.json();
+            if (d.ok && d.lesson) {
+              const l = d.lesson;
+              const gate = document.getElementById("gateWrap");
+              const body = document.getElementById("lessonBody");
+              gate.style.display = "none";
+              body.style.display = "block";
+              const esc = (s) => String(s || "").replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+              body.innerHTML =
+                '<a href="/academy/' + esc(slug) + '" style="font-size:14px;">← ' + esc(l.course_title || "Course") + "</a>" +
+                '<div class="kicker" style="margin-top:24px;">Members' + (l.duration_minutes ? " · " + l.duration_minutes + " min" : "") + "</div>" +
+                '<h1 class="sec" style="font-size:clamp(28px,4vw,44px);margin-bottom:18px;">' + esc(l.title) + "</h1>" +
+                (l.video_r2_key ? '<video controls preload="metadata" playsinline style="width:100%;border-radius:16px;background:var(--ink);margin:24px 0;" src="' + esc(apiBase) + "/api/video/" + esc(l.video_r2_key) + '"></video>' : "") +
+                '<div class="prose" style="padding:0;max-width:none;"><p style="white-space:pre-wrap;">' + esc(l.body_md) + "</p></div>" +
+                '<div style="margin-top:32px;"><button class="btn" id="gatedCompleteBtn">Mark as complete</button>' +
+                '<p id="gatedCompleteMsg" style="display:none;font-weight:600;"></p></div>';
+              document.title = l.title + " — Academy — Brimwood Innovation";
+              const btn = document.getElementById("gatedCompleteBtn");
+              const msg = document.getElementById("gatedCompleteMsg");
+              try {
+                const pr = await fetch(apiBase + "/api/progress/detail", { headers: { accept: "application/json" }, credentials: "include" });
+                const pd = await pr.json().catch(() => ({}));
+                if (pd.ok && (pd.done || []).includes(lessonId)) {
+                  btn.style.display = "none"; msg.style.display = "block";
+                  msg.style.color = "var(--emerald-deep)"; msg.textContent = "✓ Completed";
+                }
+              } catch {}
+              btn.addEventListener("click", async () => {
+                btn.disabled = true; btn.textContent = "Saving…";
+                try {
+                  const pr2 = await fetch(apiBase + "/api/progress/" + encodeURIComponent(lessonId), {
+                    method: "POST", credentials: "include", headers: { accept: "application/json" },
+                  });
+                  const d2 = await pr2.json().catch(() => ({}));
+                  if (!pr2.ok || !d2.ok) throw new Error(d2.error || "save failed");
+                  btn.style.display = "none"; msg.style.display = "block";
+                  msg.style.color = "var(--emerald-deep)"; msg.textContent = "✓ Completed — nice work.";
+                } catch (e) {
+                  btn.disabled = false; btn.textContent = "Mark as complete";
+                  msg.style.display = "block";
+                  msg.textContent = "Could not save. Try again.";
+                }
+              });
+            }
+          } catch {}
+        })();
+      </script>
     ) : (
       <div style="text-align:center;padding:48px 0;">
         <h2 class="sec">Not found</h2>

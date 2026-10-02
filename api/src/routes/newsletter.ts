@@ -8,9 +8,11 @@ import { sendEmail, shell, fieldRow, button, page, esc, INBOX, SITE } from "../l
 import { cleanStr, isEmail, clientIp } from "../lib/validate";
 import { checkRateLimit } from "../lib/ratelimit";
 
+import { verifyTurnstile } from "../lib/turnstile";
+
 const app = new Hono<{ Bindings: Bindings }>();
 
-type Env = Bindings & { RESEND_API_KEY?: string };
+type Env = Bindings & { RESEND_API_KEY?: string; TURNSTILE_SECRET_KEY?: string };
 const keyOf = (c: { env: Env }) => c.env.RESEND_API_KEY;
 
 app.post("/", async (c) => {
@@ -30,6 +32,16 @@ app.post("/", async (c) => {
   }
   if (cleanStr(data.website, 200)) {
     return c.json({ ok: true }); // honeypot
+  }
+
+  // Turnstile bot check (fails closed).
+  const turnstile = await verifyTurnstile(
+    data["cf-turnstile-response"],
+    (c.env as Env).TURNSTILE_SECRET_KEY,
+    clientIp(c.req.raw)
+  );
+  if (!turnstile.ok) {
+    return c.json({ ok: false, error: turnstile.error }, 400);
   }
 
   const email = cleanStr(data.email, 200).toLowerCase();

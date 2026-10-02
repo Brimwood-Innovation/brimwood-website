@@ -28,6 +28,7 @@ import Base from "../layouts/Base.astro";
         <label for="nEmail">Email</label>
         <input id="nEmail" type="email" name="email" placeholder="you@example.com" required />
         <input type="text" name="website" id="nSite" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true" />
+        <div class="cf-turnstile" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx" style="margin:16px 0;"></div>
         <button class="btn" type="submit">Subscribe</button>
         <p class="form-err" id="newsErr" style="display:none">Something went wrong on our end. Please email <a href="mailto:info@brimwoodinnovation.com" style="color:#fff;text-decoration:underline">info@brimwoodinnovation.com</a> directly.</p>
       </form>
@@ -64,7 +65,10 @@ import Base from "../layouts/Base.astro";
         const res = await fetch(API_BASE + '/api/newsletter', {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'accept': 'application/json' },
-          body: JSON.stringify({ email })
+          body: JSON.stringify({
+            email,
+            'cf-turnstile-response': (document.querySelector('#newsForm [name="cf-turnstile-response"]') || {}).value || ''
+          })
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.ok) throw new Error(data.error || 'subscribe failed');

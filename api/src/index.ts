@@ -18,6 +18,8 @@ export type Bindings = {
   MEDIA: R2Bucket;
   RESEND_API_KEY?: string;
   SITE_URL?: string;
+  SESSION_SECRET?: string;
+  TURNSTILE_SECRET_KEY?: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -29,6 +31,15 @@ const ALLOWED_ORIGINS = [
   "https://brimwoodinnovation.com",
   "https://www.brimwoodinnovation.com",
 ];
+
+app.use("*", async (c, next) => {
+  await next();
+  // Security headers on every API response.
+  c.header("x-content-type-options", "nosniff");
+  c.header("x-frame-options", "DENY");
+  c.header("referrer-policy", "strict-origin-when-cross-origin");
+  c.header("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=()");
+});
 
 app.use("*", async (c, next) => {
   const origin = c.req.header("origin");
