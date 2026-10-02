@@ -117,6 +117,7 @@ Legend — scope: XS ≤1 file, S 1–2, M 3–5, L 5–8.
 **Dependencies:** T3. **Files:** `api/migrations/`. **Scope:** S.
 
 ### T16: D1-backed introduction + newsletter
+**Status:** DONE 2026-10-01 — Hono routes for /api/introduction + /api/newsletter (+verify/unsubscribe); D1-backed with behaviour parity to live worker; branded templates ported; tested locally (validation, honeypot, D1 writes, email_log).
 **Description:** Endpoints write to D1 (introduction_requests, newsletter_subscribers, email_log); Resend + branded templates unchanged.
 **Acceptance:** form submit → D1 row + both emails, same as today.
 **Verification:** end-to-end submit on staging; row present; emails received.

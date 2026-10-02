@@ -1,4 +1,4 @@
-# brimwood-api — Hono on Cloudflare Workers (T8)
+# brimwood-api — Hono on Cloudflare Workers (T14)
 # Resource IDs from docs/runbooks/cloudflare-bootstrap.md (T2).
 # Secrets (RESEND_API_KEY, SESSION_SECRET, TURNSTILE_SECRET_KEY) are set via
 # the dashboard / `wrangler secret put` — never in this file.
