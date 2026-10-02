@@ -64,7 +64,7 @@ app.post("/", async (c) => {
       .run();
   }
 
-  const verifyUrl = SITE + "/api/newsletter/verify?token=" + encodeURIComponent(token);
+  const verifyUrl = SITE(c.env) + "/api/newsletter/verify?token=" + encodeURIComponent(token);
   const html = shell(
     "Confirm your subscription",
     "One more step to join the Brimwood list.",
@@ -107,7 +107,8 @@ app.get("/verify", async (c) => {
     return page(
       "Link expired",
       "This link has expired",
-      '<p style="margin:0;">That confirmation link is no longer valid. Please sign up again on <a href="' + SITE + '" style="color:#0C9463;">brimwoodinnovation.com</a>.</p>'
+      '<p style="margin:0;">That confirmation link is no longer valid. Please sign up again on <a href="' + SITE(c.env) + '" style="color:#0C9463;">brimwoodinnovation.com</a>.</p>',
+      c.env
     );
   }
 
@@ -120,7 +121,7 @@ app.get("/verify", async (c) => {
     .run();
 
   const unsubUrl =
-    SITE + "/api/newsletter/unsubscribe?email=" + encodeURIComponent(email) +
+    SITE(c.env) + "/api/newsletter/unsubscribe?email=" + encodeURIComponent(email) +
     "&token=" + encodeURIComponent(unsubToken);
   const html = shell(
     "You're on the list",

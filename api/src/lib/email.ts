@@ -4,8 +4,13 @@
 
 const FROM = "Brimwood Innovation <introductions@brimwoodinnovation.com>";
 const INBOX = "info@brimwoodinnovation.com";
-const SITE = "https://brimwoodinnovation.com";
+const DEFAULT_SITE = "https://brimwoodinnovation.com";
 const LOGO_URL = "https://brimwoodinnovation.com/logo-email.png";
+
+/** Site base URL — override via SITE_URL env var for staging/preview. */
+export function SITE(env?: { SITE_URL?: string }): string {
+  return env?.SITE_URL || DEFAULT_SITE;
+}
 
 export function esc(s: string): string {
   return s
@@ -49,7 +54,8 @@ export function button(url: string, label: string): string {
   );
 }
 
-export function page(title: string, heading: string, message: string): Response {
+export function page(title: string, heading: string, message: string, env?: { SITE_URL?: string }): Response {
+  const site = SITE(env);
   const html =
     "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
     "<title>" + esc(title) + " — Brimwood Innovation</title></head>" +
@@ -58,7 +64,7 @@ export function page(title: string, heading: string, message: string): Response 
     '<img src="' + LOGO_URL + '" alt="Brimwood Innovation" style="height:48px;width:auto;margin-bottom:32px;" />' +
     '<h1 style="font-size:28px;margin:0 0 16px;">' + esc(heading) + "</h1>" +
     '<div style="font-size:16px;color:#5B6862;">' + message + "</div>" +
-    '<p style="margin-top:40px;"><a href="' + SITE + '" style="color:#0C9463;">Back to brimwoodinnovation.com</a></p>' +
+    '<p style="margin-top:40px;"><a href="' + site + '" style="color:#0C9463;">Back to brimwoodinnovation.com</a></p>' +
     "</div></body></html>";
   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
 }
@@ -101,4 +107,4 @@ export async function sendEmail(
   return data.id ?? "";
 }
 
-export { INBOX, SITE };
+export { INBOX };

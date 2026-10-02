@@ -11,6 +11,7 @@ export type Bindings = {
   SESSIONS_KV: KVNamespace;
   MEDIA: R2Bucket;
   RESEND_API_KEY?: string;
+  SITE_URL?: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();

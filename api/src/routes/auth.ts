@@ -55,7 +55,9 @@ app.post("/request-code", async (c) => {
   // Unknown or inactive → pretend success. No code, no email, no leak.
   if (!user) return c.json({ ok: true });
 
-  const code = String(Math.floor(100000 + Math.random() * 900000));
+  // Cryptographically secure 6-digit code.
+  const rand = crypto.getRandomValues(new Uint32Array(1))[0];
+  const code = String(100000 + (rand % 900000));
   const key = await codeKey(email);
   await SESSIONS_KV.put(
     "authcode:" + key,
