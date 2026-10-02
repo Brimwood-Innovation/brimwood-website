@@ -124,6 +124,7 @@ Legend — scope: XS ≤1 file, S 1–2, M 3–5, L 5–8.
 **Dependencies:** T14, T15. **Scope:** M.
 
 ### T17: KV→D1 newsletter migration (row-for-row verified)
+**Status:** DONE 2026-10-01 — live KV is empty (0 keys); migration script written and dry-run verified 0=0. (Caution: wrangler dev defaults to remote bindings; test rows cleaned from D1.)
 **Description:** One-shot script migrating KV subscriber state to D1; counts and statuses match exactly before KV reads are retired.
 **Acceptance:** `SELECT COUNT(*)` per status matches KV export; zero data loss.
 **Verification:** dry-run diff report; founder-visible before/after counts.
