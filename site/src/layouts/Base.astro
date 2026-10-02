@@ -1,0 +1,81 @@
+---
+/* Base layout (T7): SEO/AEO/GEO head, header, footer. */
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description: string;
+  path?: string;
+}
+const { title, description, path = "/" } = Astro.props;
+const canonical = `https://brimwoodinnovation.com${path}`;
+---
+<!doctype html>
+<html lang="en-ca">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Brimwood Innovation" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content="https://brimwoodinnovation.com/img/brimwood-logo-colour.svg" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <link
+      rel="preload"
+      href="/fonts/plus-jakarta-sans-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+
+    <script type="application/ld+json">
+      {JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        name: "Brimwood Innovation",
+        url: "https://brimwoodinnovation.com",
+        logo: "https://brimwoodinnovation.com/img/brimwood-logo-colour.svg",
+        slogan: "Build a business. Build yourself.",
+        address: {
+          "@type": "PostalAddress",
+          addressLocality: "Toronto",
+          addressRegion: "ON",
+          addressCountry: "CA",
+        },
+      })}
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="Brimwood Innovation home">
+        <img src="/img/brimwood-logo-colour.svg" alt="Brimwood Innovation" width="180" height="40" />
+      </a>
+      <nav aria-label="Primary">
+        <a href="/">Home</a>
+        <a href="/about">About</a>
+      </nav>
+    </header>
+    <main id="main">
+      <slot />
+    </main>
+    <footer class="site-footer">
+      <p>Brimwood Innovation — Build a business. Build yourself.</p>
+      <p class="fine">Toronto, Canada · <a href="mailto:info@brimwoodinnovation.com">info@brimwoodinnovation.com</a></p>
+    </footer>
+  </body>
+</html>
