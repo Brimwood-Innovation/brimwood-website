@@ -96,7 +96,8 @@ function tick(){
 }
 tick(); setInterval(tick, 1000);
 
-// --- introduction form (POSTs to our own /api/introduction; Worker sends via Resend) ---
+// --- introduction form (POSTs to /api/introduction; Worker sends via Resend) ---
+const API_BASE = import.meta.env.PUBLIC_API_BASE || '';
 document.getElementById('introForm').addEventListener('submit', async function(e){
   e.preventDefault();
   const v = id => document.getElementById(id).value.trim();
@@ -111,7 +112,7 @@ document.getElementById('introForm').addEventListener('submit', async function(e
       document.getElementById('thanksMsg').style.display = 'block';
       return;
     }
-    const res = await fetch('/api/introduction', {
+    const res = await fetch(API_BASE + '/api/introduction', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'accept': 'application/json' },
       body: JSON.stringify({

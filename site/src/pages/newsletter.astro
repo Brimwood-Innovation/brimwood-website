@@ -46,6 +46,7 @@ import Base from "../layouts/Base.astro";
 
   <script>
     // --- newsletter signup (POSTs to /api/newsletter; double opt-in) ---
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || '';
     document.getElementById('newsForm').addEventListener('submit', async function(e){
       e.preventDefault();
       const email = document.getElementById('nEmail').value.trim();
@@ -60,7 +61,7 @@ import Base from "../layouts/Base.astro";
           document.getElementById('newsThanks').style.display = 'block';
           return;
         }
-        const res = await fetch('/api/newsletter', {
+        const res = await fetch(API_BASE + '/api/newsletter', {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'accept': 'application/json' },
           body: JSON.stringify({ email })

@@ -142,10 +142,13 @@ app.post("/verify-code", async (c) => {
     JSON.stringify({ userId: user.id, role: user.role, createdAt: Date.now() }),
     { expirationTtl: SESS_TTL }
   );
+  // SameSite=None for cross-origin staging (preview → worker); Lax for same-origin.
+  const origin = c.req.header("origin") || "";
+  const crossOrigin = origin && !origin.includes("workers.dev");
   setCookie(c, COOKIE, token, {
     httpOnly: true,
     secure: true,
-    sameSite: "Lax",
+    sameSite: crossOrigin ? "None" : "Lax",
     path: "/",
     maxAge: SESS_TTL,
   });

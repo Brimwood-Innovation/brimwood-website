@@ -16,6 +16,36 @@ export type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
+// CORS for staging: allow the preview site to call the API directly.
+// Production will use same-origin (no CORS needed) when cut over.
+const ALLOWED_ORIGINS = [
+  "https://brimwood-website-preview.pages.dev",
+  "https://brimwoodinnovation.com",
+  "https://www.brimwoodinnovation.com",
+];
+
+app.use("*", async (c, next) => {
+  const origin = c.req.header("origin");
+  const allowed = origin && ALLOWED_ORIGINS.includes(origin) ? origin : "";
+  if (c.req.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "access-control-allow-origin": allowed,
+        "access-control-allow-methods": "GET, POST, OPTIONS",
+        "access-control-allow-headers": "content-type",
+        "access-control-allow-credentials": "true",
+        "access-control-max-age": "86400",
+      },
+    });
+  }
+  await next();
+  if (allowed) {
+    c.header("access-control-allow-origin", allowed);
+    c.header("access-control-allow-credentials", "true");
+  }
+});
+
 app.get("/health", (c) => c.json({ ok: true, service: "brimwood-api" }));
 
 app.route("/api/introduction", introduction);
