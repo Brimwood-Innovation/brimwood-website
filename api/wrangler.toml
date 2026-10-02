@@ -1,0 +1,39 @@
+# brimwood-api — Hono on Cloudflare Workers (T14)
+# Resource IDs from docs/runbooks/cloudflare-bootstrap.md (T2).
+# Secrets (RESEND_API_KEY, SESSION_SECRET, TURNSTILE_SECRET_KEY) are set via
+# the dashboard / `wrangler secret put` — never in this file.
+
+name = "brimwood-api"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "brimwood_db_v2"
+database_id = "e8c57b50-ae14-4773-ab9b-08172c6609a6"
+
+[[kv_namespaces]]
+binding = "NEWSLETTER_KV"
+id = "ec0746dc3e924a00b601f6b83f6dea57"
+
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "5e5c7b6a74c14f6ca2969b587797daa9"
+
+[[kv_namespaces]]
+binding = "SESSIONS_KV"
+id = "a808e8c1eddf45fb8bb8da723151d6bc"
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "brimwood-media"
+
+# Staging site URL for email links (verify/unsubscribe). Production will use
+# the production domain when the worker gets a production route (T34).
+[vars]
+SITE_URL = "https://brimwood-website-preview.pages.dev"
+
+# Cron triggers (T25, T33): health check every 5 min; publish scheduled posts
+# every 15 min; weekly digest Mondays 09:00 UTC.
+[triggers]
+crons = ["*/5 * * * *", "*/15 * * * *", "0 9 * * 1"]

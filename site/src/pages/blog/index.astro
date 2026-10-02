@@ -1,0 +1,41 @@
+---
+/* Blog index (T10): lists posts by pillar; drafts carry a badge. */
+import Base from "../../layouts/Base.astro";
+import { getCollection } from "astro:content";
+
+const posts = (await getCollection("blog")).sort(
+  (a, b) => b.data.publishDate.valueOf() - a.data.publishDate.valueOf()
+);
+
+const pillars: Record<string, string> = {
+  "micro-business": "Micro business",
+  "ai-in-practice": "AI in practice",
+  "owner-mindset": "Owner mindset",
+  "members-hub": "Members + hub",
+};
+---
+
+<Base
+  title="Blog — Brimwood Innovation"
+  description="Notes on micro business, AI in practice, and the owner mindset. From the Brimwood team."
+  path="/blog"
+>
+  <section class="block">
+    <div class="kicker">Blog</div>
+    <h1 class="sec" style="font-size:clamp(34px,5.4vw,56px);margin-bottom:18px;">Notes from the build floor.</h1>
+    <p class="sec-lede">Short, practical writing on micro business, AI in practice, and the owner mindset.</p>
+    <div class="cards" style="grid-template-columns:repeat(3,1fr);">
+      {posts.map((post) => (
+        <a class="card" href={`/blog/${post.id.replace(/\.md$/, "")}/`} style="text-decoration:none;color:inherit;">
+          <div class="n">{pillars[post.data.pillar]}{post.data.draft ? " · DRAFT" : ""}</div>
+          <h3>{post.data.title}</h3>
+          <p>{post.data.description}</p>
+          <p style="margin-top:12px;font-size:13px;">
+            {post.data.publishDate.toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric" })}
+            {" · "}{post.data.author}
+          </p>
+        </a>
+      ))}
+    </div>
+  </section>
+</Base>

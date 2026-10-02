@@ -1,0 +1,73 @@
+---
+/* Member dashboard: enrolled courses, progress bars, continue learning. Brand-kit styled. */
+import Base from "../layouts/Base.astro";
+---
+
+<Base title="Dashboard — Brimwood Innovation" description="Your learning progress.">
+  <section class="block">
+    <div id="dash-loading"><p class="sec-lede">Loading…</p></div>
+
+    <div id="dash-login" style="display:none;text-align:center;padding:48px 0;">
+      <div class="kicker">Members</div>
+      <h2 class="sec">Sign in to see your dashboard.</h2>
+      <p class="sec-lede" style="margin-inline:auto;"><a href="/members">Sign in</a> to track your progress.</p>
+    </div>
+
+    <div id="dash-home" style="display:none;">
+      <div class="kicker">Dashboard</div>
+      <h1 class="sec" style="font-size:clamp(34px,5.4vw,56px);margin-bottom:18px;">Keep shipping.</h1>
+      <p class="sec-lede" id="dashSub"></p>
+      <div class="cards" style="grid-template-columns:repeat(2,1fr);" id="courseList"></div>
+      <p style="margin-top:32px;"><a href="/academy">Browse all courses →</a></p>
+    </div>
+  </section>
+
+  <script>
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
+    const show = (id) => (document.getElementById(id).style.display = "block");
+    const hide = (id) => (document.getElementById(id).style.display = "none");
+    const esc = (s) => String(s || "").replace(/</g, "&lt;");
+
+    (async () => {
+      try {
+        const r = await fetch(API_BASE + "/api/progress", {
+          headers: { accept: "application/json" },
+          credentials: "include",
+        });
+        const d = await r.json();
+        if (!r.ok || !d.ok) throw 0;
+
+        hide("dash-loading");
+        const list = d.enrolments || [];
+        show("dash-home");
+
+        if (list.length === 0) {
+          document.getElementById("dashSub").textContent = "You're not enrolled in anything yet. Pick a course to get started.";
+          return;
+        }
+
+        const total = list.length;
+        const done = list.filter((e) => e.completed_at).length;
+        document.getElementById("dashSub").textContent =
+          `Enrolled in ${total} course${total === 1 ? "" : "s"}${done ? ` · ${done} completed` : ""}.`;
+
+        document.getElementById("courseList").innerHTML = list
+          .map((e) => {
+            const pct = e.total_lessons ? Math.round((e.done_lessons / e.total_lessons) * 100) : 0;
+            return (
+              `<a href="/academy/${e.slug}" class="card" style="text-decoration:none;display:block;">` +
+              `<div class="n">${e.done_lessons}/${e.total_lessons} lessons</div>` +
+              `<h3>${esc(e.title)}</h3>` +
+              `<div style="height:8px;background:var(--mint);border-radius:4px;overflow:hidden;margin:12px 0;">` +
+              `<div style="height:100%;width:${pct}%;background:var(--emerald);border-radius:4px;"></div></div>` +
+              `<p>${e.completed_at ? "Completed ✓" : pct === 0 ? "Start →" : "Continue →"}</p></a>`
+            );
+          })
+          .join("");
+      } catch {
+        hide("dash-loading");
+        show("dash-login");
+      }
+    })();
+  </script>
+</Base>

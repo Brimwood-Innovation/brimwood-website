@@ -1,0 +1,34 @@
+/* Brimwood Brand Kit v1.0 — design tokens (T6)
+ * Source of truth: 07-Colours/Brimwood-Colours.txt in the kit.
+ * Never hardcode these values elsewhere; reference the variables.
+ * Typeface: Plus Jakarta Sans (06-Fonts, OFL licence). */
+
+:root {
+  /* Palette */
+  --brimwood-emerald: #0c9463;      /* Primary. Backgrounds, buttons, app emblem. */
+  --brimwood-deep-emerald: #075e40; /* Gradients, hover states, dark sections. */
+  --brimwood-forest: #0a3d2b;       /* Rich dark backgrounds. */
+  --brimwood-signal: #34e08e;       /* Small highlights ONLY. Never behind text. */
+  --brimwood-mint: #ddf5e9;         /* Soft backgrounds, callouts, tags. */
+  --brimwood-ink: #121a16;          /* Text on light backgrounds. */
+  --brimwood-stone: #5b6862;        /* Secondary text and captions. */
+  --brimwood-paper: #f6f8f7;        /* Page background. */
+
+  /* Suggested balance: Emerald 45%, Paper 30%, Forest 12%, Ink 8%, Signal 5%. */
+
+  /* Type */
+  --brimwood-font: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+
+  /* Motion (respects reduced-motion via media query where used) */
+  --brimwood-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --brimwood-duration: 240ms;
+
+  /* Touch targets (mobile-first, ≥44px) */
+  --brimwood-touch-min: 44px;
+
+  /* Radii */
+  --brimwood-radius-sm: 8px;
+  --brimwood-radius-md: 14px;
+  --brimwood-radius-lg: 22px;
+}

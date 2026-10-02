@@ -1,0 +1,197 @@
+---
+/* Lesson view: preview lessons render; members-only gated. Brand-kit styled. */
+import Base from "../../../layouts/Base.astro";
+
+export async function getStaticPaths() {
+  const apiBase = import.meta.env.PUBLIC_API_BASE || "";
+  const paths: any[] = [];
+  try {
+    const r = await fetch(apiBase + "/api/courses", { headers: { accept: "application/json" } });
+    const d = await r.json();
+    if (d.ok) {
+      for (const c of d.courses) {
+        const cr = await fetch(apiBase + "/api/courses/" + encodeURIComponent(c.slug), {
+          headers: { accept: "application/json" },
+        });
+        const cd = await cr.json();
+        if (cd.ok) {
+          for (const m of cd.modules) {
+            for (const l of m.lessons) {
+              paths.push({ params: { slug: c.slug, lessonId: l.id } });
+            }
+          }
+        }
+      }
+    }
+  } catch {}
+  return paths;
+}
+
+const { slug, lessonId } = Astro.params;
+const apiBase = import.meta.env.PUBLIC_API_BASE || "";
+let lesson: any = null;
+let gated = false;
+let prevLesson: any = null;
+let nextLesson: any = null;
+try {
+  const r = await fetch(apiBase + "/api/courses/lessons/" + encodeURIComponent(lessonId || ""), {
+    headers: { accept: "application/json" },
+  });
+  const d = await r.json();
+  if (d.ok) {
+    lesson = d.lesson;
+    const cr = await fetch(apiBase + "/api/courses/" + encodeURIComponent(lesson.course_slug), {
+      headers: { accept: "application/json" },
+    });
+    const cd = await cr.json();
+    if (cd.ok) {
+      const flat: any[] = [];
+      for (const m of cd.modules) for (const l of m.lessons) flat.push(l);
+      const idx = flat.findIndex((l) => l.id === lessonId);
+      if (idx > 0) prevLesson = flat[idx - 1];
+      if (idx >= 0 && idx < flat.length - 1) nextLesson = flat[idx + 1];
+    }
+  } else if (r.status === 401 || r.status === 403) gated = true;
+} catch {}
+---
+
+<Base title={`${lesson ? lesson.title : "Lesson"} — Academy — Brimwood Innovation`} description={lesson ? lesson.title : "Brimwood Academy lesson"}>
+  <section class="block">
+    {lesson ? (
+      <>
+        <a href={`/academy/${lesson.course_slug}`} style="font-size:14px;">← {lesson.course_title}</a>
+        <div class="kicker" style="margin-top:24px;">{lesson.is_preview ? "Preview" : "Members"}{lesson.duration_minutes ? ` · ${lesson.duration_minutes} min` : ""}</div>
+        <h1 class="sec" style="font-size:clamp(28px,4vw,44px);margin-bottom:18px;">{lesson.title}</h1>
+        {lesson.video_r2_key && (
+          <video
+            controls
+            preload="metadata"
+            playsinline
+            style="width:100%;border-radius:16px;background:var(--ink);margin:24px 0;"
+            src={`${apiBase}/api/video/${lesson.video_r2_key}`}
+          />
+        )}
+        <div class="prose" style="padding:0;max-width:none;">
+          <p style="white-space:pre-wrap;">{lesson.body_md}</p>
+        </div>
+
+        <div style="margin-top:32px;" id="completeWrap">
+          <button class="btn" id="completeBtn">Mark as complete</button>
+          <p id="completeMsg" style="display:none;font-weight:600;"></p>
+        </div>
+
+        <nav style="display:flex;justify-content:space-between;margin-top:48px;padding-top:24px;border-top:1px solid rgba(18,26,22,.08);">
+          <span>{prevLesson && <a href={`/academy/${slug}/${prevLesson.id}`}>← {prevLesson.title}</a>}</span>
+          <span>{nextLesson && <a href={`/academy/${slug}/${nextLesson.id}`}>{nextLesson.title} →</a>}</span>
+        </nav>
+
+        <script define:vars={{ lessonId, apiBase }}>
+          (async () => {
+            const btn = document.getElementById("completeBtn");
+            const msg = document.getElementById("completeMsg");
+            try {
+              const pr = await fetch(apiBase + "/api/progress/detail", {
+                headers: { accept: "application/json" },
+                credentials: "include",
+              });
+              const pd = await pr.json().catch(() => ({}));
+              if (pd.ok && (pd.done || []).includes(lessonId)) {
+                btn.style.display = "none";
+                msg.style.display = "block";
+                msg.style.color = "var(--emerald-deep)";
+                msg.textContent = "✓ Completed";
+                return;
+              }
+            } catch {}
+            btn.addEventListener("click", async () => {
+              btn.disabled = true; btn.textContent = "Saving…";
+              try {
+                const r = await fetch(apiBase + "/api/progress/" + encodeURIComponent(lessonId), {
+                  method: "POST",
+                  credentials: "include",
+                  headers: { accept: "application/json" },
+                });
+                const d = await r.json().catch(() => ({}));
+                if (!r.ok || !d.ok) throw new Error(d.error || "save failed");
+                btn.style.display = "none";
+                msg.style.display = "block";
+                msg.style.color = "var(--emerald-deep)";
+                msg.textContent = "✓ Completed — nice work.";
+              } catch (e) {
+                btn.disabled = false; btn.textContent = "Mark as complete";
+                msg.style.display = "block";
+                msg.textContent = e.message === "Sign in required" ? "Please sign in first." : "Could not save. Try again.";
+              }
+            });
+          })();
+        </script>
+      </>
+    ) : gated ? (
+      <div style="text-align:center;padding:48px 0;" id="gateWrap">
+        <div class="kicker">Members only</div>
+        <h2 class="sec">This lesson is for members.</h2>
+        <p class="sec-lede" style="margin-inline:auto;" id="gateMsg"><a href="/members">Sign in</a> to continue learning.</p>
+      </div>
+      <div id="lessonBody" style="display:none;text-align:left;"></div>
+      <script define:vars={{ lessonId, apiBase, slug }}>
+        (async () => {
+          try {
+            const r = await fetch(apiBase + "/api/courses/lessons/" + encodeURIComponent(lessonId), {
+              headers: { accept: "application/json" },
+              credentials: "include",
+            });
+            const d = await r.json();
+            if (d.ok && d.lesson) {
+              const l = d.lesson;
+              const gate = document.getElementById("gateWrap");
+              const body = document.getElementById("lessonBody");
+              gate.style.display = "none";
+              body.style.display = "block";
+              const esc = (s) => String(s || "").replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+              body.innerHTML =
+                '<a href="/academy/' + esc(slug) + '" style="font-size:14px;">← ' + esc(l.course_title || "Course") + "</a>" +
+                '<div class="kicker" style="margin-top:24px;">Members' + (l.duration_minutes ? " · " + l.duration_minutes + " min" : "") + "</div>" +
+                '<h1 class="sec" style="font-size:clamp(28px,4vw,44px);margin-bottom:18px;">' + esc(l.title) + "</h1>" +
+                (l.video_r2_key ? '<video controls preload="metadata" playsinline style="width:100%;border-radius:16px;background:var(--ink);margin:24px 0;" src="' + esc(apiBase) + "/api/video/" + esc(l.video_r2_key) + '"></video>' : "") +
+                '<div class="prose" style="padding:0;max-width:none;"><p style="white-space:pre-wrap;">' + esc(l.body_md) + "</p></div>" +
+                '<div style="margin-top:32px;"><button class="btn" id="gatedCompleteBtn">Mark as complete</button>' +
+                '<p id="gatedCompleteMsg" style="display:none;font-weight:600;"></p></div>';
+              document.title = l.title + " — Academy — Brimwood Innovation";
+              const btn = document.getElementById("gatedCompleteBtn");
+              const msg = document.getElementById("gatedCompleteMsg");
+              try {
+                const pr = await fetch(apiBase + "/api/progress/detail", { headers: { accept: "application/json" }, credentials: "include" });
+                const pd = await pr.json().catch(() => ({}));
+                if (pd.ok && (pd.done || []).includes(lessonId)) {
+                  btn.style.display = "none"; msg.style.display = "block";
+                  msg.style.color = "var(--emerald-deep)"; msg.textContent = "✓ Completed";
+                }
+              } catch {}
+              btn.addEventListener("click", async () => {
+                btn.disabled = true; btn.textContent = "Saving…";
+                try {
+                  const pr2 = await fetch(apiBase + "/api/progress/" + encodeURIComponent(lessonId), {
+                    method: "POST", credentials: "include", headers: { accept: "application/json" },
+                  });
+                  const d2 = await pr2.json().catch(() => ({}));
+                  if (!pr2.ok || !d2.ok) throw new Error(d2.error || "save failed");
+                  btn.style.display = "none"; msg.style.display = "block";
+                  msg.style.color = "var(--emerald-deep)"; msg.textContent = "✓ Completed — nice work.";
+                } catch (e) {
+                  btn.disabled = false; btn.textContent = "Mark as complete";
+                  msg.style.display = "block";
+                  msg.textContent = "Could not save. Try again.";
+                }
+              });
+            }
+          } catch {}
+        })();
+      </script>
+    ) : (
+      <div style="text-align:center;padding:48px 0;">
+        <h2 class="sec">Not found</h2>
+        <p class="sec-lede" style="margin-inline:auto;">This lesson does not exist or is not published.</p>
+      </div>
+    )}
+  </section>
+</Base>

@@ -1,0 +1,31 @@
+# Brimwood Innovation
+
+> Build a business. Build yourself.
+
+Brimwood Innovation is a selective innovation hub in Toronto for ambitious
+people building AI-powered micro businesses. Membership is by invitation or
+referral only. Standard: "Elite by effort, not by background."
+
+## Site
+
+- Home: https://brimwoodinnovation.com/ — what Brimwood is, the four promises, how it works, introduction request form
+- About: https://brimwoodinnovation.com/about/ — story, the standard, the hub, weekly rhythm, what we are not
+- Blog: https://brimwoodinnovation.com/blog/ — notes on micro business, AI in practice, owner mindset
+- Newsletter: https://brimwoodinnovation.com/newsletter/ — signup (double opt-in), email-exclusive archive
+- Privacy: https://brimwoodinnovation.com/privacy/
+- Terms: https://brimwoodinnovation.com/terms/
+- RSS: https://brimwoodinnovation.com/rss.xml
+- Sitemap: https://brimwoodinnovation.com/sitemap.xml
+
+## Facts
+
+- Location: 1365 Gerrard St E Unit 2, Toronto, Canada
+- Contact: info@brimwoodinnovation.com
+- Rhythm: Monday Commit, Wednesday Forge, Friday Show + dine, monthly public demos
+- Content pillars: micro business (30%), AI in practice (30%), owner mindset (20%), members + hub (20%)
+
+## Voice
+
+Canadian spelling. Short sentences. No income promises, no hype language,
+no "10x" claims. Members are anonymous by default — share the what, never
+the how, unless written permission was given.

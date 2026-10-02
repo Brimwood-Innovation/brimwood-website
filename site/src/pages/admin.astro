@@ -1,0 +1,189 @@
+---
+/* Admin dashboard: intro triage, subscribers, invites, users, metrics, audit. Brand-kit styled. */
+import Base from "../layouts/Base.astro";
+---
+
+<Base title="Admin — Brimwood Innovation" description="Admin dashboard.">
+  <section class="block">
+    <div id="admin-loading"><p class="sec-lede">Loading…</p></div>
+    <div id="admin-denied" style="display:none;text-align:center;padding:48px 0;">
+      <div class="kicker">Admin only</div>
+      <h2 class="sec">You need an admin account.</h2>
+      <p class="sec-lede" style="margin-inline:auto;"><a href="/members">Sign in</a> with an admin email.</p>
+    </div>
+
+    <div id="admin-home" style="display:none;">
+      <div class="kicker">Admin</div>
+      <h1 class="sec" style="font-size:clamp(34px,5.4vw,56px);margin-bottom:18px;">Dashboard</h1>
+      <p class="sec-lede">Manage content, members, and site operations.</p>
+      <p style="margin-bottom:32px;">
+        <a class="btn" href="/cms/">Open Content Studio →</a>
+        <span class="admin-muted" style="margin-left:12px;">Publish blog posts without a developer.</span>
+      </p>
+
+      <nav style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:32px;" id="adminTabs">
+        <button data-tab="intros" class="btn btn-ghost small tab-btn">Intros</button>
+        <button data-tab="subs" class="btn btn-ghost small tab-btn">Subscribers</button>
+        <button data-tab="invites" class="btn btn-ghost small tab-btn">Invites</button>
+        <button data-tab="users" class="btn btn-ghost small tab-btn">Users</button>
+        <button data-tab="metrics" class="btn btn-ghost small tab-btn">Metrics</button>
+        <button data-tab="audit" class="btn btn-ghost small tab-btn">Audit</button>
+      </nav>
+
+      <div id="tab-intros" class="tab-panel"></div>
+      <div id="tab-subs" class="tab-panel" style="display:none;"></div>
+      <div id="tab-invites" class="tab-panel" style="display:none;"></div>
+      <div id="tab-users" class="tab-panel" style="display:none;"></div>
+      <div id="tab-metrics" class="tab-panel" style="display:none;"></div>
+      <div id="tab-audit" class="tab-panel" style="display:none;"></div>
+    </div>
+  </section>
+
+  <style>
+    .tab-btn.active { background: var(--emerald); color: #fff; border-color: var(--emerald); }
+    .admin-card { background:#fff;border:1px solid rgba(18,26,22,.08);border-radius:16px;padding:24px;margin-bottom:12px; }
+    .admin-row { display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap; }
+    .admin-muted { color:var(--stone);font-size:13px; }
+  </style>
+
+  <script>
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
+    const api = (p, opts = {}) => fetch(API_BASE + p, { credentials: "include", headers: { accept: "application/json", ...(opts.headers || {}) }, ...opts });
+    const esc = (s) => String(s || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const show = (id) => (document.getElementById(id).style.display = "block");
+    const hide = (id) => (document.getElementById(id).style.display = "none");
+
+    async function init() {
+      try {
+        const r = await api("/api/auth/me");
+        const d = await r.json();
+        if (!r.ok || !d.ok || d.user.role !== "admin") throw 0;
+        hide("admin-loading"); show("admin-home");
+        setupTabs();
+        loadIntros();
+      } catch {
+        hide("admin-loading"); show("admin-denied");
+      }
+    }
+
+    function setupTabs() {
+      document.querySelectorAll(".tab-btn").forEach((b) => {
+        b.addEventListener("click", () => {
+          document.querySelectorAll(".tab-btn").forEach((x) => x.classList.remove("active"));
+          document.querySelectorAll(".tab-panel").forEach((x) => (x.style.display = "none"));
+          b.classList.add("active");
+          show("tab-" + b.dataset.tab);
+          ({ intros: loadIntros, subs: loadSubs, invites: loadInvites, users: loadUsers, metrics: loadMetrics, audit: loadAudit })[b.dataset.tab]();
+        });
+      });
+      document.querySelector('[data-tab="intros"]').classList.add("active");
+    }
+
+    let introStatus = "new";
+    async function loadIntros() {
+      const el = document.getElementById("tab-intros");
+      el.innerHTML = "<p class='admin-muted'>Loading…</p>";
+      const r = await api(`/api/admin/intros?status=${introStatus}`);
+      const d = await r.json();
+      if (!d.ok) { el.innerHTML = "<p>Failed to load.</p>"; return; }
+      const counts = Object.fromEntries((d.counts || []).map((c) => [c.status, c.n]));
+      el.innerHTML =
+        "<div class='admin-row' style='margin-bottom:16px;'>" +
+        ["new", "contacted", "archived"].map((s) => `<button class="btn btn-ghost small" data-s="${s}" style="${s === introStatus ? "border-color:var(--emerald);color:var(--emerald-deep);" : ""}">${s} (${counts[s] || 0})</button>`).join("") +
+        "</div>" +
+        (d.intros.length === 0 ? "<p class='admin-muted'>Nothing here.</p>" : d.intros.map((i) => `
+          <div class="admin-card">
+            <div class="admin-row">
+              <div><strong>${esc(i.name)}</strong> <span class="admin-muted">${esc(i.email)}</span><br>
+              <span class="admin-muted">${esc(i.referral || "no referral")} · ${i.created_at.slice(0, 10)}</span></div>
+              <div style="display:flex;gap:8px;">
+                ${introStatus !== "contacted" ? `<button class="btn small" data-act="contacted" data-id="${i.id}">Contacted</button>` : ""}
+                ${introStatus !== "archived" ? `<button class="btn btn-ghost small" data-act="archived" data-id="${i.id}">Archive</button>` : ""}
+                ${introStatus !== "new" ? `<button class="btn btn-ghost small" data-act="new" data-id="${i.id}">Reopen</button>` : ""}
+              </div>
+            </div>
+            ${i.message ? `<p style="margin:12px 0 0;">${esc(i.message)}</p>` : ""}
+          </div>`).join(""));
+      el.querySelectorAll("[data-s]").forEach((b) => b.addEventListener("click", () => { introStatus = b.dataset.s; loadIntros(); }));
+      el.querySelectorAll("[data-act]").forEach((b) => b.addEventListener("click", async () => {
+        await api(`/api/admin/intros/${b.dataset.id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: b.dataset.act }) });
+        loadIntros();
+      }));
+    }
+
+    let subStatus = "active";
+    async function loadSubs() {
+      const el = document.getElementById("tab-subs");
+      el.innerHTML = "<p class='admin-muted'>Loading…</p>";
+      const r = await api(`/api/admin/subscribers?status=${subStatus}`);
+      const d = await r.json();
+      if (!d.ok) { el.innerHTML = "<p>Failed to load.</p>"; return; }
+      const counts = Object.fromEntries((d.counts || []).map((c) => [c.status, c.n]));
+      el.innerHTML =
+        "<div class='admin-row' style='margin-bottom:16px;'>" +
+        ["active", "pending", "unsubscribed"].map((s) => `<button class="btn btn-ghost small" data-s="${s}" style="${s === subStatus ? "border-color:var(--emerald);color:var(--emerald-deep);" : ""}">${s} (${counts[s] || 0})</button>`).join("") +
+        "</div>" +
+        (d.subscribers.length === 0 ? "<p class='admin-muted'>Nothing here.</p>" :
+          `<div class="admin-card"><strong>${d.subscribers.length} subscribers</strong>` +
+          d.subscribers.map((s) => `<div style="padding:8px 0;border-top:1px solid rgba(18,26,22,.06);"><span>${esc(s.email)}</span> <span class="admin-muted">${esc(s.name || "")} · ${s.subscribed_at ? s.subscribed_at.slice(0, 10) : s.created_at.slice(0, 10)}</span></div>`).join("") + "</div>");
+      el.querySelectorAll("[data-s]").forEach((b) => b.addEventListener("click", () => { subStatus = b.dataset.s; loadSubs(); }));
+    }
+
+    async function loadInvites() {
+      const el = document.getElementById("tab-invites");
+      el.innerHTML = "<p class='admin-muted'>Loading…</p>";
+      const r = await api("/api/admin/invites");
+      const d = await r.json();
+      if (!d.ok) { el.innerHTML = "<p>Failed to load.</p>"; return; }
+      el.innerHTML =
+        `<div class="admin-card"><div class="admin-row"><strong>Create invite code</strong>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input id="invUses" type="number" value="1" min="1" style="width:60px;padding:8px;border:1px solid rgba(18,26,22,.12);border-radius:8px;" title="Max uses">
+            <input id="invDays" type="number" value="30" min="1" style="width:70px;padding:8px;border:1px solid rgba(18,26,22,.12);border-radius:8px;" title="Expires in days">
+            <button class="btn small" id="invCreate">Create</button>
+          </div></div>
+          <p class="admin-muted">New code: <strong id="invNew"></strong></p></div>` +
+        (d.invites.length === 0 ? "<p class='admin-muted'>No invite codes yet.</p>" :
+          d.invites.map((i) => `<div class="admin-card"><strong style="font-family:monospace;">${esc(i.code)}</strong><br><span class="admin-muted">${i.uses}/${i.max_uses} used · by ${esc(i.created_by || "?")} · ${i.created_at.slice(0, 10)}${i.expires_at ? " · expires " + i.expires_at.slice(0, 10) : ""}</span></div>`).join(""));
+      document.getElementById("invCreate").addEventListener("click", async () => {
+        const rr = await api("/api/admin/invites", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ max_uses: +document.getElementById("invUses").value, expires_days: +document.getElementById("invDays").value }) });
+        const dd = await rr.json();
+        if (dd.ok) { document.getElementById("invNew").textContent = dd.code; loadInvites(); }
+      });
+    }
+
+    async function loadUsers() {
+      const el = document.getElementById("tab-users");
+      el.innerHTML = "<p class='admin-muted'>Loading…</p>";
+      const r = await api("/api/admin/users");
+      const d = await r.json();
+      if (!d.ok) { el.innerHTML = "<p>Failed to load.</p>"; return; }
+      el.innerHTML = `<div class="admin-card"><strong>${d.users.length} users</strong>` +
+        d.users.map((u) => `<div style="padding:8px 0;border-top:1px solid rgba(18,26,22,.06);"><span>${esc(u.email)}</span> <span class="admin-muted">${esc(u.name || "")} · ${u.role} · ${u.status}</span></div>`).join("") + "</div>";
+    }
+
+    async function loadMetrics() {
+      const el = document.getElementById("tab-metrics");
+      el.innerHTML = "<p class='admin-muted'>Loading…</p>";
+      const r = await api("/api/metrics");
+      const d = await r.json();
+      if (!d.ok) { el.innerHTML = "<p>Failed to load.</p>"; return; }
+      const m = d.metrics || d;
+      el.innerHTML = `<div class="cards">` +
+        Object.entries(m).map(([k, v]) => `<div class="card" style="text-align:center;"><div class="n">${k}</div><h3 style="font-size:32px;">${v}</h3></div>`).join("") +
+        `</div>`;
+    }
+
+    async function loadAudit() {
+      const el = document.getElementById("tab-audit");
+      el.innerHTML = "<p class='admin-muted'>Loading…</p>";
+      const r = await api("/api/admin/audit");
+      const d = await r.json();
+      if (!d.ok) { el.innerHTML = "<p>Failed to load.</p>"; return; }
+      el.innerHTML = (d.log.length === 0 ? "<p class='admin-muted'>No audit entries yet.</p>" :
+        `<div class="admin-card">` + d.log.map((a) => `<div style="padding:8px 0;border-top:1px solid rgba(18,26,22,.06);"><strong>${esc(a.action)}</strong> <span class="admin-muted">${esc(a.detail || "")}</span><br><span class="admin-muted">${a.created_at}</span></div>`).join("") + "</div>");
+    }
+
+    init();
+  </script>
+</Base>

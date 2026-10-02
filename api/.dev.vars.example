@@ -1,0 +1,11 @@
+# Copy to .dev.vars (gitignored) and fill locally. Never commit real values.
+# wrangler dev reads .dev.vars automatically.
+
+# Resend sending key for transactional mail (introduction + newsletter)
+RESEND_API_KEY=
+
+# Signs magic-link sessions (generate: openssl rand -hex 32)
+SESSION_SECRET=
+
+# Cloudflare Turnstile server key for form bot protection
+TURNSTILE_SECRET_KEY=

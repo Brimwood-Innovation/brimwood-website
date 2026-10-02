@@ -1,0 +1,128 @@
+---
+/* Base layout (T7): SEO/AEO/GEO head, v7 header + footer. */
+import "../styles/brand.css";
+
+interface Props {
+  title: string;
+  description: string;
+  path?: string;
+}
+const { title, description, path = "/" } = Astro.props;
+const canonical = `https://brimwoodinnovation.com${path}`;
+---
+<!doctype html>
+<html lang="en-ca">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Brimwood Innovation" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content="https://brimwoodinnovation.com/img/brimwood-logo-colour.svg" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <link
+      rel="preload"
+      href="/fonts/plus-jakarta-sans-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+
+    <script type="application/ld+json">
+      {JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        name: "Brimwood Innovation",
+        url: "https://brimwoodinnovation.com",
+        logo: "https://brimwoodinnovation.com/img/brimwood-logo-colour.svg",
+        slogan: "Build a business. Build yourself.",
+        address: {
+          "@type": "PostalAddress",
+          addressLocality: "Toronto",
+          addressRegion: "ON",
+          addressCountry: "CA",
+        },
+      })}
+    </script>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site">
+      <a href="/" aria-label="Brimwood Innovation home">
+        <img class="logo" src="/img/brimwood-logo-colour.svg" alt="Brimwood Innovation" />
+      </a>
+      <nav aria-label="Primary" class="main-nav">
+        <a href="/about">About</a>
+        <a href="/blog">Blog</a>
+        <a href="/academy">Academy</a>
+        <a href="/newsletter">Newsletter</a>
+        <a class="btn small" href="/#introduce">Request an introduction</a>
+      </nav>
+    </header>
+    <main id="main">
+      <slot />
+    </main>
+    <footer class="site">
+      <div class="foot-inner">
+        <div class="foot-top">
+          <img src="/img/brimwood-logo-reversed.svg" alt="Brimwood Innovation" />
+          <div class="foot-links">
+            <a href="/about">About</a>
+            <a href="/blog">Blog</a>
+            <a href="/academy">Academy</a>
+            <a href="/newsletter">Newsletter</a>
+            <a href="/members" id="footMember">Member sign in</a>
+            <a href="/admin" id="footAdmin" style="display:none;">Admin</a>
+          </div>
+          <div class="foot-links">
+            <a href="https://instagram.com/brimwoodinnovation" target="_blank" rel="noopener">Instagram</a>
+            <a href="https://www.threads.com/@brimwoodinnovation" target="_blank" rel="noopener">Threads</a>
+            <a href="https://facebook.com/brimwoodinnovation" target="_blank" rel="noopener">Facebook</a>
+            <a href="https://x.com/brimwoodai" target="_blank" rel="noopener">X</a>
+            <a href="https://www.linkedin.com/in/brimwoodinnovation/" target="_blank" rel="noopener">LinkedIn</a>
+          </div>
+        </div>
+        <div class="foot-bottom">
+          <span>&copy; 2026 Brimwood Innovation</span>
+          <span>1365 Gerrard St E Unit 2, Toronto</span>
+        </div>
+      </div>
+    </footer>
+    <script>
+      // Footer member links reflect auth state.
+      (async () => {
+        try {
+          const apiBase = import.meta.env.PUBLIC_API_BASE || "";
+          const r = await fetch(apiBase + "/api/auth/me", {
+            headers: { accept: "application/json" },
+            credentials: "include",
+          });
+          const d = await r.json().catch(() => ({}));
+          if (r.ok && d.ok) {
+            const fm = document.getElementById("footMember");
+            if (fm) { fm.textContent = "Dashboard"; fm.href = "/dashboard"; }
+            if (d.user.role === "admin") {
+              const fa = document.getElementById("footAdmin");
+              if (fa) fa.style.display = "inline";
+            }
+          }
+        } catch {}
+      })();
+    </script>
+  </body>
+</html>

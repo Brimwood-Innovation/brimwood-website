@@ -1,0 +1,84 @@
+---
+/* Newsletter page (T11): landing + signup + archive.
+ * Archive visibility is undecided — defaulting to email-exclusive (safe,
+ * matches invite-only positioning). Founder decides at CP2a. */
+import Base from "../layouts/Base.astro";
+---
+
+<Base
+  title="Newsletter — Brimwood Innovation"
+  description="The Brimwood newsletter: short notes on micro business, AI in practice, and the owner mindset. One email, now and then. No spam."
+  path="/newsletter"
+>
+  <section class="block">
+    <div class="kicker">Newsletter</div>
+    <h1 class="sec" style="font-size:clamp(34px,5.4vw,56px);margin-bottom:18px;">One email, now and then.</h1>
+    <p class="sec-lede">
+      Short notes on micro business, AI in practice, and the owner mindset.
+      Written by builders, for builders. No spam, no growth hacks — unsubscribe
+      anytime with one click.
+    </p>
+  </section>
+
+  <section class="block" id="signup">
+    <div class="cta">
+      <h2>Get the newsletter.</h2>
+      <p>Enter your email and we will send a confirmation link. You are only subscribed after you click it — no surprises.</p>
+      <form class="intro" id="newsForm">
+        <label for="nEmail">Email</label>
+        <input id="nEmail" type="email" name="email" placeholder="you@example.com" required />
+        <input type="text" name="website" id="nSite" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true" />
+        <div class="cf-turnstile" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx" style="margin:16px 0;"></div>
+        <button class="btn" type="submit">Subscribe</button>
+        <p class="form-err" id="newsErr" style="display:none">Something went wrong on our end. Please email <a href="mailto:info@brimwoodinnovation.com" style="color:#fff;text-decoration:underline">info@brimwoodinnovation.com</a> directly.</p>
+      </form>
+      <div class="thanks" id="newsThanks">Check your inbox — we sent a confirmation link. Click it and you are in.</div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="kicker">Archive</div>
+    <h2 class="sec">Past letters</h2>
+    <p class="sec-lede">
+      Our letters are email-exclusive for now — they go to subscribers, not the
+      open web. Join above and you will get the next one.
+    </p>
+  </section>
+
+  <script>
+    // --- newsletter signup (POSTs to /api/newsletter; double opt-in) ---
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || '';
+    document.getElementById('newsForm').addEventListener('submit', async function(e){
+      e.preventDefault();
+      const email = document.getElementById('nEmail').value.trim();
+      const btn = this.querySelector('button[type=submit]');
+      const err = document.getElementById('newsErr');
+      err.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Subscribing\u2026';
+      try {
+        if (document.getElementById('nSite').value){ // honeypot: bot — silently accept
+          document.getElementById('newsForm').style.display = 'none';
+          document.getElementById('newsThanks').style.display = 'block';
+          return;
+        }
+        const res = await fetch(API_BASE + '/api/newsletter', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'accept': 'application/json' },
+          body: JSON.stringify({
+            email,
+            'cf-turnstile-response': (document.querySelector('#newsForm [name="cf-turnstile-response"]') || {}).value || ''
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.error || 'subscribe failed');
+        document.getElementById('newsForm').style.display = 'none';
+        document.getElementById('newsThanks').style.display = 'block';
+      } catch (ex) {
+        btn.disabled = false;
+        btn.textContent = 'Subscribe';
+        err.style.display = 'block';
+      }
+    });
+  </script>
+</Base>

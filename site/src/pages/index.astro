@@ -1,0 +1,138 @@
+---
+/* Home (T7): v7 page migrated to Astro, pixel-equivalent. Vanilla JS only. */
+import Base from "../layouts/Base.astro";
+import HeroDots from "../components/HeroDots.astro";
+---
+
+<Base
+  title="Brimwood Innovation — Coming soon"
+  description="Brimwood Innovation is a selective innovation hub in Toronto for ambitious people building AI-powered micro businesses. Build a business. Build yourself."
+  path="/"
+>
+  <div class="hero">
+    <HeroDots />
+    <img class="lockup" src="/img/brimwood-logo-reversed.svg" alt="Brimwood Innovation logo" />
+    <div class="eyebrow">Toronto &middot; Coming soon</div>
+    <h1>Build a business.<br />Build yourself.</h1>
+    <p class="lede">
+      Brimwood Innovation is a selective innovation hub for ambitious people building
+      AI-powered micro businesses. A beautiful room, real skills, a vetted community,
+      and a team that builds alongside you.
+    </p>
+    <a class="btn" href="#introduce">Request an introduction</a>
+    <div class="countdown">
+      <div class="cd-lbl">Expected to launch</div>
+      <div class="cd-digits">
+        <span><b id="cdD">00</b><i>days</i></span>
+        <span><b id="cdH">00</b><i>hrs</i></span>
+        <span><b id="cdM">00</b><i>min</i></span>
+        <span><b id="cdS">00</b><i>sec</i></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="belief">
+    <p>Elite by effort, not by background.</p>
+  </div>
+
+  <section class="block">
+    <div class="kicker">The four promises</div>
+    <h2 class="sec">What every member gets</h2>
+    <p class="sec-lede">We give ambitious people the space, skills, community, and partnership to build something of their own.</p>
+    <div class="cards">
+      <div class="card"><div class="n">01</div><h3>Space</h3><p>A beautiful, physical hub to work, meet, and build. Not just a group chat.</p></div>
+      <div class="card"><div class="n">02</div><h3>Skills</h3><p>Hands-on AI training from people who use it every day in real businesses.</p></div>
+      <div class="card"><div class="n">03</div><h3>Community</h3><p>A small, vetted group of builders who push each other to be better.</p></div>
+      <div class="card"><div class="n">04</div><h3>Partnership</h3><p>Support and backing from a team that builds alongside you.</p></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="kicker">How it works</div>
+    <h2 class="sec">Small teams, powered by AI</h2>
+    <p class="sec-lede">Small teams, powered by AI, backed by a community that makes each other better.</p>
+    <div class="steps">
+      <div class="step"><div class="num">1</div><h3>Introduction</h3><p>Membership is by invitation or referral. Know someone who belongs here? Introduce them.</p><div class="arrow">&rarr;</div></div>
+      <div class="step"><div class="num">2</div><h3>Build</h3><p>Work from the hub on your own schedule. Learn AI hands-on, ship weekly, and grow alongside other owners.</p><div class="arrow">&rarr;</div></div>
+      <div class="step"><div class="num">3</div><h3>Grow together</h3><p>When you grow, we grow together. Building a business is one of the best ways to build yourself.</p></div>
+    </div>
+  </section>
+
+  <section class="block" id="introduce">
+    <div class="cta">
+      <h2>Membership is by invitation.</h2>
+      <p>We build our reputation so the right people want in. If you, or someone you know, belongs at Brimwood, request an introduction and tell us a little about yourself.</p>
+      <form class="intro" id="introForm">
+        <label for="fName">Your name</label>
+        <input id="fName" type="text" name="name" placeholder="Jane Appleseed" required />
+        <label for="fEmail">Email</label>
+        <input id="fEmail" type="email" name="email" placeholder="you@example.com" required />
+        <label for="fRef">Who referred you? <span style="text-transform:none;letter-spacing:0">(optional)</span></label>
+        <input id="fRef" type="text" name="referral" placeholder="A member's name, or how you heard of us" />
+        <label for="fMsg">What are you building?</label>
+        <textarea id="fMsg" name="message" rows="3" placeholder="A line or two is plenty."></textarea>
+        <input type="text" name="website" id="fSite" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true" />
+        <div class="cf-turnstile" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx" style="margin:16px 0;"></div>
+        <button class="btn" type="submit">Request an introduction</button>
+        <p class="form-err" id="formErr" style="display:none">Something went wrong on our end. Please email <a href="mailto:info@brimwoodinnovation.com" style="color:#fff;text-decoration:underline">info@brimwoodinnovation.com</a> directly and we will take it from there.</p>
+      </form>
+      <div class="thanks" id="thanksMsg">Thank you. Your introduction request is on its way &mdash; we read every one personally and will be in touch.</div>
+    </div>
+  </section>
+
+  <script>
+
+// --- demo-night countdown (fixed target: Friday 2026-10-30 19:00 viewer-local) ---
+const demoAt = new Date(2026, 9, 30, 19, 0, 0, 0);
+const cdD = document.getElementById('cdD'), cdH = document.getElementById('cdH'),
+      cdM = document.getElementById('cdM'), cdS = document.getElementById('cdS');
+const p2 = n => String(n).padStart(2, '0');
+function tick(){
+  let diff = demoAt - new Date();
+  if (diff < 0) diff = 0;
+  cdD.textContent = p2(Math.round(diff / 864e5));
+  cdH.textContent = p2(Math.floor(diff / 36e5) % 24);
+  cdM.textContent = p2(Math.floor(diff / 6e4) % 60);
+  cdS.textContent = p2(Math.floor(diff / 1e3) % 60);
+}
+tick(); setInterval(tick, 1000);
+
+// --- introduction form (POSTs to /api/introduction; Worker sends via Resend) ---
+const API_BASE = import.meta.env.PUBLIC_API_BASE || '';
+document.getElementById('introForm').addEventListener('submit', async function(e){
+  e.preventDefault();
+  const v = id => document.getElementById(id).value.trim();
+  const btn = this.querySelector('button[type=submit]');
+  const err = document.getElementById('formErr');
+  err.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Sending\u2026';
+  try {
+    if (v('fSite')){ // honeypot filled: bot — silently accept, send nothing
+      document.getElementById('introForm').style.display = 'none';
+      document.getElementById('thanksMsg').style.display = 'block';
+      return;
+    }
+    const res = await fetch(API_BASE + '/api/introduction', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'accept': 'application/json' },
+      body: JSON.stringify({
+        name: v('fName'), email: v('fEmail'),
+        referral: v('fRef'), message: v('fMsg'),
+        website: '',
+        'cf-turnstile-response': (document.querySelector('[name="cf-turnstile-response"]') || {}).value || ''
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error(data.error || 'send failed');
+    document.getElementById('introForm').style.display = 'none';
+    document.getElementById('thanksMsg').style.display = 'block';
+  } catch (ex) {
+    btn.disabled = false;
+    btn.textContent = 'Request an introduction';
+    err.style.display = 'block';
+  }
+});
+
+  </script>
+</Base>

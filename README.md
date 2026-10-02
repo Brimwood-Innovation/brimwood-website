@@ -1,8 +1,8 @@
 # brimwoodinnovation.com website
 
-Source of the Brimwood Innovation "coming soon" site. Public repo:
-`Brimwood-Innovation/brimwood-website` — every change to the site flows
-through GitHub; there are no more zip uploads.
+Monorepo for the Brimwood Innovation website. Public repo:
+`Brimwood-Innovation/brimwood-website` — every change flows through
+GitHub; there are no more zip uploads.
 
 ## Workflow (enforced)
 
@@ -23,14 +23,21 @@ git checkout main && git merge feature/my-change && git push  # ships to product
 
 ## Layout
 
-- `build/` — the deployable site root. Zip this directory (contents, not the
-  folder) for Cloudflare Pages direct upload. **v7 is the current live deploy.**
-- `worker-introduction.js` — Cloudflare Worker `brimwood-introduction`
+- `site/` — Astro public website (Cloudflare Pages). Being built; see
+  `tasks/plan.md`.
+- `api/` — Hono `brimwood-api` Worker (TypeScript): forms, newsletter,
+  auth, members, admin endpoints. Being built.
+- `admin/` — Decap CMS (MIT) config, served at `/admin`. Being built.
+- `docs/` — full-stack framework report v1.1 (the spec), runbooks.
+- `build/` — the current v7 static site root (live in production).
+  Migrates into `site/` during the build; until then it stays untouched.
+- `worker-introduction.js` — live Cloudflare Worker `brimwood-introduction`
   (route `brimwoodinnovation.com/api/*`): introduction form endpoint,
-  newsletter double opt-in, Resend delivery, KV rate limiting.
-- `framework/` — full-stack web framework design report (v1.1) for the future
-  Brimwood site: Astro, Hono, Decap CMS, D1 schemas, SEO/AEO/GEO plan.
+  newsletter double opt-in, Resend delivery, KV rate limiting. Absorbed
+  into `api/` during the build; until then it stays untouched.
 - `preview/` — discarded hero animation experiments (reverted; kept for reference).
+- `CAPABILITY-MAP.md`, `CONSTRAINTS.md`, `tasks/` — spec, build constraints,
+  implementation plan and task list (the `/spec` → `/plan` → `/build` trail).
 
 ## Deploying
 
