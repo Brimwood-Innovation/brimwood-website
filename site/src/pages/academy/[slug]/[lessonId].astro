@@ -50,6 +50,15 @@ try {
         <p style="color:#5B6862;font-size:14px;margin:0 0 32px;">
           {lesson.duration_minutes ? `${lesson.duration_minutes} min` : ""} {lesson.is_preview ? "· Preview" : "· Members"}
         </p>
+        {lesson.video_r2_key && (
+          <video
+            controls
+            preload="metadata"
+            playsinline
+            style="width:100%;border-radius:12px;background:#121A16;margin-bottom:32px;"
+            src={`${apiBase}/api/video/${lesson.video_r2_key}`}
+          />
+        )}
         <div style="font-size:17px;line-height:1.7;color:#121A16;white-space:pre-wrap;">{lesson.body_md}</div>
         <div style="margin-top:40px;">
           <button id="completeBtn" style="background:#0C9463;color:#fff;border:0;border-radius:10px;padding:12px 28px;font-size:15px;font-weight:600;cursor:pointer;">
@@ -103,6 +112,9 @@ try {
                 body.style.display = "block";
                 body.innerHTML =
                   "<h1 style='font-size:36px;margin:0 0 8px;color:#121A16;'>" + d.lesson.title + "</h1>" +
+                  (d.lesson.video_r2_key
+                    ? "<video controls preload='metadata' playsinline style='width:100%;border-radius:12px;background:#121A16;margin:16px 0 32px;' src='" + apiBase + "/api/video/" + encodeURIComponent(d.lesson.video_r2_key) + "'></video>"
+                    : "") +
                   "<div style='font-size:17px;line-height:1.7;color:#121A16;white-space:pre-wrap;'>" +
                   d.lesson.body_md.replace(/</g, "&lt;") + "</div>" +
                   "<div style='margin-top:40px;'><button id='completeBtn2' style='background:#0C9463;color:#fff;border:0;border-radius:10px;padding:12px 28px;font-size:15px;font-weight:600;cursor:pointer;'>Mark as complete</button>" +

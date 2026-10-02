@@ -5,6 +5,7 @@ import auth from "./routes/auth";
 import metrics from "./routes/metrics";
 import academy from "./routes/academy";
 import enrolment from "./routes/enrolment";
+import video from "./routes/video";
 
 export type Bindings = {
   DB: D1Database;
@@ -56,6 +57,7 @@ app.route("/api/auth", auth);
 app.route("/api/metrics", metrics);
 app.route("/api/courses", academy);
 app.route("/api", enrolment);
+app.route("/api/video", video);
 
 app.notFound((c) => c.json({ ok: false, error: "Not found" }, 404));
 app.onError((err, c) => {
