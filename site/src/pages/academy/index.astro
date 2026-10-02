@@ -1,0 +1,34 @@
+---
+/* Academy index (T21): list published courses. */
+import Base from "../../layouts/Base.astro";
+const apiBase = import.meta.env.PUBLIC_API_BASE || "";
+let courses: any[] = [];
+try {
+  const r = await fetch(apiBase + "/api/courses", { headers: { accept: "application/json" } });
+  const d = await r.json();
+  if (d.ok) courses = d.courses;
+} catch {}
+---
+
+<Base title="Academy — Brimwood Innovation" description="Courses for builders. Learn by shipping.">
+  <section style="max-width:880px;margin:0 auto;padding:64px 20px;">
+    <p style="color:#0C9463;font-weight:700;letter-spacing:.08em;font-size:13px;margin:0 0 12px;">ACADEMY</p>
+    <h1 style="font-size:40px;margin:0 0 16px;color:#121A16;">Learn by shipping.</h1>
+    <p style="font-size:18px;color:#5B6862;max-width:560px;">
+      Courses for builders. Previews are open to everyone; full lessons are for members.
+    </p>
+
+    <div style="display:grid;gap:20px;margin-top:40px;">
+      {courses.map((c) => (
+        <a href={`/academy/${c.slug}`} style="display:block;background:#fff;border:1px solid rgba(18,26,22,.08);border-radius:16px;padding:28px;text-decoration:none;">
+          <p style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:.08em;color:#0C9463;">{c.level.toUpperCase()}</p>
+          <h2 style="margin:0 0 8px;font-size:24px;color:#121A16;">{c.title}</h2>
+          <p style="margin:0;color:#5B6862;">{c.tagline}</p>
+        </a>
+      ))}
+      {courses.length === 0 && (
+        <p style="color:#5B6862;">No courses published yet. Check back soon.</p>
+      )}
+    </div>
+  </section>
+</Base>

@@ -3,6 +3,7 @@ import introduction from "./routes/introduction";
 import newsletter from "./routes/newsletter";
 import auth from "./routes/auth";
 import metrics from "./routes/metrics";
+import academy from "./routes/academy";
 
 export type Bindings = {
   DB: D1Database;
@@ -52,6 +53,7 @@ app.route("/api/introduction", introduction);
 app.route("/api/newsletter", newsletter);
 app.route("/api/auth", auth);
 app.route("/api/metrics", metrics);
+app.route("/api/courses", academy);
 
 app.notFound((c) => c.json({ ok: false, error: "Not found" }, 404));
 app.onError((err, c) => {

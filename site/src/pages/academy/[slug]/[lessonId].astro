@@ -1,0 +1,92 @@
+---
+/* Lesson view (T21): preview lessons render; members-only lessons show a gate. */
+import Base from "../../../layouts/Base.astro";
+
+export async function getStaticPaths() {
+  const apiBase = import.meta.env.PUBLIC_API_BASE || "";
+  const paths: any[] = [];
+  try {
+    const r = await fetch(apiBase + "/api/courses", { headers: { accept: "application/json" } });
+    const d = await r.json();
+    if (d.ok) {
+      for (const c of d.courses) {
+        const cr = await fetch(apiBase + "/api/courses/" + encodeURIComponent(c.slug), {
+          headers: { accept: "application/json" },
+        });
+        const cd = await cr.json();
+        if (cd.ok) {
+          for (const m of cd.modules) {
+            for (const l of m.lessons) {
+              paths.push({ params: { slug: c.slug, lessonId: l.id } });
+            }
+          }
+        }
+      }
+    }
+  } catch {}
+  return paths;
+}
+
+const { slug, lessonId } = Astro.params;
+const apiBase = import.meta.env.PUBLIC_API_BASE || "";
+let lesson: any = null;
+let gated = false;
+try {
+  const r = await fetch(apiBase + "/api/courses/lessons/" + encodeURIComponent(lessonId || ""), {
+    headers: { accept: "application/json" },
+  });
+  const d = await r.json();
+  if (d.ok) lesson = d.lesson;
+  else if (r.status === 401 || r.status === 403) gated = true;
+} catch {}
+---
+
+<Base title={`${lesson ? lesson.title : "Lesson"} — Academy — Brimwood Innovation`} description={lesson ? lesson.title : "Brimwood Academy lesson"}>
+  <section style="max-width:760px;margin:0 auto;padding:64px 20px;">
+    {lesson ? (
+      <>
+        <a href={`/academy/${lesson.course_slug}`} style="color:#0C9463;font-size:14px;">← {lesson.course_title}</a>
+        <h1 style="font-size:36px;margin:24px 0 8px;color:#121A16;">{lesson.title}</h1>
+        <p style="color:#5B6862;font-size:14px;margin:0 0 32px;">
+          {lesson.duration_minutes ? `${lesson.duration_minutes} min` : ""} {lesson.is_preview ? "· Preview" : "· Members"}
+        </p>
+        <div style="font-size:17px;line-height:1.7;color:#121A16;white-space:pre-wrap;">{lesson.body_md}</div>
+      </>
+    ) : gated ? (
+      <>
+        <h1 style="font-size:36px;color:#121A16;">Members only</h1>
+        <p style="font-size:18px;color:#5B6862;" id="gateMsg">
+          This lesson is for Brimwood members. <a href="/members" style="color:#0C9463;">Sign in</a> to continue learning.
+        </p>
+        <div id="lessonBody" style="display:none;"></div>
+        <script define:vars={{ lessonId, apiBase }}>
+          // If signed in, retry with credentials — the API will return the full lesson.
+          (async () => {
+            try {
+              const r = await fetch(apiBase + "/api/courses/lessons/" + encodeURIComponent(lessonId), {
+                headers: { accept: "application/json" },
+                credentials: "include",
+              });
+              const d = await r.json();
+              if (d.ok && d.lesson) {
+                document.getElementById("gateMsg").style.display = "none";
+                const body = document.getElementById("lessonBody");
+                body.style.display = "block";
+                body.innerHTML =
+                  "<h1 style='font-size:36px;margin:0 0 8px;color:#121A16;'>" + d.lesson.title + "</h1>" +
+                  "<div style='font-size:17px;line-height:1.7;color:#121A16;white-space:pre-wrap;'>" +
+                  d.lesson.body_md.replace(/</g, "&lt;") + "</div>";
+                document.title = d.lesson.title + " — Academy — Brimwood Innovation";
+              }
+            } catch {}
+          })();
+        </script>
+      </>
+    ) : (
+      <>
+        <h1 style="font-size:36px;color:#121A16;">Not found</h1>
+        <p style="color:#5B6862;">This lesson does not exist or is not published.</p>
+      </>
+    )}
+  </section>
+</Base>
