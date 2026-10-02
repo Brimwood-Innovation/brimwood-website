@@ -7,6 +7,7 @@ import academy from "./routes/academy";
 import enrolment from "./routes/enrolment";
 import video from "./routes/video";
 import admin from "./routes/admin";
+import oauth from "./routes/oauth";
 import { handleScheduled } from "./cron";
 
 export type Bindings = {
@@ -61,6 +62,7 @@ app.route("/api/courses", academy);
 app.route("/api", enrolment);
 app.route("/api/video", video);
 app.route("/api/admin", admin);
+app.route("/api/oauth", oauth);
 
 app.notFound((c) => c.json({ ok: false, error: "Not found" }, 404));
 app.onError((err, c) => {

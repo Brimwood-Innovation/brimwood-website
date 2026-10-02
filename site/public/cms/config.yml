@@ -1,0 +1,41 @@
+# Decap CMS config (T26): blog posts + academy content.
+# Auth via the GitHub OAuth worker at /api/oauth.
+
+backend:
+  name: github
+  repo: Brimwood-Innovation/brimwood-website
+  branch: develop
+  base_url: https://brimwood-api.adamsayani.workers.dev
+  auth_endpoint: /api/oauth/auth
+  api_root: https://api.github.com
+
+# Editorial guardrails (T27) are enforced via custom widgets + pre-publish checks.
+# See: site/src/cms/editorial.js
+
+media_folder: "site/public/img/uploads"
+public_folder: "/img/uploads"
+
+collections:
+  - name: "blog"
+    label: "Blog Posts"
+    folder: "site/src/content/blog"
+    create: true
+    slug: "{{slug}}"
+    fields:
+      - { label: "Title", name: "title", widget: "string" }
+      - { label: "Excerpt", name: "excerpt", widget: "text", hint: "One or two short sentences. Appears in lists and SEO." }
+      - { label: "Publish date", name: "date", widget: "datetime", format: "YYYY-MM-DD" }
+      - { label: "Pillar", name: "pillar", widget: "select", options: ["micro-business", "ai-in-practice", "owner-mindset", "members-and-hub"] }
+      - { label: "Draft", name: "draft", widget: "boolean", default: true, hint: "Keep on until the founder approves." }
+      - { label: "Body", name: "body", widget: "markdown", hint: "Short sentences. Canadian spelling. No hype." }
+
+  - name: "courses"
+    label: "Courses"
+    folder: "site/src/content/courses"
+    create: true
+    slug: "{{slug}}"
+    fields:
+      - { label: "Title", name: "title", widget: "string" }
+      - { label: "Tagline", name: "tagline", widget: "string" }
+      - { label: "Level", name: "level", widget: "select", options: ["foundations", "builder", "operator"] }
+      - { label: "Description", name: "description", widget: "markdown" }
