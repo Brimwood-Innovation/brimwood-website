@@ -131,6 +131,7 @@ Legend — scope: XS ≤1 file, S 1–2, M 3–5, L 5–8.
 **Dependencies:** T15, T16. **Scope:** S.
 
 ### T18: Magic-link auth
+**Status:** DONE 2026-10-01 — 6-digit codes, 10-min TTL, SHA-256 hashed in KV; sessions in SESSIONS_KV (30d, httpOnly/secure); unknown emails never leak; strict rate limits; admin seeded as info@brimwoodinnovation.com. Tested locally.
 **Description:** 6-digit codes, 10-min expiry, sessions in KV; codes only to known addresses; rate-limited.
 **Acceptance:** code request → email → code → session cookie; unknown emails get no code.
 **Verification:** full login on staging; expired/used codes rejected; security review.

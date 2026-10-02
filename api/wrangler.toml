@@ -20,6 +20,10 @@ id = "ec0746dc3e924a00b601f6b83f6dea57"
 binding = "RATE_LIMIT_KV"
 id = "5e5c7b6a74c14f6ca2969b587797daa9"
 
+[[kv_namespaces]]
+binding = "SESSIONS_KV"
+id = "a808e8c1eddf45fb8bb8da723151d6bc"
+
 [[r2_buckets]]
 binding = "MEDIA"
 bucket_name = "brimwood-media"
