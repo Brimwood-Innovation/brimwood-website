@@ -18,7 +18,8 @@ secrets/
 
 # Monorepo tooling (added T1)
 node_modules/
-package-lock.json
+# NOTE: package-lock.json files ARE committed (reproducible CI builds).
+# Only alternate-manager lockfiles are ignored:
 yarn.lock
 pnpm-lock.yaml
 site/dist/
