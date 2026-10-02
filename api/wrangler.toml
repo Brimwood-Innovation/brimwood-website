@@ -1,0 +1,25 @@
+# brimwood-api — Hono on Cloudflare Workers (T8)
+# Resource IDs from docs/runbooks/cloudflare-bootstrap.md (T2).
+# Secrets (RESEND_API_KEY, SESSION_SECRET, TURNSTILE_SECRET_KEY) are set via
+# the dashboard / `wrangler secret put` — never in this file.
+
+name = "brimwood-api"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "brimwood_db"
+database_id = "b183738d-bd59-4198-a918-e3303516ed85"
+
+[[kv_namespaces]]
+binding = "NEWSLETTER_KV"
+id = "ec0746dc3e924a00b601f6b83f6dea57"
+
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "5e5c7b6a74c14f6ca2969b587797daa9"
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "brimwood-media"

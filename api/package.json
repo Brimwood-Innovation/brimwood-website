@@ -1,0 +1,1 @@
+{"dependencies":{"hono":"^4.0.0"},"devDependencies":{"@cloudflare/workers-types":"^5.0.0","typescript":"^7.0.2","wrangler":"^4.0.0"},"license":"MIT","name":"brimwood-api","private":true,"scripts":{"dev":"wrangler dev","typecheck":"tsc --noEmit"},"type":"module","version":"0.1.0"}
