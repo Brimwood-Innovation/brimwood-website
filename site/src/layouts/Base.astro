@@ -65,36 +65,13 @@ const canonical = `https://brimwoodinnovation.com${path}`;
       <a href="/" aria-label="Brimwood Innovation home">
         <img class="logo" src="/img/brimwood-logo-colour.svg" alt="Brimwood Innovation" />
       </a>
-      <nav aria-label="Primary">
+      <nav aria-label="Primary" class="main-nav">
         <a href="/about">About</a>
         <a href="/blog">Blog</a>
         <a href="/academy">Academy</a>
         <a href="/newsletter">Newsletter</a>
-        <a href="/members" id="navMember">Members</a>
-        <a href="/admin" id="navAdmin" style="display:none;">Admin</a>
         <a class="btn small" href="/#introduce">Request an introduction</a>
       </nav>
-      <script>
-        // Swap "Members" → "Dashboard" when signed in.
-        (async () => {
-          try {
-            const apiBase = import.meta.env.PUBLIC_API_BASE || "";
-            const r = await fetch(apiBase + "/api/auth/me", {
-              headers: { accept: "application/json" },
-              credentials: "include",
-            });
-            const d = await r.json().catch(() => ({}));
-            if (r.ok && d.ok) {
-              const a = document.getElementById("navMember");
-              if (a) { a.textContent = "Dashboard"; a.href = "/dashboard"; }
-              if (d.user.role === "admin") {
-                const ad = document.getElementById("navAdmin");
-                if (ad) ad.style.display = "inline";
-              }
-            }
-          } catch {}
-        })();
-      </script>
     </header>
     <main id="main">
       <slot />
@@ -103,6 +80,14 @@ const canonical = `https://brimwoodinnovation.com${path}`;
       <div class="foot-inner">
         <div class="foot-top">
           <img src="/img/brimwood-logo-reversed.svg" alt="Brimwood Innovation" />
+          <div class="foot-links">
+            <a href="/about">About</a>
+            <a href="/blog">Blog</a>
+            <a href="/academy">Academy</a>
+            <a href="/newsletter">Newsletter</a>
+            <a href="/members" id="footMember">Member sign in</a>
+            <a href="/admin" id="footAdmin" style="display:none;">Admin</a>
+          </div>
           <div class="foot-links">
             <a href="https://instagram.com/brimwoodinnovation" target="_blank" rel="noopener">Instagram</a>
             <a href="https://www.threads.com/@brimwoodinnovation" target="_blank" rel="noopener">Threads</a>
@@ -117,5 +102,26 @@ const canonical = `https://brimwoodinnovation.com${path}`;
         </div>
       </div>
     </footer>
+    <script>
+      // Footer member links reflect auth state.
+      (async () => {
+        try {
+          const apiBase = import.meta.env.PUBLIC_API_BASE || "";
+          const r = await fetch(apiBase + "/api/auth/me", {
+            headers: { accept: "application/json" },
+            credentials: "include",
+          });
+          const d = await r.json().catch(() => ({}));
+          if (r.ok && d.ok) {
+            const fm = document.getElementById("footMember");
+            if (fm) { fm.textContent = "Dashboard"; fm.href = "/dashboard"; }
+            if (d.user.role === "admin") {
+              const fa = document.getElementById("footAdmin");
+              if (fa) fa.style.display = "inline";
+            }
+          }
+        } catch {}
+      })();
+    </script>
   </body>
 </html>

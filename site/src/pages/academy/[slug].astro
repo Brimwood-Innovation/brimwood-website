@@ -30,7 +30,7 @@ if (!course) return Astro.redirect("/academy");
   <section class="block">
     <a href="/academy" style="font-size:14px;">← All courses</a>
     <div class="kicker" style="margin-top:24px;">{course.level}</div>
-    <h2 class="sec">{course.title}</h2>
+    <h1 class="sec" style="font-size:clamp(34px,5.4vw,56px);margin-bottom:18px;">{course.title}</h1>
     <p class="sec-lede">{course.tagline}</p>
 
     <div style="margin-bottom:32px;">

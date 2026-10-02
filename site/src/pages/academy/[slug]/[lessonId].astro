@@ -61,7 +61,7 @@ try {
       <>
         <a href={`/academy/${lesson.course_slug}`} style="font-size:14px;">← {lesson.course_title}</a>
         <div class="kicker" style="margin-top:24px;">{lesson.is_preview ? "Preview" : "Members"}{lesson.duration_minutes ? ` · ${lesson.duration_minutes} min` : ""}</div>
-        <h2 class="sec">{lesson.title}</h2>
+        <h1 class="sec" style="font-size:clamp(28px,4vw,44px);margin-bottom:18px;">{lesson.title}</h1>
         {lesson.video_r2_key && (
           <video
             controls
