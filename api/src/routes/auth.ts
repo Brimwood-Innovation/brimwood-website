@@ -157,6 +157,22 @@ app.post("/logout", async (c) => {
   return c.json({ ok: true });
 });
 
+app.get("/me", async (c) => {
+  const cookie = c.req.header("cookie") || "";
+  const m = cookie.match(new RegExp(COOKIE + "=([^;]+)"));
+  if (!m) return c.json({ ok: false }, 401);
+  const raw = await c.env.SESSIONS_KV.get("sess:" + m[1]);
+  if (!raw) return c.json({ ok: false }, 401);
+  const sess = JSON.parse(raw) as { userId: string; role: string };
+  const user = await c.env.DB.prepare(
+    "SELECT id, email, name, role FROM users WHERE id = ? AND status = 'active'"
+  )
+    .bind(sess.userId)
+    .first<{ id: string; email: string; name: string; role: string }>();
+  if (!user) return c.json({ ok: false }, 401);
+  return c.json({ ok: true, user });
+});
+
 /** Auth middleware for protected routes: resolves the session or 401s. */
 export async function requireAuth(
   c: { env: Env; req: { header: (n: string) => string | undefined } },

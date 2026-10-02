@@ -138,12 +138,14 @@ Legend — scope: XS ≤1 file, S 1–2, M 3–5, L 5–8.
 **Dependencies:** T14, T15. **Needs:** admin seed email from founder. **Scope:** M.
 
 ### T19: /members shell page
+**Status:** DONE 2026-10-01 — auth-gated shell; client-side session check via /api/auth/me; login (email→code) + logout flows.
 **Description:** Auth-gated shell page proving the session works; placeholder for dashboard.
 **Acceptance:** signed-in member sees it; anonymous visitors are redirected.
 **Verification:** manual login flow on staging.
 **Dependencies:** T18. **Scope:** S.
 
 ### T20: API metrics endpoint
+**Status:** DONE 2026-10-01 — GET /api/metrics, admin-only; returns intro/newsletter/user/email aggregates.
 **Description:** Aggregate metrics endpoint feeding the analytics dashboard (replaces CLI scrape).
 **Acceptance:** returns the dashboard's required series; admin-only.
 **Verification:** dashboard renders from it on staging.
