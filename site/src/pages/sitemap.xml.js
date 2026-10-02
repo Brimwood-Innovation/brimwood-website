@@ -4,7 +4,7 @@ import { getCollection } from "astro:content";
 const SITE = "https://brimwoodinnovation.com";
 
 export async function GET() {
-  const staticRoutes = ["", "/about", "/blog", "/newsletter", "/privacy", "/terms"];
+  const staticRoutes = ["", "/about", "/blog", "/newsletter", "/academy", "/privacy", "/terms"];
   const posts = await getCollection("blog");
 
   const urls = [

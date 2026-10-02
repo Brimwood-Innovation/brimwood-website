@@ -40,12 +40,17 @@ import Base from "../layouts/Base.astro";
     <h1 class="sec" style="font-size:clamp(28px,4vw,40px);margin-bottom:18px;">
       Welcome<span id="memberName"></span>.
     </h1>
-    <p class="sec-lede">This is the members shell — the dashboard lands here in Phase 3.</p>
+    <p class="sec-lede">Your Brimwood home base.</p>
     <div class="cards" style="grid-template-columns:repeat(2,1fr);">
       <div class="card"><div class="n">ROLE</div><h3 id="memberRole">—</h3><p>Your membership role.</p></div>
       <div class="card"><div class="n">EMAIL</div><h3 id="memberEmail" style="font-size:15px;word-break:break-all;">—</h3><p>Signed in as.</p></div>
     </div>
-    <p style="margin-top:32px;"><button class="btn btn-ghost" id="logoutBtn">Sign out</button></p>
+    <p style="margin-top:32px;display:flex;gap:12px;flex-wrap:wrap;">
+      <a class="btn" href="/dashboard">Go to dashboard →</a>
+      <a class="btn btn-ghost" href="/academy">Browse academy</a>
+      <a class="btn btn-ghost" href="/admin" id="adminLink" style="display:none;">Admin panel</a>
+      <button class="btn btn-ghost" id="logoutBtn">Sign out</button>
+    </p>
   </section>
 
   <script>
@@ -69,6 +74,7 @@ import Base from "../layouts/Base.astro";
         document.getElementById('memberName').textContent = d.user.name ? ', ' + d.user.name : '';
         document.getElementById('memberRole').textContent = d.user.role;
         document.getElementById('memberEmail').textContent = d.user.email;
+        if (d.user.role === 'admin') document.getElementById('adminLink').style.display = '';
       } catch {
         hide('members-loading'); show('members-login'); hide('members-home');
       }
