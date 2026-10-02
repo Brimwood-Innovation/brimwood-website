@@ -49,12 +49,14 @@ Legend — scope: XS ≤1 file, S 1–2, M 3–5, L 5–8.
 ## Phase 2a — content-site
 
 ### T7: Scaffold Astro site, migrate v7 page
+**Status:** DONE 2026-10-01 — v7 migrated pixel-equivalent (brand.css, Base header/footer, index.astro; vanilla JS, self-hosted font).
 **Description:** Astro in `site/`; migrate current `index.html` → Astro with vanilla JS only (no framework runtime).
 **Acceptance:** `npm run build` outputs static HTML pixel-equivalent to v7.
 **Verification:** visual diff vs production v7; Lighthouse CI green.
 **Dependencies:** T1. **Files:** `site/astro.config.mjs`, `site/src/pages/index.astro`, `site/src/styles/brand.css`. **Scope:** M.
 
 ### T8: v7 hero as island
+**Status:** DONE 2026-10-01 — HeroDots.astro island; deferred module, never blocks first paint; reduced-motion draws static frame.
 **Description:** Living dot-grid engine as `client:load` island on home only; never blocks first paint; `prefers-reduced-motion` → static frame.
 **Acceptance:** hero animates on home, absent elsewhere; LCP is text/logo.
 **Verification:** Lighthouse LCP ≤ 1.8s target; reduced-motion emulation shows static frame.
