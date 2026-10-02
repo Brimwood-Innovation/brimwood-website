@@ -1,6 +1,6 @@
 ---
-/* Base layout (T7): SEO/AEO/GEO head, header, footer. */
-import "../styles/global.css";
+/* Base layout (T7): SEO/AEO/GEO head, v7 header + footer. */
+import "../styles/brand.css";
 
 interface Props {
   title: string;
@@ -61,21 +61,34 @@ const canonical = `https://brimwoodinnovation.com${path}`;
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
-    <header class="site-header">
-      <a class="brand" href="/" aria-label="Brimwood Innovation home">
-        <img src="/img/brimwood-logo-colour.svg" alt="Brimwood Innovation" width="180" height="40" />
+    <header class="site">
+      <a href="/" aria-label="Brimwood Innovation home">
+        <img class="logo" src="/img/brimwood-logo-colour.svg" alt="Brimwood Innovation" />
       </a>
       <nav aria-label="Primary">
-        <a href="/">Home</a>
-        <a href="/about">About</a>
+        <a class="btn small" href="/#introduce">Request an introduction</a>
       </nav>
     </header>
     <main id="main">
       <slot />
     </main>
-    <footer class="site-footer">
-      <p>Brimwood Innovation — Build a business. Build yourself.</p>
-      <p class="fine">Toronto, Canada · <a href="mailto:info@brimwoodinnovation.com">info@brimwoodinnovation.com</a></p>
+    <footer class="site">
+      <div class="foot-inner">
+        <div class="foot-top">
+          <img src="/img/brimwood-logo-reversed.svg" alt="Brimwood Innovation" />
+          <div class="foot-links">
+            <a href="https://instagram.com/brimwoodinnovation" target="_blank" rel="noopener">Instagram</a>
+            <a href="https://www.threads.com/@brimwoodinnovation" target="_blank" rel="noopener">Threads</a>
+            <a href="https://facebook.com/brimwoodinnovation" target="_blank" rel="noopener">Facebook</a>
+            <a href="https://x.com/brimwoodai" target="_blank" rel="noopener">X</a>
+            <a href="https://www.linkedin.com/in/brimwoodinnovation/" target="_blank" rel="noopener">LinkedIn</a>
+          </div>
+        </div>
+        <div class="foot-bottom">
+          <span>&copy; 2026 Brimwood Innovation</span>
+          <span>1365 Gerrard St E Unit 2, Toronto</span>
+        </div>
+      </div>
     </footer>
   </body>
 </html>
