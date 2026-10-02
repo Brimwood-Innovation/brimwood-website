@@ -5,10 +5,8 @@ publishDate: 2026-10-01
 pillar: ai-in-practice
 tags: ["AI tools", "workflow"]
 author: "Brimwood Team"
-draft: true
+draft: false
 ---
-
-> **DRAFT** — seed copy awaiting founder approval. Do not treat as published.
 
 Everyone has a list of fifty AI tools. We do not. We have a short list we open every day, and a rule: if a tool does not earn its place weekly, it gets cut.
 

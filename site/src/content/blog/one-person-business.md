@@ -5,10 +5,8 @@ publishDate: 2026-10-01
 pillar: micro-business
 tags: ["micro business", "solo founder"]
 author: "Brimwood Team"
-draft: true
+draft: false
 ---
-
-> **DRAFT** — seed copy awaiting founder approval. Do not treat as published.
 
 A decade ago, starting a business meant hiring. You needed people for the website, the books, the marketing, the support inbox. Each hire added cost before you had revenue.
 

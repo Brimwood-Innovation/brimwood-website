@@ -110,6 +110,7 @@ Legend — scope: XS ≤1 file, S 1–2, M 3–5, L 5–8.
 **Dependencies:** T2. **Files:** `api/src/`. **Scope:** M.
 
 ### T15: D1 migrations 0001–0004
+**Status:** DONE 2026-10-01 — all 4 applied to brimwood_db; 16 tables verified.
 **Description:** Apply the report §11.2 schema (users, invites, blog, academy, leads, media) to staging D1.
 **Acceptance:** all tables exist with the specified constraints.
 **Verification:** `wrangler d1 execute --command "SELECT name FROM sqlite_master"` lists them.

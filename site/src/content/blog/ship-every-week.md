@@ -5,10 +5,8 @@ publishDate: 2026-10-01
 pillar: owner-mindset
 tags: ["habits", "shipping", "demo night"]
 author: "Brimwood Team"
-draft: true
+draft: false
 ---
-
-> **DRAFT** — seed copy awaiting founder approval. Do not treat as published.
 
 There is one habit that predicts whether a builder makes progress: shipping something every week. Not planning. Not learning. Shipping.
 
