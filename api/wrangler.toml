@@ -9,8 +9,8 @@ compatibility_date = "2026-10-01"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "brimwood_db"
-database_id = "b183738d-bd59-4198-a918-e3303516ed85"
+database_name = "brimwood_db_v2"
+database_id = "e8c57b50-ae14-4773-ab9b-08172c6609a6"
 
 [[kv_namespaces]]
 binding = "NEWSLETTER_KV"
