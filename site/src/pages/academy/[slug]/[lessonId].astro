@@ -1,5 +1,6 @@
 ---
-/* Lesson view (T21): preview lessons render; members-only lessons show a gate. */
+/* Lesson view: preview lessons render; members-only lessons show a gate.
+ * Completed state + prev/next navigation, all client-side aware. */
 import Base from "../../../layouts/Base.astro";
 
 export async function getStaticPaths() {
@@ -31,13 +32,28 @@ const { slug, lessonId } = Astro.params;
 const apiBase = import.meta.env.PUBLIC_API_BASE || "";
 let lesson: any = null;
 let gated = false;
+let prevLesson: any = null;
+let nextLesson: any = null;
 try {
   const r = await fetch(apiBase + "/api/courses/lessons/" + encodeURIComponent(lessonId || ""), {
     headers: { accept: "application/json" },
   });
   const d = await r.json();
-  if (d.ok) lesson = d.lesson;
-  else if (r.status === 401 || r.status === 403) gated = true;
+  if (d.ok) {
+    lesson = d.lesson;
+    // Build prev/next from the course's ordered lesson list.
+    const cr = await fetch(apiBase + "/api/courses/" + encodeURIComponent(lesson.course_slug), {
+      headers: { accept: "application/json" },
+    });
+    const cd = await cr.json();
+    if (cd.ok) {
+      const flat: any[] = [];
+      for (const m of cd.modules) for (const l of m.lessons) flat.push(l);
+      const idx = flat.findIndex((l) => l.id === lessonId);
+      if (idx > 0) prevLesson = flat[idx - 1];
+      if (idx >= 0 && idx < flat.length - 1) nextLesson = flat[idx + 1];
+    }
+  } else if (r.status === 401 || r.status === 403) gated = true;
 } catch {}
 ---
 
@@ -60,34 +76,67 @@ try {
           />
         )}
         <div style="font-size:17px;line-height:1.7;color:#121A16;white-space:pre-wrap;">{lesson.body_md}</div>
-        <div style="margin-top:40px;">
+
+        <div style="margin-top:40px;" id="completeWrap">
           <button id="completeBtn" style="background:#0C9463;color:#fff;border:0;border-radius:10px;padding:12px 28px;font-size:15px;font-weight:600;cursor:pointer;">
             Mark as complete
           </button>
-          <p id="completeMsg" style="display:none;color:#0C9463;font-weight:600;"></p>
+          <p id="completeMsg" style="display:none;font-weight:600;"></p>
         </div>
+
+        <nav style="display:flex;justify-content:space-between;margin-top:48px;padding-top:24px;border-top:1px solid rgba(18,26,22,.08);">
+          <span>
+            {prevLesson && (
+              <a href={`/academy/${slug}/${prevLesson.id}`} style="color:#0C9463;font-weight:600;">← {prevLesson.title}</a>
+            )}
+          </span>
+          <span>
+            {nextLesson && (
+              <a href={`/academy/${slug}/${nextLesson.id}`} style="color:#0C9463;font-weight:600;">{nextLesson.title} →</a>
+            )}
+          </span>
+        </nav>
+
         <script define:vars={{ lessonId, apiBase }}>
-          document.getElementById("completeBtn").addEventListener("click", async () => {
+          (async () => {
             const btn = document.getElementById("completeBtn");
             const msg = document.getElementById("completeMsg");
-            btn.disabled = true; btn.textContent = "Saving…";
+            // Check if already completed.
             try {
-              const r = await fetch(apiBase + "/api/progress/" + encodeURIComponent(lessonId), {
-                method: "POST",
-                credentials: "include",
+              const pr = await fetch(apiBase + "/api/progress/detail", {
                 headers: { accept: "application/json" },
+                credentials: "include",
               });
-              const d = await r.json().catch(() => ({}));
-              if (!r.ok || !d.ok) throw new Error(d.error || "save failed");
-              btn.style.display = "none";
-              msg.style.display = "block";
-              msg.textContent = "Done. Nice work.";
-            } catch (e) {
-              btn.disabled = false; btn.textContent = "Mark as complete";
-              msg.style.display = "block"; msg.style.color = "#c0392b";
-              msg.textContent = e.message === "Sign in required" ? "Please sign in first." : "Could not save. Try again.";
-            }
-          });
+              const pd = await pr.json().catch(() => ({}));
+              if (pd.ok && (pd.done || []).includes(lessonId)) {
+                btn.style.display = "none";
+                msg.style.display = "block";
+                msg.style.color = "#0C9463";
+                msg.textContent = "✓ Completed";
+                return;
+              }
+            } catch {}
+            btn.addEventListener("click", async () => {
+              btn.disabled = true; btn.textContent = "Saving…";
+              try {
+                const r = await fetch(apiBase + "/api/progress/" + encodeURIComponent(lessonId), {
+                  method: "POST",
+                  credentials: "include",
+                  headers: { accept: "application/json" },
+                });
+                const d = await r.json().catch(() => ({}));
+                if (!r.ok || !d.ok) throw new Error(d.error || "save failed");
+                btn.style.display = "none";
+                msg.style.display = "block";
+                msg.style.color = "#0C9463";
+                msg.textContent = "✓ Completed — nice work.";
+              } catch (e) {
+                btn.disabled = false; btn.textContent = "Mark as complete";
+                msg.style.display = "block"; msg.style.color = "#c0392b";
+                msg.textContent = e.message === "Sign in required" ? "Please sign in first." : "Could not save. Try again.";
+              }
+            });
+          })();
         </script>
       </>
     ) : gated ? (
@@ -97,7 +146,7 @@ try {
           This lesson is for Brimwood members. <a href="/members" style="color:#0C9463;">Sign in</a> to continue learning.
         </p>
         <div id="lessonBody" style="display:none;"></div>
-        <script define:vars={{ lessonId, apiBase }}>
+        <script define:vars={{ lessonId, slug, apiBase }}>
           // If signed in, retry with credentials — the API will return the full lesson.
           (async () => {
             try {
@@ -106,37 +155,7 @@ try {
                 credentials: "include",
               });
               const d = await r.json();
-              if (d.ok && d.lesson) {
-                document.getElementById("gateMsg").style.display = "none";
-                const body = document.getElementById("lessonBody");
-                body.style.display = "block";
-                body.innerHTML =
-                  "<h1 style='font-size:36px;margin:0 0 8px;color:#121A16;'>" + d.lesson.title + "</h1>" +
-                  (d.lesson.video_r2_key
-                    ? "<video controls preload='metadata' playsinline style='width:100%;border-radius:12px;background:#121A16;margin:16px 0 32px;' src='" + apiBase + "/api/video/" + encodeURIComponent(d.lesson.video_r2_key) + "'></video>"
-                    : "") +
-                  "<div style='font-size:17px;line-height:1.7;color:#121A16;white-space:pre-wrap;'>" +
-                  d.lesson.body_md.replace(/</g, "&lt;") + "</div>" +
-                  "<div style='margin-top:40px;'><button id='completeBtn2' style='background:#0C9463;color:#fff;border:0;border-radius:10px;padding:12px 28px;font-size:15px;font-weight:600;cursor:pointer;'>Mark as complete</button>" +
-                  "<p id='completeMsg2' style='display:none;color:#0C9463;font-weight:600;'></p></div>";
-                document.title = d.lesson.title + " — Academy — Brimwood Innovation";
-                document.getElementById("completeBtn2").addEventListener("click", async () => {
-                  const btn2 = document.getElementById("completeBtn2");
-                  const msg2 = document.getElementById("completeMsg2");
-                  btn2.disabled = true; btn2.textContent = "Saving…";
-                  try {
-                    const r2 = await fetch(apiBase + "/api/progress/" + encodeURIComponent(lessonId), {
-                      method: "POST", credentials: "include", headers: { accept: "application/json" },
-                    });
-                    const d2 = await r2.json().catch(() => ({}));
-                    if (!r2.ok || !d2.ok) throw new Error("save failed");
-                    btn2.style.display = "none"; msg2.style.display = "block"; msg2.textContent = "Done. Nice work.";
-                  } catch {
-                    btn2.disabled = false; btn2.textContent = "Mark as complete";
-                    msg2.style.display = "block"; msg2.style.color = "#c0392b"; msg2.textContent = "Could not save. Try again.";
-                  }
-                });
-              }
+              if (d.ok && d.lesson) location.reload(); // Re-render server-side now that we're authed.
             } catch {}
           })();
         </script>

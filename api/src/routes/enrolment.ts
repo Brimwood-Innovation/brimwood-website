@@ -91,6 +91,20 @@ app.post("/progress/:lessonId", async (c) => {
   return c.json({ ok: true });
 });
 
+/** Completed lesson IDs for the signed-in user (drives checkmarks). */
+app.get("/progress/detail", async (c) => {
+  const no = await requireAuth(c);
+  if (no) return no;
+  const user = (await sessionUser(c))!;
+  const { DB } = c.env;
+  const rows = await DB.prepare(
+    "SELECT lesson_id FROM lesson_progress WHERE user_id = ? AND status = 'completed'"
+  )
+    .bind(user.id)
+    .all();
+  return c.json({ ok: true, done: (rows.results as any[]).map((r) => r.lesson_id) });
+});
+
 /** My enrolments + progress. */
 app.get("/progress", async (c) => {
   const no = await requireAuth(c);

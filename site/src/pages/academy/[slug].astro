@@ -41,6 +41,38 @@ if (!course) return Astro.redirect("/academy");
     </div>
 
     <script define:vars={{ slug, apiBase }}>
+      // Mark completed lessons + hide enrol button if already enrolled.
+      (async () => {
+        try {
+          const pr = await fetch(apiBase + "/api/progress", {
+            headers: { accept: "application/json" },
+            credentials: "include",
+          });
+          const d = await pr.json().catch(() => ({}));
+          if (!d.ok) return;
+          // Already enrolled in this course? Hide the button.
+          if ((d.enrolments || []).some((e) => e.slug === slug)) {
+            document.getElementById("enrolBtn").style.display = "none";
+            const msg = document.getElementById("enrolMsg");
+            msg.style.display = "block";
+            msg.textContent = "You're enrolled in this course.";
+          }
+          // Checkmarks for completed lessons.
+          const dr = await fetch(apiBase + "/api/progress/detail", {
+            headers: { accept: "application/json" },
+            credentials: "include",
+          });
+          const dd = await dr.json().catch(() => ({}));
+          const doneIds = new Set(dd.ok ? dd.done || [] : []);
+          document.querySelectorAll(".lesson-link").forEach((a) => {
+            if (doneIds.has(a.dataset.lessonId)) {
+              a.querySelector(".done-mark").style.display = "inline";
+              a.style.borderColor = "#0C9463";
+            }
+          });
+        } catch {}
+      })();
+
       document.getElementById("enrolBtn").addEventListener("click", async () => {
         const btn = document.getElementById("enrolBtn");
         const msg = document.getElementById("enrolMsg");
@@ -71,9 +103,13 @@ if (!course) return Astro.redirect("/academy");
           {m.lessons.map((l: any) => (
             <a
               href={`/academy/${course.slug}/${l.id}`}
+              data-lesson-id={l.id}
+              class="lesson-link"
               style="display:flex;justify-content:space-between;align-items:center;background:#fff;border:1px solid rgba(18,26,22,.08);border-radius:12px;padding:16px 20px;text-decoration:none;"
             >
-              <span style="color:#121A16;font-weight:600;">{l.title}</span>
+              <span style="color:#121A16;font-weight:600;">
+                <span class="done-mark" style="display:none;color:#0C9463;margin-right:8px;">✓</span>{l.title}
+              </span>
               <span style="font-size:13px;color:#5B6862;">
                 {l.is_preview ? "Preview" : "Members"} · {l.duration_minutes || "–"} min
               </span>
@@ -82,5 +118,6 @@ if (!course) return Astro.redirect("/academy");
         </div>
       </div>
     ))}
+
   </section>
 </Base>
