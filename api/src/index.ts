@@ -6,6 +6,7 @@ import metrics from "./routes/metrics";
 import academy from "./routes/academy";
 import enrolment from "./routes/enrolment";
 import video from "./routes/video";
+import { handleScheduled } from "./cron";
 
 export type Bindings = {
   DB: D1Database;
@@ -65,4 +66,9 @@ app.onError((err, c) => {
   return c.json({ ok: false }, 502);
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
+    ctx.waitUntil(handleScheduled(event, env));
+  },
+};

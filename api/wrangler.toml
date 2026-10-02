@@ -32,3 +32,7 @@ bucket_name = "brimwood-media"
 # the production domain when the worker gets a production route (T34).
 [vars]
 SITE_URL = "https://brimwood-website-preview.pages.dev"
+
+# Cron triggers (T25): publish scheduled posts every 15 min; weekly digest Mondays 09:00 UTC.
+[triggers]
+crons = ["*/15 * * * *", "0 9 * * 1"]
