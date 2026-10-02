@@ -57,3 +57,13 @@ for `api/wrangler.toml` bindings (T8).
   `brimwood-introduction` Worker, its KV bindings, its secrets, or the
   `brimwood-coming-soon` Pages project.
 - The live v7 site stays up until the founder explicitly approves cutover (T34).
+
+## Pages preview project (T4)
+
+- Project: `brimwood-website-preview` → https://brimwood-website-preview.pages.dev
+- Connected to GitHub repo `Brimwood-Innovation/brimwood-website`
+  (Cloudflare Workers and Pages GitHub App installed on the org, all repos).
+- Production branch: `develop`. Build: root `site`, `npm run build`, output `dist`.
+- Preview deployments: ON for all non-production branches (PR previews automatic).
+- No custom domain attached. `brimwood-coming-soon` (production) untouched.
+- First build failed as expected — `site/` scaffold lands in T7.
