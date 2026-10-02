@@ -30,6 +30,7 @@ Legend — scope: XS ≤1 file, S 1–2, M 3–5, L 5–8.
 **Dependencies:** none (infra-side). **Blocked:** owner sign-in (`adamsayani@outlook.com`) — parked browser task. **Scope:** XS (browser work).
 
 ### T5: _headers, privacy + terms pages
+**Status:** DONE 2026-10-01 — _headers (security headers + asset caching), /privacy, /terms.
 **Description:** Security/headers file and `/privacy`, `/terms` pages on the current baseline.
 **Acceptance:** headers served on staging; both pages render, brand-styled, Canadian spelling.
 **Verification:** `curl -I` shows expected headers; manual page check.
@@ -63,6 +64,7 @@ Legend — scope: XS ≤1 file, S 1–2, M 3–5, L 5–8.
 **Dependencies:** T7. **Files:** `site/src/components/Hero.*`. **Scope:** S.
 
 ### T9: /about page
+**Status:** DONE 2026-10-01 — per report §7.2 (story, standard, hub, rhythm, what-we-are-not, CTA). Copy is DRAFT; founder approval needed at CP2a.
 **Description:** About page from the report §7 design; copy needs founder approval.
 **Acceptance:** page renders, on-brand, no income promises / hype language.
 **Verification:** founder approves copy at CP2a.
