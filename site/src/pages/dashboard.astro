@@ -1,25 +1,24 @@
 ---
-/* Member dashboard (T24): enrolled courses, progress bars, continue learning. */
+/* Member dashboard: enrolled courses, progress bars, continue learning. Brand-kit styled. */
 import Base from "../layouts/Base.astro";
 ---
 
 <Base title="Dashboard — Brimwood Innovation" description="Your learning progress.">
-  <section style="max-width:880px;margin:0 auto;padding:64px 20px;">
-    <div id="dash-loading"><p style="color:#5B6862;">Loading…</p></div>
+  <section class="block">
+    <div id="dash-loading"><p class="sec-lede">Loading…</p></div>
 
-    <div id="dash-login" style="display:none;">
-      <h1 style="font-size:36px;color:#121A16;">Sign in</h1>
-      <p style="color:#5B6862;">Your dashboard is for members. <a href="/members" style="color:#0C9463;">Sign in</a>.</p>
+    <div id="dash-login" style="display:none;text-align:center;padding:48px 0;">
+      <div class="kicker">Members</div>
+      <h2 class="sec">Sign in to see your dashboard.</h2>
+      <p class="sec-lede" style="margin-inline:auto;"><a href="/members">Sign in</a> to track your progress.</p>
     </div>
 
     <div id="dash-home" style="display:none;">
-      <p style="color:#0C9463;font-weight:700;letter-spacing:.08em;font-size:13px;margin:0 0 12px;">DASHBOARD</p>
-      <h1 style="font-size:36px;margin:0 0 8px;color:#121A16;">Keep shipping.</h1>
-      <p style="color:#5B6862;margin:0 0 40px;" id="dashSub"></p>
-      <div id="courseList" style="display:grid;gap:20px;"></div>
-      <div style="margin-top:40px;">
-        <a href="/academy" style="color:#0C9463;font-weight:600;">Browse all courses →</a>
-      </div>
+      <div class="kicker">Dashboard</div>
+      <h2 class="sec">Keep shipping.</h2>
+      <p class="sec-lede" id="dashSub"></p>
+      <div class="cards" style="grid-template-columns:repeat(2,1fr);" id="courseList"></div>
+      <p style="margin-top:32px;"><a href="/academy">Browse all courses →</a></p>
     </div>
   </section>
 
@@ -27,6 +26,7 @@ import Base from "../layouts/Base.astro";
     const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
     const show = (id) => (document.getElementById(id).style.display = "block");
     const hide = (id) => (document.getElementById(id).style.display = "none");
+    const esc = (s) => String(s || "").replace(/</g, "&lt;");
 
     (async () => {
       try {
@@ -39,15 +39,13 @@ import Base from "../layouts/Base.astro";
 
         hide("dash-loading");
         const list = d.enrolments || [];
+        show("dash-home");
+
         if (list.length === 0) {
-          show("dash-home");
-          document.getElementById("dashSub").textContent = "You're not enrolled in anything yet.";
-          document.getElementById("courseList").innerHTML =
-            "<p style='color:#5B6862;'>Pick a course below to get started.</p>";
+          document.getElementById("dashSub").textContent = "You're not enrolled in anything yet. Pick a course to get started.";
           return;
         }
 
-        show("dash-home");
         const total = list.length;
         const done = list.filter((e) => e.completed_at).length;
         document.getElementById("dashSub").textContent =
@@ -57,17 +55,12 @@ import Base from "../layouts/Base.astro";
           .map((e) => {
             const pct = e.total_lessons ? Math.round((e.done_lessons / e.total_lessons) * 100) : 0;
             return (
-              "<a href='/academy/" + e.slug + "' style='display:block;background:#fff;border:1px solid rgba(18,26,22,.08);border-radius:16px;padding:24px;text-decoration:none;'>" +
-              "<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;'>" +
-              "<h2 style='margin:0;font-size:20px;color:#121A16;'>" + e.title.replace(/</g, "&lt;") + "</h2>" +
-              "<span style='font-size:13px;color:#5B6862;'>" + e.done_lessons + "/" + e.total_lessons + "</span>" +
-              "</div>" +
-              "<div style='height:8px;background:#DDF5E9;border-radius:4px;overflow:hidden;'>" +
-              "<div style='height:100%;width:" + pct + "%;background:#0C9463;border-radius:4px;'></div>" +
-              "</div>" +
-              "<p style='margin:12px 0 0;font-size:14px;color:#0C9463;font-weight:600;'>" +
-              (e.completed_at ? "Completed" : pct === 0 ? "Start →" : "Continue →") +
-              "</p></a>"
+              `<a href="/academy/${e.slug}" class="card" style="text-decoration:none;display:block;">` +
+              `<div class="n">${e.done_lessons}/${e.total_lessons} lessons</div>` +
+              `<h3>${esc(e.title)}</h3>` +
+              `<div style="height:8px;background:var(--mint);border-radius:4px;overflow:hidden;margin:12px 0;">` +
+              `<div style="height:100%;width:${pct}%;background:var(--emerald);border-radius:4px;"></div></div>` +
+              `<p>${e.completed_at ? "Completed ✓" : pct === 0 ? "Start →" : "Continue →"}</p></a>`
             );
           })
           .join("");

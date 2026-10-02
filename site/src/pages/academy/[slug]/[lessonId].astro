@@ -1,6 +1,5 @@
 ---
-/* Lesson view: preview lessons render; members-only lessons show a gate.
- * Completed state + prev/next navigation, all client-side aware. */
+/* Lesson view: preview lessons render; members-only gated. Brand-kit styled. */
 import Base from "../../../layouts/Base.astro";
 
 export async function getStaticPaths() {
@@ -41,7 +40,6 @@ try {
   const d = await r.json();
   if (d.ok) {
     lesson = d.lesson;
-    // Build prev/next from the course's ordered lesson list.
     const cr = await fetch(apiBase + "/api/courses/" + encodeURIComponent(lesson.course_slug), {
       headers: { accept: "application/json" },
     });
@@ -58,50 +56,39 @@ try {
 ---
 
 <Base title={`${lesson ? lesson.title : "Lesson"} — Academy — Brimwood Innovation`} description={lesson ? lesson.title : "Brimwood Academy lesson"}>
-  <section style="max-width:760px;margin:0 auto;padding:64px 20px;">
+  <section class="block">
     {lesson ? (
       <>
-        <a href={`/academy/${lesson.course_slug}`} style="color:#0C9463;font-size:14px;">← {lesson.course_title}</a>
-        <h1 style="font-size:36px;margin:24px 0 8px;color:#121A16;">{lesson.title}</h1>
-        <p style="color:#5B6862;font-size:14px;margin:0 0 32px;">
-          {lesson.duration_minutes ? `${lesson.duration_minutes} min` : ""} {lesson.is_preview ? "· Preview" : "· Members"}
-        </p>
+        <a href={`/academy/${lesson.course_slug}`} style="font-size:14px;">← {lesson.course_title}</a>
+        <div class="kicker" style="margin-top:24px;">{lesson.is_preview ? "Preview" : "Members"}{lesson.duration_minutes ? ` · ${lesson.duration_minutes} min` : ""}</div>
+        <h2 class="sec">{lesson.title}</h2>
         {lesson.video_r2_key && (
           <video
             controls
             preload="metadata"
             playsinline
-            style="width:100%;border-radius:12px;background:#121A16;margin-bottom:32px;"
+            style="width:100%;border-radius:16px;background:var(--ink);margin:24px 0;"
             src={`${apiBase}/api/video/${lesson.video_r2_key}`}
           />
         )}
-        <div style="font-size:17px;line-height:1.7;color:#121A16;white-space:pre-wrap;">{lesson.body_md}</div>
+        <div class="prose" style="padding:0;max-width:none;">
+          <p style="white-space:pre-wrap;">{lesson.body_md}</p>
+        </div>
 
-        <div style="margin-top:40px;" id="completeWrap">
-          <button id="completeBtn" style="background:#0C9463;color:#fff;border:0;border-radius:10px;padding:12px 28px;font-size:15px;font-weight:600;cursor:pointer;">
-            Mark as complete
-          </button>
+        <div style="margin-top:32px;" id="completeWrap">
+          <button class="btn" id="completeBtn">Mark as complete</button>
           <p id="completeMsg" style="display:none;font-weight:600;"></p>
         </div>
 
         <nav style="display:flex;justify-content:space-between;margin-top:48px;padding-top:24px;border-top:1px solid rgba(18,26,22,.08);">
-          <span>
-            {prevLesson && (
-              <a href={`/academy/${slug}/${prevLesson.id}`} style="color:#0C9463;font-weight:600;">← {prevLesson.title}</a>
-            )}
-          </span>
-          <span>
-            {nextLesson && (
-              <a href={`/academy/${slug}/${nextLesson.id}`} style="color:#0C9463;font-weight:600;">{nextLesson.title} →</a>
-            )}
-          </span>
+          <span>{prevLesson && <a href={`/academy/${slug}/${prevLesson.id}`}>← {prevLesson.title}</a>}</span>
+          <span>{nextLesson && <a href={`/academy/${slug}/${nextLesson.id}`}>{nextLesson.title} →</a>}</span>
         </nav>
 
         <script define:vars={{ lessonId, apiBase }}>
           (async () => {
             const btn = document.getElementById("completeBtn");
             const msg = document.getElementById("completeMsg");
-            // Check if already completed.
             try {
               const pr = await fetch(apiBase + "/api/progress/detail", {
                 headers: { accept: "application/json" },
@@ -111,7 +98,7 @@ try {
               if (pd.ok && (pd.done || []).includes(lessonId)) {
                 btn.style.display = "none";
                 msg.style.display = "block";
-                msg.style.color = "#0C9463";
+                msg.style.color = "var(--emerald-deep)";
                 msg.textContent = "✓ Completed";
                 return;
               }
@@ -128,11 +115,11 @@ try {
                 if (!r.ok || !d.ok) throw new Error(d.error || "save failed");
                 btn.style.display = "none";
                 msg.style.display = "block";
-                msg.style.color = "#0C9463";
+                msg.style.color = "var(--emerald-deep)";
                 msg.textContent = "✓ Completed — nice work.";
               } catch (e) {
                 btn.disabled = false; btn.textContent = "Mark as complete";
-                msg.style.display = "block"; msg.style.color = "#c0392b";
+                msg.style.display = "block";
                 msg.textContent = e.message === "Sign in required" ? "Please sign in first." : "Could not save. Try again.";
               }
             });
@@ -140,14 +127,12 @@ try {
         </script>
       </>
     ) : gated ? (
-      <>
-        <h1 style="font-size:36px;color:#121A16;">Members only</h1>
-        <p style="font-size:18px;color:#5B6862;" id="gateMsg">
-          This lesson is for Brimwood members. <a href="/members" style="color:#0C9463;">Sign in</a> to continue learning.
-        </p>
-        <div id="lessonBody" style="display:none;"></div>
-        <script define:vars={{ lessonId, slug, apiBase }}>
-          // If signed in, retry with credentials — the API will return the full lesson.
+      <div style="text-align:center;padding:48px 0;">
+        <div class="kicker">Members only</div>
+        <h2 class="sec">This lesson is for members.</h2>
+        <p class="sec-lede" style="margin-inline:auto;" id="gateMsg"><a href="/members">Sign in</a> to continue learning.</p>
+        <div id="lessonBody" style="display:none;text-align:left;"></div>
+        <script define:vars={{ lessonId, apiBase }}>
           (async () => {
             try {
               const r = await fetch(apiBase + "/api/courses/lessons/" + encodeURIComponent(lessonId), {
@@ -155,16 +140,16 @@ try {
                 credentials: "include",
               });
               const d = await r.json();
-              if (d.ok && d.lesson) location.reload(); // Re-render server-side now that we're authed.
+              if (d.ok && d.lesson) location.reload();
             } catch {}
           })();
         </script>
-      </>
+      </div>
     ) : (
-      <>
-        <h1 style="font-size:36px;color:#121A16;">Not found</h1>
-        <p style="color:#5B6862;">This lesson does not exist or is not published.</p>
-      </>
+      <div style="text-align:center;padding:48px 0;">
+        <h2 class="sec">Not found</h2>
+        <p class="sec-lede" style="margin-inline:auto;">This lesson does not exist or is not published.</p>
+      </div>
     )}
   </section>
 </Base>

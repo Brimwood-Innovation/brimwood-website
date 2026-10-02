@@ -1,5 +1,5 @@
 ---
-/* Course detail (T21): modules + lesson index. Lesson bodies gated per-lesson. */
+/* Course detail: modules + lesson index with progress checkmarks. Brand-kit styled. */
 import Base from "../../layouts/Base.astro";
 
 export async function getStaticPaths() {
@@ -27,97 +27,90 @@ if (!course) return Astro.redirect("/academy");
 ---
 
 <Base title={`${course.title} — Academy — Brimwood Innovation`} description={course.tagline}>
-  <section style="max-width:880px;margin:0 auto;padding:64px 20px;">
-    <a href="/academy" style="color:#0C9463;font-size:14px;">← All courses</a>
-    <p style="color:#0C9463;font-weight:700;letter-spacing:.08em;font-size:13px;margin:24px 0 12px;">{course.level.toUpperCase()}</p>
-    <h1 style="font-size:40px;margin:0 0 16px;color:#121A16;">{course.title}</h1>
-    <p style="font-size:18px;color:#5B6862;max-width:600px;">{course.tagline}</p>
+  <section class="block">
+    <a href="/academy" style="font-size:14px;">← All courses</a>
+    <div class="kicker" style="margin-top:24px;">{course.level}</div>
+    <h2 class="sec">{course.title}</h2>
+    <p class="sec-lede">{course.tagline}</p>
 
-    <div style="margin-top:24px;">
-      <button id="enrolBtn" style="background:#0C9463;color:#fff;border:0;border-radius:10px;padding:14px 32px;font-size:16px;font-weight:600;cursor:pointer;">
-        Enrol in this course
-      </button>
-      <p id="enrolMsg" style="display:none;color:#0C9463;font-weight:600;"></p>
+    <div style="margin-bottom:32px;">
+      <button class="btn" id="enrolBtn">Enrol in this course</button>
+      <p id="enrolMsg" style="display:none;font-weight:600;color:var(--emerald-deep);"></p>
     </div>
-
-    <script define:vars={{ slug, apiBase }}>
-      // Mark completed lessons + hide enrol button if already enrolled.
-      (async () => {
-        try {
-          const pr = await fetch(apiBase + "/api/progress", {
-            headers: { accept: "application/json" },
-            credentials: "include",
-          });
-          const d = await pr.json().catch(() => ({}));
-          if (!d.ok) return;
-          // Already enrolled in this course? Hide the button.
-          if ((d.enrolments || []).some((e) => e.slug === slug)) {
-            document.getElementById("enrolBtn").style.display = "none";
-            const msg = document.getElementById("enrolMsg");
-            msg.style.display = "block";
-            msg.textContent = "You're enrolled in this course.";
-          }
-          // Checkmarks for completed lessons.
-          const dr = await fetch(apiBase + "/api/progress/detail", {
-            headers: { accept: "application/json" },
-            credentials: "include",
-          });
-          const dd = await dr.json().catch(() => ({}));
-          const doneIds = new Set(dd.ok ? dd.done || [] : []);
-          document.querySelectorAll(".lesson-link").forEach((a) => {
-            if (doneIds.has(a.dataset.lessonId)) {
-              a.querySelector(".done-mark").style.display = "inline";
-              a.style.borderColor = "#0C9463";
-            }
-          });
-        } catch {}
-      })();
-
-      document.getElementById("enrolBtn").addEventListener("click", async () => {
-        const btn = document.getElementById("enrolBtn");
-        const msg = document.getElementById("enrolMsg");
-        btn.disabled = true; btn.textContent = "Enrolling…";
-        try {
-          const r = await fetch(apiBase + "/api/enrol/" + encodeURIComponent(slug), {
-            method: "POST",
-            credentials: "include",
-            headers: { accept: "application/json" },
-          });
-          const d = await r.json().catch(() => ({}));
-          if (!r.ok || !d.ok) throw new Error(d.error || "enrol failed");
-          btn.style.display = "none";
-          msg.style.display = "block";
-          msg.textContent = "You're enrolled. Start with the first lesson below.";
-        } catch (e) {
-          btn.disabled = false; btn.textContent = "Enrol in this course";
-          msg.style.display = "block"; msg.style.color = "#c0392b";
-          msg.textContent = e.message === "Sign in required" ? "Please sign in first." : "Could not enrol. Try again.";
-        }
-      });
-    </script>
 
     {modules.map((m) => (
       <div style="margin-top:40px;">
-        <h2 style="font-size:22px;color:#121A16;margin:0 0 16px;">{m.title}</h2>
-        <div style="display:grid;gap:12px;">
+        <h3 style="font-size:20px;margin-bottom:16px;">{m.title}</h3>
+        <div class="cards" style="grid-template-columns:1fr;">
           {m.lessons.map((l: any) => (
             <a
               href={`/academy/${course.slug}/${l.id}`}
               data-lesson-id={l.id}
-              class="lesson-link"
-              style="display:flex;justify-content:space-between;align-items:center;background:#fff;border:1px solid rgba(18,26,22,.08);border-radius:12px;padding:16px 20px;text-decoration:none;"
+              class="card lesson-link"
+              style="text-decoration:none;display:flex;justify-content:space-between;align-items:center;padding:20px 24px;"
             >
-              <span style="color:#121A16;font-weight:600;">
-                <span class="done-mark" style="display:none;color:#0C9463;margin-right:8px;">✓</span>{l.title}
+              <span style="font-weight:600;">
+                <span class="done-mark" style="display:none;color:var(--emerald);margin-right:8px;">✓</span>{l.title}
               </span>
-              <span style="font-size:13px;color:#5B6862;">
-                {l.is_preview ? "Preview" : "Members"} · {l.duration_minutes || "–"} min
-              </span>
+              <span class="n" style="margin:0;">{l.is_preview ? "Preview" : "Members"} · {l.duration_minutes || "–"} min</span>
             </a>
           ))}
         </div>
       </div>
     ))}
-
   </section>
+
+  <script define:vars={{ slug, apiBase }}>
+    // Enrol + progress checkmarks.
+    (async () => {
+      try {
+        const pr = await fetch(apiBase + "/api/progress", {
+          headers: { accept: "application/json" },
+          credentials: "include",
+        });
+        const d = await pr.json().catch(() => ({}));
+        if (!d.ok) return;
+        if ((d.enrolments || []).some((e) => e.slug === slug)) {
+          document.getElementById("enrolBtn").style.display = "none";
+          const msg = document.getElementById("enrolMsg");
+          msg.style.display = "block";
+          msg.textContent = "You're enrolled in this course.";
+        }
+        const dr = await fetch(apiBase + "/api/progress/detail", {
+          headers: { accept: "application/json" },
+          credentials: "include",
+        });
+        const dd = await dr.json().catch(() => ({}));
+        const doneIds = new Set(dd.ok ? dd.done || [] : []);
+        document.querySelectorAll(".lesson-link").forEach((a) => {
+          if (doneIds.has(a.dataset.lessonId)) {
+            a.querySelector(".done-mark").style.display = "inline";
+            a.style.borderColor = "var(--emerald)";
+          }
+        });
+      } catch {}
+    })();
+
+    document.getElementById("enrolBtn").addEventListener("click", async () => {
+      const btn = document.getElementById("enrolBtn");
+      const msg = document.getElementById("enrolMsg");
+      btn.disabled = true; btn.textContent = "Enrolling…";
+      try {
+        const r = await fetch(apiBase + "/api/enrol/" + encodeURIComponent(slug), {
+          method: "POST",
+          credentials: "include",
+          headers: { accept: "application/json" },
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok) throw new Error(d.error || "enrol failed");
+        btn.style.display = "none";
+        msg.style.display = "block";
+        msg.textContent = "You're enrolled. Start with the first lesson below.";
+      } catch (e) {
+        btn.disabled = false; btn.textContent = "Enrol in this course";
+        msg.style.display = "block";
+        msg.textContent = e.message === "Sign in required" ? "Please sign in first." : "Could not enrol. Try again.";
+      }
+    });
+  </script>
 </Base>
