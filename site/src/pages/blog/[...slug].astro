@@ -1,0 +1,44 @@
+---
+/* Article page (T10): title, pillar, date, body, author. */
+import Base from "../../layouts/Base.astro";
+import { getCollection, render } from "astro:content";
+
+export async function getStaticPaths() {
+  const posts = await getCollection("blog");
+  return posts.map((post) => ({
+    params: { slug: post.id.replace(/\.md$/, "") },
+    props: { post },
+  }));
+}
+
+const { post } = Astro.props;
+const slug = post.id.replace(/\.md$/, "");
+const { Content } = await render(post);
+
+const pillars: Record<string, string> = {
+  "micro-business": "Micro business",
+  "ai-in-practice": "AI in practice",
+  "owner-mindset": "Owner mindset",
+  "members-hub": "Members + hub",
+};
+---
+
+<Base
+  title={`${post.data.title} — Brimwood Innovation`}
+  description={post.data.description}
+  path={`/blog/${slug}`}
+>
+  <article class="prose">
+    <div class="kicker">{pillars[post.data.pillar]}{post.data.draft ? " · DRAFT" : ""}</div>
+    <h1>{post.data.title}</h1>
+    <p class="sec-lede">
+      {post.data.publishDate.toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric" })}
+      {" · "}{post.data.author}
+      {post.data.tags.length > 0 && <>{" · "}{post.data.tags.join(", ")}</>}
+    </p>
+    <Content />
+    <p style="margin-top:3rem;">
+      <a class="btn btn-ghost" href="/blog">All posts</a>
+    </p>
+  </article>
+</Base>

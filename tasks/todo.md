@@ -71,6 +71,7 @@ Legend — scope: XS ≤1 file, S 1–2, M 3–5, L 5–8.
 **Dependencies:** T7. **Files:** `site/src/pages/about.astro`. **Scope:** S.
 
 ### T10: Blog collections + RSS + 3 seed posts
+**Status:** DONE 2026-10-01 — content collection + /blog + /blog/[slug] + /rss.xml (valid; drafts excluded). 3 seed posts, all DRAFT-flagged, pending founder approval.
 **Description:** Astro content collections for blog; RSS feed; 3 seed posts (draft copy clearly marked until founder approves).
 **Acceptance:** `/blog`, `/blog/[slug]`, `/rss.xml` render; posts carry pillar tags.
 **Verification:** RSS validates; 3 posts listed.
