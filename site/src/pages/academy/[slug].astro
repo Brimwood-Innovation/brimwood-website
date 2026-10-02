@@ -33,6 +33,37 @@ if (!course) return Astro.redirect("/academy");
     <h1 style="font-size:40px;margin:0 0 16px;color:#121A16;">{course.title}</h1>
     <p style="font-size:18px;color:#5B6862;max-width:600px;">{course.tagline}</p>
 
+    <div style="margin-top:24px;">
+      <button id="enrolBtn" style="background:#0C9463;color:#fff;border:0;border-radius:10px;padding:14px 32px;font-size:16px;font-weight:600;cursor:pointer;">
+        Enrol in this course
+      </button>
+      <p id="enrolMsg" style="display:none;color:#0C9463;font-weight:600;"></p>
+    </div>
+
+    <script define:vars={{ slug, apiBase }}>
+      document.getElementById("enrolBtn").addEventListener("click", async () => {
+        const btn = document.getElementById("enrolBtn");
+        const msg = document.getElementById("enrolMsg");
+        btn.disabled = true; btn.textContent = "Enrolling…";
+        try {
+          const r = await fetch(apiBase + "/api/enrol/" + encodeURIComponent(slug), {
+            method: "POST",
+            credentials: "include",
+            headers: { accept: "application/json" },
+          });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok || !d.ok) throw new Error(d.error || "enrol failed");
+          btn.style.display = "none";
+          msg.style.display = "block";
+          msg.textContent = "You're enrolled. Start with the first lesson below.";
+        } catch (e) {
+          btn.disabled = false; btn.textContent = "Enrol in this course";
+          msg.style.display = "block"; msg.style.color = "#c0392b";
+          msg.textContent = e.message === "Sign in required" ? "Please sign in first." : "Could not enrol. Try again.";
+        }
+      });
+    </script>
+
     {modules.map((m) => (
       <div style="margin-top:40px;">
         <h2 style="font-size:22px;color:#121A16;margin:0 0 16px;">{m.title}</h2>

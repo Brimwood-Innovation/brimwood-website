@@ -51,6 +51,35 @@ try {
           {lesson.duration_minutes ? `${lesson.duration_minutes} min` : ""} {lesson.is_preview ? "· Preview" : "· Members"}
         </p>
         <div style="font-size:17px;line-height:1.7;color:#121A16;white-space:pre-wrap;">{lesson.body_md}</div>
+        <div style="margin-top:40px;">
+          <button id="completeBtn" style="background:#0C9463;color:#fff;border:0;border-radius:10px;padding:12px 28px;font-size:15px;font-weight:600;cursor:pointer;">
+            Mark as complete
+          </button>
+          <p id="completeMsg" style="display:none;color:#0C9463;font-weight:600;"></p>
+        </div>
+        <script define:vars={{ lessonId, apiBase }}>
+          document.getElementById("completeBtn").addEventListener("click", async () => {
+            const btn = document.getElementById("completeBtn");
+            const msg = document.getElementById("completeMsg");
+            btn.disabled = true; btn.textContent = "Saving…";
+            try {
+              const r = await fetch(apiBase + "/api/progress/" + encodeURIComponent(lessonId), {
+                method: "POST",
+                credentials: "include",
+                headers: { accept: "application/json" },
+              });
+              const d = await r.json().catch(() => ({}));
+              if (!r.ok || !d.ok) throw new Error(d.error || "save failed");
+              btn.style.display = "none";
+              msg.style.display = "block";
+              msg.textContent = "Done. Nice work.";
+            } catch (e) {
+              btn.disabled = false; btn.textContent = "Mark as complete";
+              msg.style.display = "block"; msg.style.color = "#c0392b";
+              msg.textContent = e.message === "Sign in required" ? "Please sign in first." : "Could not save. Try again.";
+            }
+          });
+        </script>
       </>
     ) : gated ? (
       <>
@@ -75,8 +104,26 @@ try {
                 body.innerHTML =
                   "<h1 style='font-size:36px;margin:0 0 8px;color:#121A16;'>" + d.lesson.title + "</h1>" +
                   "<div style='font-size:17px;line-height:1.7;color:#121A16;white-space:pre-wrap;'>" +
-                  d.lesson.body_md.replace(/</g, "&lt;") + "</div>";
+                  d.lesson.body_md.replace(/</g, "&lt;") + "</div>" +
+                  "<div style='margin-top:40px;'><button id='completeBtn2' style='background:#0C9463;color:#fff;border:0;border-radius:10px;padding:12px 28px;font-size:15px;font-weight:600;cursor:pointer;'>Mark as complete</button>" +
+                  "<p id='completeMsg2' style='display:none;color:#0C9463;font-weight:600;'></p></div>";
                 document.title = d.lesson.title + " — Academy — Brimwood Innovation";
+                document.getElementById("completeBtn2").addEventListener("click", async () => {
+                  const btn2 = document.getElementById("completeBtn2");
+                  const msg2 = document.getElementById("completeMsg2");
+                  btn2.disabled = true; btn2.textContent = "Saving…";
+                  try {
+                    const r2 = await fetch(apiBase + "/api/progress/" + encodeURIComponent(lessonId), {
+                      method: "POST", credentials: "include", headers: { accept: "application/json" },
+                    });
+                    const d2 = await r2.json().catch(() => ({}));
+                    if (!r2.ok || !d2.ok) throw new Error("save failed");
+                    btn2.style.display = "none"; msg2.style.display = "block"; msg2.textContent = "Done. Nice work.";
+                  } catch {
+                    btn2.disabled = false; btn2.textContent = "Mark as complete";
+                    msg2.style.display = "block"; msg2.style.color = "#c0392b"; msg2.textContent = "Could not save. Try again.";
+                  }
+                });
               }
             } catch {}
           })();
