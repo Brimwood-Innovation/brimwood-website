@@ -37,6 +37,22 @@ const pillars: Record<string, string> = {
       {post.data.tags.length > 0 && <>{" · "}{post.data.tags.join(", ")}</>}
     </p>
     <Content />
+    <script type="application/ld+json">
+      {JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "BlogPosting",
+        headline: post.data.title,
+        description: post.data.description,
+        datePublished: post.data.publishDate.toISOString(),
+        author: { "@type": "Organization", name: "Brimwood Innovation" },
+        publisher: {
+          "@type": "Organization",
+          name: "Brimwood Innovation",
+          logo: { "@type": "ImageObject", url: "https://brimwoodinnovation.com/img/brimwood-logo-colour.svg" },
+        },
+        mainEntityOfPage: `https://brimwoodinnovation.com/blog/${slug}/`,
+      })}
+    </script>
     <p style="margin-top:3rem;">
       <a class="btn btn-ghost" href="/blog">All posts</a>
     </p>

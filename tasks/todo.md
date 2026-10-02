@@ -78,6 +78,7 @@ Legend — scope: XS ≤1 file, S 1–2, M 3–5, L 5–8.
 **Dependencies:** T7. **Files:** `site/src/content/blog/`, `site/src/pages/blog/`. **Scope:** M.
 
 ### T11: /newsletter page + archive
+**Status:** DONE 2026-10-01 — landing + double opt-in signup form (POST /api/newsletter) + archive section (email-exclusive default; founder decides at CP2a).
 **Description:** Newsletter landing + past-letter archive (titles + excerpts; email-exclusive if founder says so).
 **Acceptance:** page renders; archive lists letters or states email-exclusive.
 **Verification:** manual check; double opt-in flow still works from the page.
@@ -90,6 +91,7 @@ Legend — scope: XS ≤1 file, S 1–2, M 3–5, L 5–8.
 **Dependencies:** T8. **Scope:** XS. **Note:** scheduled — do not run before the date.
 
 ### T13: SEO/AEO/GEO layer
+**Status:** DONE 2026-10-01 — sitemap.xml (9 URLs), llms.txt, BlogPosting JSON-LD on articles; meta/OG/canonical/Organization schema already in Base layout; robots.txt in place.
 **Description:** Meta + OG/Twitter tags, `sitemap.xml`, `robots.txt`, `llms.txt`, JSON-LD (Organization, BlogPosting), canonical URLs.
 **Acceptance:** every public page carries the tag set; sitemap lists all routes.
 **Verification:** validator checks pass (rich results test, RSS/llms fetch).
