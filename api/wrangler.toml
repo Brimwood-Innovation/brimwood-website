@@ -27,3 +27,8 @@ id = "a808e8c1eddf45fb8bb8da723151d6bc"
 [[r2_buckets]]
 binding = "MEDIA"
 bucket_name = "brimwood-media"
+
+# Staging site URL for email links (verify/unsubscribe). Production will use
+# the production domain when the worker gets a production route (T34).
+[vars]
+SITE_URL = "https://brimwood-website-preview.pages.dev"
