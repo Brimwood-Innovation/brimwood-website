@@ -1,6 +1,12 @@
-/* Editorial guardrails for Decap CMS (T27).
+/* Editorial guardrails for Decap CMS (T27, expanded Phase A).
  * Client-side pre-publish checks: Canadian spelling, banned phrases,
  * member anonymity, SEO checklist.
+ *
+ * Checks apply to every collection:
+ * - Spelling + banned phrases: ALL text in every entry (blog, courses,
+ *   pages, settings, navigation, homepage).
+ * - Anonymity + SEO checklist: blog and pages (the long-form collections
+ *   with title / excerpt / body).
  *
  * Loaded by /cms page after Decap initializes.
  */
@@ -79,19 +85,42 @@
     return issues;
   }
 
+  // Collections whose entries get the full SEO + anonymity checklist
+  // (long-form content with title / excerpt / body).
+  const SEO_COLLECTIONS = ["blog", "pages"];
+
+  // Recursively collect every string value from the entry's data, so the
+  // spelling and banned-phrase checks cover pages, settings, navigation,
+  // and homepage fields — not just blog title/body.
+  function collectText(entry) {
+    const data = entry.getIn(["data"]);
+    const plain = data && typeof data.toJS === "function" ? data.toJS() : {};
+    const parts = [];
+    (function walk(v) {
+      if (typeof v === "string") {
+        if (v.trim()) parts.push(v);
+      } else if (Array.isArray(v)) {
+        v.forEach(walk);
+      } else if (v && typeof v === "object") {
+        Object.values(v).forEach(walk);
+      }
+    })(plain);
+    return parts.join("\n");
+  }
+
   // Register a pre-publish check.
   CMS.registerEventListener({
     name: "prePublish",
     handler: ({ entry }) => {
-      const body = entry.getIn(["data", "body"]) || "";
-      const title = entry.getIn(["data", "title"]) || "";
-      const text = title + "\n" + body;
+      const collection = entry.get("collection") || "";
+      const text = collectText(entry);
       const issues = [
         ...checkSpelling(text),
         ...checkBanned(text),
-        ...checkAnonymity(text),
-        ...checkSEO(entry),
       ];
+      if (SEO_COLLECTIONS.indexOf(collection) !== -1) {
+        issues.push(...checkAnonymity(text), ...checkSEO(entry));
+      }
       if (issues.length > 0) {
         // Block publish and show issues.
         return Promise.reject(

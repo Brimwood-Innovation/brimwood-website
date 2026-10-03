@@ -1,4 +1,5 @@
-# Decap CMS config (T26): blog posts + academy content.
+# Decap CMS config (T26, expanded Phase A): blog posts, academy content,
+# editable pages, site settings, navigation, and homepage sections.
 # Auth via the GitHub OAuth worker at /api/oauth.
 
 backend:
@@ -31,11 +32,97 @@ collections:
 
   - name: "courses"
     label: "Courses"
+    label_singular: "Course"
     folder: "site/src/content/courses"
     create: true
     slug: "{{slug}}"
+    summary: "{{title}} ({{status}})"
     fields:
       - { label: "Title", name: "title", widget: "string" }
       - { label: "Tagline", name: "tagline", widget: "string" }
       - { label: "Level", name: "level", widget: "select", options: ["foundations", "builder", "operator"] }
+      - { label: "Visibility", name: "visibility", widget: "select", options: ["members", "public"], default: "members" }
+      - { label: "Status", name: "status", widget: "select", options: ["draft", "published", "archived"], default: "draft", hint: "Drafts never appear on the site." }
       - { label: "Description", name: "description", widget: "markdown" }
+      - label: "Modules"
+        name: "modules"
+        widget: "list"
+        summary: "{{fields.title}}"
+        fields:
+          - { label: "Module title", name: "title", widget: "string" }
+          - label: "Lessons"
+            name: "lessons"
+            widget: "list"
+            summary: "{{fields.title}}"
+            fields:
+              - { label: "Lesson title", name: "title", widget: "string" }
+              - { label: "Body", name: "body", widget: "markdown", hint: "Short sentences. Canadian spelling. No hype." }
+              - { label: "Free preview", name: "is_preview", widget: "boolean", default: false, hint: "Preview lessons are visible without signing in." }
+              - { label: "Status", name: "status", widget: "select", options: ["draft", "published"], default: "published" }
+              - { label: "Duration (minutes)", name: "duration_minutes", widget: "number", required: false, min: 1 }
+              - { label: "Video R2 key", name: "video_r2_key", widget: "string", required: false, hint: "Path of the video in the brimwood-media bucket." }
+
+  - name: "pages"
+    label: "Pages"
+    folder: "site/src/content/pages"
+    create: true
+    slug: "{{slug}}"
+    fields:
+      - { label: "Title", name: "title", widget: "string" }
+      - { label: "Slug", name: "slug", widget: "string", hint: "Unique URL path, e.g. 'our-story'. Lowercase letters and hyphens only." }
+      - { label: "Excerpt", name: "excerpt", widget: "text", hint: "One or two short sentences. Appears in lists and SEO." }
+      - { label: "Draft", name: "draft", widget: "boolean", default: true, hint: "Keep on until the founder approves." }
+      - { label: "Body", name: "body", widget: "markdown", hint: "Short sentences. Canadian spelling. No hype." }
+
+  - name: "settings"
+    label: "Site Settings"
+    files:
+      - label: "General Settings"
+        name: "general"
+        file: "site/src/content/settings.json"
+        fields:
+          - { label: "Site title", name: "site_title", widget: "string" }
+          - { label: "Hero headline", name: "hero_headline", widget: "string" }
+          - { label: "Hero subtext", name: "hero_subtext", widget: "text", hint: "Short sentences. Canadian spelling." }
+          - { label: "CTA text", name: "cta_text", widget: "string" }
+          - { label: "CTA link", name: "cta_link", widget: "string", hint: "Anchor or URL, e.g. '#introduce'." }
+          - { label: "Announcement bar", name: "announcement_bar", widget: "string", required: false, hint: "Optional. Leave empty to hide the bar." }
+          - { label: "Contact email", name: "contact_email", widget: "string" }
+
+  - name: "navigation"
+    label: "Navigation"
+    files:
+      - label: "Menus"
+        name: "menus"
+        file: "site/src/content/navigation.json"
+        fields:
+          - label: "Header links"
+            name: "header_links"
+            widget: "list"
+            fields:
+              - { label: "Label", name: "label", widget: "string" }
+              - { label: "URL", name: "url", widget: "string", hint: "Site path or full URL." }
+          - label: "Footer links"
+            name: "footer_links"
+            widget: "list"
+            fields:
+              - { label: "Label", name: "label", widget: "string" }
+              - { label: "URL", name: "url", widget: "string", hint: "Site path or full URL." }
+          - { label: "Footer tagline", name: "footer_tagline", widget: "string" }
+
+  - name: "homepage"
+    label: "Homepage"
+    files:
+      - label: "Homepage Sections"
+        name: "sections"
+        file: "site/src/content/homepage.json"
+        fields:
+          - label: "Sections"
+            name: "sections"
+            widget: "list"
+            hint: "Order and toggle homepage sections. Headings use sentence case."
+            fields:
+              - { label: "Type", name: "type", widget: "select", options: ["hero", "features", "testimonials", "cta", "stats"] }
+              - { label: "Heading", name: "heading", widget: "string" }
+              - { label: "Subheading", name: "subheading", widget: "text", required: false }
+              - { label: "Enabled", name: "enabled", widget: "boolean", default: true }

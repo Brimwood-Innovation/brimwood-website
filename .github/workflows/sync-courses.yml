@@ -1,0 +1,32 @@
+# Sync Decap CMS course Markdown into the D1 Academy tables.
+#
+# Triggers on every push to develop/main that touches site/src/content/courses/.
+# The sync script parses the Markdown and POSTs it to the worker endpoint
+# POST /api/admin/sync/courses, authenticated with the SYNC_SECRET repo secret.
+#
+# Required secrets:
+#   SYNC_SECRET — must match the worker secret of the same name
+#   (set with: wrangler secret put SYNC_SECRET)
+name: Sync courses to D1
+
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - "site/src/content/courses/**"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Sync courses to the API worker
+        env:
+          WORKER_URL: https://brimwood-api.adamsayani.workers.dev
+          SYNC_SECRET: ${{ secrets.SYNC_SECRET }}
+        run: node api/scripts/sync-courses.mjs

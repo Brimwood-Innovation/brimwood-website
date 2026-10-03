@@ -8,6 +8,8 @@ import enrolment from "./routes/enrolment";
 import video from "./routes/video";
 import admin from "./routes/admin";
 import oauth from "./routes/oauth";
+import sync from "./routes/sync";
+import media from "./routes/media";
 import { handleScheduled } from "./cron";
 
 export type Bindings = {
@@ -20,6 +22,7 @@ export type Bindings = {
   SITE_URL?: string;
   SESSION_SECRET?: string;
   TURNSTILE_SECRET_KEY?: string;
+  SYNC_SECRET?: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -73,7 +76,9 @@ app.route("/api/courses", academy);
 app.route("/api", enrolment);
 app.route("/api/video", video);
 app.route("/api/admin", admin);
+app.route("/api/admin/sync", sync);
 app.route("/api/oauth", oauth);
+app.route("/api", media);
 
 app.notFound((c) => c.json({ ok: false, error: "Not found" }, 404));
 app.onError((err, c) => {
