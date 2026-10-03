@@ -1,0 +1,45 @@
+---
+/* CMS-driven pages (site integration): renders Markdown pages created in
+ * Decap (Pages collection) at top-level URLs. Drafts are never built.
+ * Reserved slugs can't be claimed — static file routes take precedence. */
+import { getCollection, render } from "astro:content";
+import Base from "../layouts/Base.astro";
+
+export async function getStaticPaths() {
+  const reserved = new Set([
+    "404", "about", "academy", "admin", "blog", "cms", "dashboard",
+    "events", "forms", "index", "invite", "members", "newsletter",
+    "privacy", "search", "terms", "wall",
+  ]);
+  const pages = await getCollection("pages", ({ data }) => !data.draft);
+  return pages
+    .filter((p) => !reserved.has(p.data.slug))
+    .map((p) => ({ params: { slug: p.data.slug }, props: { page: p } }));
+}
+
+const { page } = Astro.props;
+const { Content } = await render(page);
+---
+
+<Base
+  title={`${page.data.title} — Brimwood Innovation`}
+  description={page.data.excerpt || page.data.title}
+  path={`/${page.data.slug}`}
+>
+  <section class="block">
+    <div class="kicker">Brimwood Innovation</div>
+    <h1 class="sec">{page.data.title}</h1>
+    {page.data.excerpt && <p class="sec-lede">{page.data.excerpt}</p>}
+    <div class="prose">
+      <Content />
+    </div>
+  </section>
+</Base>
+
+<style>
+  .prose { max-width: 68ch; }
+  .prose :global(h2) { margin-top: 2rem; }
+  .prose :global(p) { margin-bottom: 1rem; line-height: 1.7; }
+  .prose :global(ul), .prose :global(ol) { margin-bottom: 1rem; padding-left: 1.5rem; }
+  .prose :global(li) { margin-bottom: 0.4rem; }
+</style>

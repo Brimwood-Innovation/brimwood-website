@@ -29,4 +29,16 @@ const testimonials = defineCollection({
   }),
 });
 
-export const collections = { blog, testimonials };
+/* CMS pages collection (Phase A Decap "Pages", wired in site integration).
+ * draft: true = hidden until the founder approves. slug = top-level URL path. */
+const pages = defineCollection({
+  loader: glob({ pattern: "**/*.md", base: "./src/content/pages" }),
+  schema: z.object({
+    title: z.string(),
+    slug: z.string(),
+    excerpt: z.string().default(""),
+    draft: z.boolean().default(true),
+  }),
+});
+
+export const collections = { blog, testimonials, pages };

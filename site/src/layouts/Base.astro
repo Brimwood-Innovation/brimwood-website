@@ -1,6 +1,11 @@
 ---
-/* Base layout (T7): SEO/AEO/GEO head, v7 header + footer. */
+/* Base layout (T7): SEO/AEO/GEO head, v7 header + footer.
+ * Site integration: header nav, footer, CTA, and announcement bar are
+ * driven by the CMS (site/src/content/navigation.json + settings.json).
+ * Brand rule enforced: max four header links + one emerald CTA button. */
 import "../styles/brand.css";
+import siteSettings from "../content/settings.json";
+import navigation from "../content/navigation.json";
 
 interface Props {
   title: string;
@@ -9,6 +14,14 @@ interface Props {
 }
 const { title, description, path = "/" } = Astro.props;
 const canonical = `https://brimwoodinnovation.com${path}`;
+// Brand rule: logo left, four links, one emerald button. Extra CMS links
+// are ignored so the CMS can never break the nav structure.
+const headerLinks = (navigation.header_links || []).slice(0, 4);
+const footerLinks = navigation.footer_links || [];
+const ctaText = siteSettings.cta_text || "Request an introduction";
+const ctaLink = siteSettings.cta_link || "#introduce";
+const announcement = (siteSettings.announcement_bar || "").trim();
+const siteTitle = siteSettings.site_title || "Brimwood Innovation";
 ---
 <!doctype html>
 <html lang="en-ca">
@@ -20,7 +33,7 @@ const canonical = `https://brimwoodinnovation.com${path}`;
     <link rel="canonical" href={canonical} />
 
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Brimwood Innovation" />
+    <meta property="og:site_name" content={siteTitle} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
@@ -46,7 +59,7 @@ const canonical = `https://brimwoodinnovation.com${path}`;
       {JSON.stringify({
         "@context": "https://schema.org",
         "@type": "Organization",
-        name: "Brimwood Innovation",
+        name: siteTitle,
         url: "https://brimwoodinnovation.com",
         logo: "https://brimwoodinnovation.com/img/brimwood-logo-colour.svg",
         slogan: "Build a business. Build yourself.",
@@ -67,16 +80,18 @@ const canonical = `https://brimwoodinnovation.com${path}`;
         <img class="logo" src="/img/brimwood-logo-colour.svg" alt="Brimwood Innovation" />
       </a>
       <nav aria-label="Primary" class="main-nav">
-        <a href="/about">About</a>
-        <a href="/blog">Blog</a>
-        <a href="/academy">Academy</a>
-        <a href="/newsletter">Newsletter</a>
+        {headerLinks.map((l) => <a href={l.url}>{l.label}</a>)}
         <a href="/search" aria-label="Search the site" style="display:inline-flex;align-items:center;">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
         </a>
-        <a class="btn small" href="/#introduce">Request an introduction</a>
+        <a class="btn small" href={ctaLink}>{ctaText}</a>
       </nav>
     </header>
+    {announcement && (
+      <div class="announcement-bar" role="note">
+        {announcement}
+      </div>
+    )}
     <main id="main">
       <slot />
     </main>
@@ -85,11 +100,7 @@ const canonical = `https://brimwoodinnovation.com${path}`;
         <div class="foot-top">
           <img src="/img/brimwood-logo-reversed.svg" alt="Brimwood Innovation" />
           <div class="foot-links">
-            <a href="/about">About</a>
-            <a href="/blog">Blog</a>
-            <a href="/academy">Academy</a>
-            <a href="/newsletter">Newsletter</a>
-            <a href="/members" id="footMember">Member sign in</a>
+            {footerLinks.map((l) => <a href={l.url}>{l.label}</a>)}
             <a href="/admin" id="footAdmin" style="display:none;">Admin</a>
           </div>
           <div class="foot-links">
@@ -101,7 +112,7 @@ const canonical = `https://brimwoodinnovation.com${path}`;
           </div>
         </div>
         <div class="foot-bottom">
-          <span>&copy; 2026 Brimwood Innovation</span>
+          <span>&copy; 2026 {siteTitle}</span>
           <span>1365 Gerrard St E Unit 2, Toronto</span>
         </div>
       </div>

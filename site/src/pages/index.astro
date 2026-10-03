@@ -1,7 +1,22 @@
 ---
-/* Home (T7): v7 page migrated to Astro, pixel-equivalent. Vanilla JS only. */
+/* Home (T7): v7 page migrated to Astro, pixel-equivalent. Vanilla JS only.
+ * Site integration: hero copy from CMS settings.json; section visibility
+ * from homepage.json enabled flags. */
 import Base from "../layouts/Base.astro";
 import HeroDots from "../components/HeroDots.astro";
+import siteSettings from "../content/settings.json";
+import homepage from "../content/homepage.json";
+
+const heroHeadline = siteSettings.hero_headline || "Build a business. Build yourself.";
+const heroSubtext = siteSettings.hero_subtext || "";
+const ctaText = siteSettings.cta_text || "Request an introduction";
+const ctaLink = siteSettings.cta_link || "#introduce";
+const sectionOn = (type: string) =>
+  (homepage.sections || []).some((s: any) => s.type === type && s.enabled);
+const showFeatures = sectionOn("features");
+const showCta = sectionOn("cta");
+// Split hero headline on ". " for the two-line display treatment.
+const heroLines = heroHeadline.split(/\.\s*/).filter(Boolean);
 ---
 
 <Base
@@ -13,13 +28,11 @@ import HeroDots from "../components/HeroDots.astro";
     <HeroDots />
     <img class="lockup" src="/img/brimwood-logo-reversed.svg" alt="Brimwood Innovation logo" />
     <div class="eyebrow">Toronto &middot; Coming soon</div>
-    <h1>Build a business.<br />Build yourself.</h1>
+    <h1>{heroLines.map((line, i) => <>{line}.{i < heroLines.length - 1 && <br />}</>)}</h1>
     <p class="lede">
-      Brimwood Innovation is a selective innovation hub for ambitious people building
-      AI-powered micro businesses. A beautiful room, real skills, a vetted community,
-      and a team that builds alongside you.
+      {heroSubtext}
     </p>
-    <a class="btn" href="#introduce">Request an introduction</a>
+    <a class="btn" href={ctaLink}>{ctaText}</a>
     <div class="countdown">
       <div class="cd-lbl">Expected to launch</div>
       <div class="cd-digits">
@@ -35,6 +48,7 @@ import HeroDots from "../components/HeroDots.astro";
     <p>Elite by effort, not by background.</p>
   </div>
 
+  {showFeatures && (
   <section class="block">
     <div class="kicker">The four promises</div>
     <h2 class="sec">What every member gets</h2>
@@ -46,7 +60,9 @@ import HeroDots from "../components/HeroDots.astro";
       <div class="card"><div class="n">04</div><h3>Partnership</h3><p>Support and backing from a team that builds alongside you.</p></div>
     </div>
   </section>
+  )}
 
+  {showFeatures && (
   <section class="block">
     <div class="kicker">How it works</div>
     <h2 class="sec">Small teams, powered by AI</h2>
@@ -57,7 +73,9 @@ import HeroDots from "../components/HeroDots.astro";
       <div class="step"><div class="num">3</div><h3>Grow together</h3><p>When you grow, we grow together. Building a business is one of the best ways to build yourself.</p></div>
     </div>
   </section>
+  )}
 
+  {showCta && (
   <section class="block" id="introduce">
     <div class="cta">
       <h2>Membership is by invitation.</h2>
@@ -73,12 +91,13 @@ import HeroDots from "../components/HeroDots.astro";
         <textarea id="fMsg" name="message" rows="3" placeholder="A line or two is plenty."></textarea>
         <input type="text" name="website" id="fSite" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true" />
         <div class="cf-turnstile" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx" style="margin:16px 0;"></div>
-        <button class="btn" type="submit">Request an introduction</button>
+        <button class="btn" type="submit">{ctaText}</button>
         <p class="form-err" id="formErr" style="display:none">Something went wrong on our end. Please email <a href="mailto:info@brimwoodinnovation.com" style="color:#fff;text-decoration:underline">info@brimwoodinnovation.com</a> directly and we will take it from there.</p>
       </form>
       <div class="thanks" id="thanksMsg">Thank you. Your introduction request is on its way &mdash; we read every one personally and will be in touch.</div>
     </div>
   </section>
+  )}
 
   <script>
 

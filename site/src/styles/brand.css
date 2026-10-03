@@ -56,6 +56,13 @@ a:hover { color: var(--emerald); }
 }
 .skip-link:focus { left: 0; }
 
+/* CMS announcement bar (settings.json). Hidden when empty. */
+.announcement-bar {
+  background: var(--emerald); color: #fff;
+  text-align: center; font-size: 0.9rem;
+  padding: 0.6rem 1rem;
+}
+
 /* ---- header (v7) ---- */
 header.site {
   position: sticky; top: 0; z-index: 20;
