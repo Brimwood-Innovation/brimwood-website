@@ -138,7 +138,10 @@ app.get("/auth", async (c) => {
       }
     })();
   </script></body></html>`;
-  return new Response(html, { headers: { "content-type": "text/html" } });
+  // NOTE: use c.html(), not `new Response()` — returning a raw Response
+  // discards the Set-Cookie header staged by setSignedCookie above, which
+  // breaks the state check in /callback ("Invalid state" on every attempt).
+  return c.html(html);
 });
 
 /** Step 2: verify state, exchange code for token. */
@@ -202,7 +205,8 @@ app.get("/callback", async (c) => {
       }
     })();
   </script></body></html>`;
-  return new Response(html, { headers: { "content-type": "text/html" } });
+  // c.html() preserves the deleteCookie header staged above (single-use state).
+  return c.html(html);
 });
 
 export default app;
