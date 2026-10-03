@@ -6,6 +6,12 @@
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
   Cross-Origin-Opener-Policy: same-origin
 
+# CMS OAuth popup (cross-origin worker) needs window.opener intact so the
+# callback can postMessage the token back to Decap. same-origin-allow-popups
+# keeps isolation but preserves the opener relationship for popups we open.
+/cms/*
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+
 # Long-lived cache for fingerprinted build assets.
 /_astro/*
   Cache-Control: public, max-age=31536000, immutable
