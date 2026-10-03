@@ -1,9 +1,14 @@
-/* GitHub OAuth for Decap CMS (T26, hardened 2026-10-02).
+/* GitHub OAuth for Decap CMS (T26, hardened 2026-10-02, handshake fixed 2026-10-03).
  *
  * Flow:
- * 1. Decap → GET /api/oauth/auth → set state cookie → redirect to GitHub authorize
+ * 1. Decap → popup GET /api/oauth/auth → handshake page posts
+ *    "authorizing:github" to opener, waits for Decap's echo, then
+ *    navigates the popup to GitHub authorize (state in signed cookie)
  * 2. GitHub → GET /api/oauth/callback?code=...&state=... → verify state → exchange for token
- * 3. Return token to Decap via postMessage (restricted to SITE_URL origin)
+ * 3. Return token to Decap via postMessage (restricted to the validated CMS origin)
+ *
+ * Decap's NetlifyAuthenticator REQUIRES the step-1 handshake before it will
+ * accept the token in step 3 — without it Decap stays on the login screen.
  *
  * Security:
  * - state parameter prevents CSRF (random 32 bytes, httpOnly cookie, 10-min expiry)
@@ -53,15 +58,26 @@ function cmsOriginFromReferer(c: any): string | null {
   }
 }
 
-/** Step 1: set state cookie (state + validated CMS origin), redirect to GitHub. */
+/** Step 1: set state cookie, render the handshake page.
+ *
+ * Decap's NetlifyAuthenticator requires a two-message handshake before it
+ * will accept the token:
+ *   1. popup -> opener: "authorizing:github"   (Decap verifies e.origin)
+ *   2. opener -> popup: echo "authorizing:github"
+ *   3. popup -> opener: "authorization:github:success:{...}" (in /callback)
+ * Skipping straight to step 3 means Decap ignores the token and stays on
+ * the login screen. The handshake string carries no secrets, so "*" is a
+ * safe target here; the token in step 3 still targets the validated origin.
+ */
 app.get("/auth", async (c) => {
   const clientId = c.env.GITHUB_CLIENT_ID;
   if (!clientId) return c.json({ ok: false, error: "OAuth not configured" }, 500);
 
   const state = randomState();
-  // Remember which origin opened the popup so the callback can postMessage
-  // back to exactly that origin. Falls back to SITE_URL for old flows.
-  const origin = cmsOriginFromReferer(c) || null;
+  // Remember which origin opened the popup so the token postMessage in
+  // /callback targets exactly that origin. Falls back to SITE_URL.
+  const fallback = (c.env.SITE_URL || "https://brimwood-website-preview.pages.dev").replace(/\/$/, "");
+  const origin = cmsOriginFromReferer(c) || fallback;
   const cookieValue = JSON.stringify({ state, origin });
   // Signed cookie so the callback can verify the state wasn't tampered with.
   // SESSION_SECRET is the signing key (already used for session cookies).
@@ -79,7 +95,50 @@ app.get("/auth", async (c) => {
     state,
     redirect_uri: "https://brimwood-api.adamsayani.workers.dev/api/oauth/callback",
   });
-  return c.redirect(GITHUB_AUTH + "?" + params.toString());
+  const githubUrl = GITHUB_AUTH + "?" + params.toString();
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"></head><body><script>
+    (function() {
+      var HANDSHAKE = "authorizing:github";
+      var githubUrl = ${JSON.stringify(githubUrl)};
+      var openerOrigin = ${JSON.stringify(origin)};
+      var done = false;
+      function show(msg) { document.body.textContent = msg; }
+      function go() {
+        if (done) return;
+        done = true;
+        window.location.href = githubUrl;
+      }
+      // Step 2: wait for Decap to echo the handshake, then go to GitHub.
+      window.addEventListener("message", function(e) {
+        if (e.data === HANDSHAKE && e.origin === openerOrigin) go();
+      });
+      // Step 1: initiate the handshake.
+      function ping() {
+        try {
+          if (window.opener && !window.opener.closed) {
+            window.opener.postMessage(HANDSHAKE, "*");
+            return true;
+          }
+        } catch (err) { /* cross-origin opener access can throw on read */ }
+        show("Login couldn't start: no connection to the CMS window. Please allow popups for this site, then close this window and try again.");
+        return false;
+      }
+      if (ping()) {
+        var n = 0;
+        var t = setInterval(function() {
+          n += 1;
+          if (n >= 8 || done) {
+            clearInterval(t);
+            if (!done) show("Still waiting for the CMS — if this persists, close this window and try again.");
+            return;
+          }
+          ping();
+        }, 400);
+      }
+    })();
+  </script></body></html>`;
+  return new Response(html, { headers: { "content-type": "text/html" } });
 });
 
 /** Step 2: verify state, exchange code for token. */
