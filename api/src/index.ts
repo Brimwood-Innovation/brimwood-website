@@ -10,6 +10,10 @@ import admin from "./routes/admin";
 import oauth from "./routes/oauth";
 import sync from "./routes/sync";
 import media from "./routes/media";
+import search from "./routes/search";
+import comments from "./routes/comments";
+import events from "./routes/events";
+import forms from "./routes/forms";
 import { handleScheduled } from "./cron";
 
 export type Bindings = {
@@ -79,6 +83,10 @@ app.route("/api/admin", admin);
 app.route("/api/admin/sync", sync);
 app.route("/api/oauth", oauth);
 app.route("/api", media);
+app.route("/api/search", search);
+app.route("/api", comments);
+app.route("/api", events);
+app.route("/api/forms", forms);
 
 app.notFound((c) => c.json({ ok: false, error: "Not found" }, 404));
 app.onError((err, c) => {

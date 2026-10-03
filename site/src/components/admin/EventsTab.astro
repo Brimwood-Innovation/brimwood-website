@@ -1,0 +1,122 @@
+---
+/* Events admin tab (Phase B). Self-contained: renders the panel div and
+ * registers window.loadEventsTab().
+ *
+ * WIRING (first mate): in admin.astro
+ *  1. import EventsTab from "../components/admin/EventsTab.astro";
+ *  2. place <EventsTab /> alongside the other tab-panel divs;
+ *  3. add an "Events" tab button (data-tab="events");
+ *  4. add `events: loadEventsTab` to the tab-switch dispatch map.
+ */
+---
+
+<div id="tab-events" class="tab-panel" style="display:none;"></div>
+
+<script>
+  const EV_API_BASE = import.meta.env.PUBLIC_API_BASE || "";
+  const evApi = (p, opts = {}) =>
+    fetch(EV_API_BASE + p, {
+      credentials: "include",
+      headers: { accept: "application/json", ...(opts.headers || {}) },
+      ...opts,
+    });
+  const evEsc = (s) => String(s || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const evFmt = (iso) =>
+    iso ? new Date(iso).toLocaleString("en-CA", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
+  const evInput = 'padding:8px 12px;border:1px solid rgba(18,26,22,.12);border-radius:8px;width:100%;margin-bottom:10px;';
+
+  window.loadEventsTab = async function () {
+    const el = document.getElementById("tab-events");
+    el.innerHTML = "<p class='admin-muted'>Loading…</p>";
+    const r = await evApi("/api/admin/events");
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) { el.innerHTML = "<p>Failed to load.</p>"; return; }
+
+    el.innerHTML =
+      `<div class="admin-card"><strong>Create event</strong>
+        <div style="margin-top:12px;max-width:560px;">
+          <input id="evTitle" placeholder="Title — e.g. Demo night #12" style="${evInput}">
+          <input id="evSlug" placeholder="Slug (optional — auto from title)" style="${evInput}">
+          <div style="display:flex;gap:10px;">
+            <input id="evStarts" type="datetime-local" title="Starts at" style="${evInput}">
+            <input id="evEnds" type="datetime-local" title="Ends at (optional)" style="${evInput}">
+          </div>
+          <div style="display:flex;gap:10px;">
+            <input id="evLocation" placeholder="Location" style="${evInput}">
+            <input id="evCapacity" type="number" min="0" placeholder="Capacity (blank = unlimited)" style="${evInput}">
+          </div>
+          <textarea id="evDesc" rows="3" placeholder="Description (markdown)" style="${evInput}"></textarea>
+          <button class="btn small" id="evCreate">Create event</button>
+          <p class="admin-muted" id="evMsg" style="margin-top:8px;"></p>
+        </div></div>` +
+      (d.events.length === 0 ? "<p class='admin-muted'>No events yet.</p>" :
+        d.events.map((e) => `
+          <div class="admin-card" data-ev="${e.id}">
+            <div class="admin-row">
+              <div><strong>${evEsc(e.title)}</strong> <span class="admin-muted">/${evEsc(e.slug)}</span><br>
+                <span class="admin-muted">${evFmt(e.starts_at)}${e.location ? " · " + evEsc(e.location) : ""} · ${e.rsvp_count} going${e.capacity ? " / " + e.capacity : ""} · ${e.status}</span></div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="btn btn-ghost small ev-rsvps" data-id="${e.id}">Attendees</button>
+                ${e.status === "published" ? `<button class="btn btn-ghost small ev-cancel" data-id="${e.id}">Cancel</button>` : ""}
+                ${e.status !== "published" ? `<button class="btn btn-ghost small ev-publish" data-id="${e.id}">Publish</button>` : ""}
+              </div>
+            </div>
+            <div class="ev-rsvp-list" style="display:none;margin-top:12px;"></div>
+          </div>`).join(""));
+
+    document.getElementById("evCreate").addEventListener("click", async () => {
+      const msg = document.getElementById("evMsg");
+      const body = {
+        title: document.getElementById("evTitle").value.trim(),
+        slug: document.getElementById("evSlug").value.trim(),
+        starts_at: document.getElementById("evStarts").value,
+        ends_at: document.getElementById("evEnds").value,
+        location: document.getElementById("evLocation").value.trim(),
+        capacity: document.getElementById("evCapacity").value,
+        description_md: document.getElementById("evDesc").value.trim(),
+      };
+      const rr = await evApi("/api/admin/events", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const dd = await rr.json().catch(() => ({}));
+      if (dd.ok) { window.loadEventsTab(); }
+      else { msg.textContent = dd.error || "Create failed."; }
+    });
+
+    el.querySelectorAll(".ev-rsvps").forEach((b) =>
+      b.addEventListener("click", async () => {
+        const card = b.closest("[data-ev]");
+        const list = card.querySelector(".ev-rsvp-list");
+        if (list.style.display === "block") { list.style.display = "none"; return; }
+        list.innerHTML = "<p class='admin-muted'>Loading…</p>";
+        list.style.display = "block";
+        const rr = await evApi(`/api/admin/events/${b.dataset.id}/rsvps`);
+        const dd = await rr.json().catch(() => ({}));
+        if (!dd.ok) { list.innerHTML = "<p>Failed to load.</p>"; return; }
+        list.innerHTML =
+          `<p class="admin-muted"><strong>${dd.total_guests}</strong> total guests · ${dd.rsvps.length} RSVPs</p>` +
+          (dd.rsvps.length === 0 ? "<p class='admin-muted'>No RSVPs yet.</p>" :
+            dd.rsvps.map((x) =>
+              `<div style="padding:8px 0;border-top:1px solid rgba(18,26,22,.06);font-size:14px;">
+                <strong>${evEsc(x.name)}</strong> <span class="admin-muted">${evEsc(x.email)}</span>
+                <span class="admin-muted"> · party of ${x.guests} · ${x.created_at.slice(0, 10)}</span>
+              </div>`).join(""));
+      })
+    );
+
+    const setStatus = async (id, status) => {
+      const rr = await evApi(`/api/admin/events/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if ((await rr.json().catch(() => ({}))).ok) window.loadEventsTab();
+    };
+    el.querySelectorAll(".ev-cancel").forEach((b) =>
+      b.addEventListener("click", () => { if (confirm("Cancel this event?")) setStatus(b.dataset.id, "cancelled"); }));
+    el.querySelectorAll(".ev-publish").forEach((b) =>
+      b.addEventListener("click", () => setStatus(b.dataset.id, "published")));
+  };
+</script>

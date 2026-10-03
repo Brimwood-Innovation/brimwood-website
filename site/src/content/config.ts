@@ -16,4 +16,17 @@ const blog = defineCollection({
   }),
 });
 
-export const collections = { blog };
+/* Testimonials collection (Phase B). Members anonymous by default:
+ * attribution uses initials + role only, never full names. */
+const testimonials = defineCollection({
+  loader: glob({ pattern: "**/*.md", base: "./src/content/testimonials" }),
+  schema: z.object({
+    quote: z.string(),
+    attribution: z.string(),
+    role: z.string().default(""),
+    featured: z.boolean().default(false),
+    date: z.coerce.date(),
+  }),
+});
+
+export const collections = { blog, testimonials };

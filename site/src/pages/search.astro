@@ -1,0 +1,130 @@
+---
+/* Search page (Phase B): site-wide search across blog posts and preview lessons.
+ * Client-side fetch to GET /api/search?q=, results grouped by type. */
+import Base from "../layouts/Base.astro";
+---
+
+<Base
+  title="Search — Brimwood Innovation"
+  description="Search Brimwood Innovation: blog posts and academy lessons."
+  path="/search"
+>
+  <section class="block">
+    <div class="kicker">Search</div>
+    <h1 class="sec" style="font-size:clamp(34px,5.4vw,56px);margin-bottom:18px;">Find it.</h1>
+    <p class="sec-lede">
+      Search across our blog posts and academy lessons.
+    </p>
+  </section>
+
+  <section class="block">
+    <form id="searchForm" role="search" style="max-width:640px;">
+      <label for="q">Search the site</label>
+      <div style="display:flex;gap:12px;">
+        <input
+          id="q"
+          name="q"
+          type="search"
+          placeholder="Try &ldquo;effort&rdquo;, &ldquo;demo night&rdquo;, &ldquo;business&rdquo;&hellip;"
+          autocomplete="off"
+          minlength="2"
+          maxlength="100"
+          style="flex:1;"
+        />
+        <button class="btn" type="submit" id="searchBtn">Search</button>
+      </div>
+    </form>
+
+    <p id="searchHint" class="sec-lede" style="margin-top:24px;">Type at least two characters to search.</p>
+    <p id="searchStatus" class="sec-lede" style="margin-top:24px;display:none;"></p>
+
+    <div id="resultsPosts" style="display:none;margin-top:32px;">
+      <div class="kicker">Blog posts</div>
+      <div id="postsList"></div>
+    </div>
+    <div id="resultsLessons" style="display:none;margin-top:32px;">
+      <div class="kicker">Academy lessons</div>
+      <div id="lessonsList"></div>
+    </div>
+  </section>
+
+  <script>
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || '';
+    const form = document.getElementById('searchForm');
+    const input = document.getElementById('q');
+    const hint = document.getElementById('searchHint');
+    const status = document.getElementById('searchStatus');
+    const postsWrap = document.getElementById('resultsPosts');
+    const lessonsWrap = document.getElementById('resultsLessons');
+    const postsList = document.getElementById('postsList');
+    const lessonsList = document.getElementById('lessonsList');
+    const btn = document.getElementById('searchBtn');
+
+    const esc = (s) => String(s || '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+    function card(r) {
+      return '<article style="padding:20px 0;border-bottom:1px solid rgba(18,26,22,.08);">' +
+        '<h3 style="margin:0 0 8px;font-size:20px;"><a href="' + esc(r.url) + '">' + esc(r.title) + '</a></h3>' +
+        (r.excerpt ? '<p style="margin:0;color:var(--stone);font-size:15px;">' + esc(r.excerpt) + '</p>' : '') +
+        '</article>';
+    }
+
+    async function run(q) {
+      q = (q || '').trim();
+      postsWrap.style.display = 'none';
+      lessonsWrap.style.display = 'none';
+      if (q.length < 2) {
+        hint.style.display = 'block';
+        status.style.display = 'none';
+        return;
+      }
+      hint.style.display = 'none';
+      status.style.display = 'block';
+      status.textContent = 'Searching\u2026';
+      btn.disabled = true;
+      try {
+        const res = await fetch(API_BASE + '/api/search?q=' + encodeURIComponent(q), {
+          headers: { 'accept': 'application/json' },
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.error || 'search failed');
+        const results = data.results || [];
+        const posts = results.filter((r) => r.type === 'post');
+        const lessons = results.filter((r) => r.type === 'lesson');
+        if (results.length === 0) {
+          status.textContent = 'No results for \u201c' + q + '\u201d. Try different words.';
+        } else {
+          status.textContent = results.length + (results.length === 1 ? ' result' : ' results') + ' for \u201c' + q + '\u201d.';
+        }
+        if (posts.length) {
+          postsList.innerHTML = posts.map(card).join('');
+          postsWrap.style.display = 'block';
+        }
+        if (lessons.length) {
+          lessonsList.innerHTML = lessons.map(card).join('');
+          lessonsWrap.style.display = 'block';
+        }
+      } catch (ex) {
+        status.textContent = 'Search is unavailable right now. Please try again shortly.';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const q = input.value;
+      const url = new URL(location.href);
+      url.searchParams.set('q', q);
+      history.replaceState(null, '', url);
+      run(q);
+    });
+
+    // Support /search?q= links (e.g. from the header).
+    const initial = new URLSearchParams(location.search).get('q') || '';
+    if (initial) {
+      input.value = initial;
+      run(initial);
+    }
+  </script>
+</Base>

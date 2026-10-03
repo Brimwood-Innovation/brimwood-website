@@ -57,4 +57,87 @@ const pillars: Record<string, string> = {
       <a class="btn btn-ghost" href="/blog">All posts</a>
     </p>
   </article>
+
+  <section id="comments" style="margin-top:4rem;max-width:720px;">
+    <h2 class="sec" style="font-size:clamp(22px,3vw,30px);margin-bottom:8px;">Comments</h2>
+    <div id="commentList"><p class="sec-lede">Loading comments…</p></div>
+
+    <div class="cta" style="margin-top:2rem;">
+      <h3 style="margin-bottom:8px;">Join the conversation</h3>
+      <p style="margin-bottom:16px;">Comments are moderated — be kind and on topic.</p>
+      <form id="commentForm">
+        <label for="cName">Your name</label>
+        <input id="cName" type="text" name="name" placeholder="Jane Appleseed" required />
+        <label for="cEmail">Email <span style="font-weight:400;">(never published)</span></label>
+        <input id="cEmail" type="email" name="email" placeholder="you@example.com" required />
+        <label for="cBody">Comment</label>
+        <textarea id="cBody" name="body" rows="4" placeholder="Share your thoughts…" required minlength="10" maxlength="2000"></textarea>
+        <div class="cf-turnstile" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx" style="margin:16px 0;"></div>
+        <button class="btn" type="submit" id="commentBtn">Post comment</button>
+        <p class="form-err" id="commentErr" style="display:none;"></p>
+      </form>
+      <div class="thanks" id="commentThanks">Thanks — your comment is awaiting moderation.</div>
+    </div>
+  </section>
+
+  <script define:vars={{ slug, apiBase: import.meta.env.PUBLIC_API_BASE || "" }}>
+    const listEl = document.getElementById("commentList");
+    const esc = (s) => String(s || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const fmtDate = (iso) => {
+      try { return new Date(iso).toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric" }); }
+      catch { return ""; }
+    };
+
+    (async () => {
+      try {
+        const r = await fetch(apiBase + "/api/comments/" + encodeURIComponent(slug), {
+          headers: { accept: "application/json" },
+        });
+        const d = await r.json();
+        const comments = (d.ok && d.comments) || [];
+        listEl.innerHTML = comments.length === 0
+          ? "<p class='sec-lede'>No comments yet — be the first.</p>"
+          : comments.map((cm) => `
+            <div class="admin-card" style="margin-bottom:12px;">
+              <p style="margin:0 0 8px;"><strong>${esc(cm.name)}</strong>
+                <span class="admin-muted"> · ${esc(fmtDate(cm.created_at))}</span></p>
+              <p style="margin:0;white-space:pre-wrap;">${esc(cm.body)}</p>
+            </div>`).join("");
+      } catch {
+        listEl.innerHTML = "<p class='sec-lede'>Could not load comments.</p>";
+      }
+    })();
+
+    document.getElementById("commentForm").addEventListener("submit", async function (e) {
+      e.preventDefault();
+      const v = (id) => document.getElementById(id).value.trim();
+      const btn = document.getElementById("commentBtn");
+      const err = document.getElementById("commentErr");
+      err.style.display = "none";
+      btn.disabled = true;
+      btn.textContent = "Posting…";
+      try {
+        const res = await fetch(apiBase + "/api/comments", {
+          method: "POST",
+          headers: { "content-type": "application/json", accept: "application/json" },
+          body: JSON.stringify({
+            post_slug: slug,
+            name: v("cName"),
+            email: v("cEmail"),
+            body: v("cBody"),
+            "cf-turnstile-response": (document.querySelector('#commentForm [name="cf-turnstile-response"]') || {}).value || "",
+          }),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) throw new Error(d.error || "Could not post your comment.");
+        document.getElementById("commentForm").style.display = "none";
+        document.getElementById("commentThanks").style.display = "block";
+      } catch (ex) {
+        btn.disabled = false;
+        btn.textContent = "Post comment";
+        err.textContent = ex.message;
+        err.style.display = "block";
+      }
+    });
+  </script>
 </Base>

@@ -1,6 +1,9 @@
 ---
 /* Admin dashboard: intro triage, subscribers, invites, users, metrics, audit, media library. Brand-kit styled. */
 import Base from "../layouts/Base.astro";
+import CommentsTab from "../components/admin/CommentsTab.astro";
+import EventsTab from "../components/admin/EventsTab.astro";
+import FormsTab from "../components/admin/FormsTab.astro";
 ---
 
 <Base title="Admin — Brimwood Innovation" description="Admin dashboard.">
@@ -29,6 +32,9 @@ import Base from "../layouts/Base.astro";
         <button data-tab="metrics" class="btn btn-ghost small tab-btn">Metrics</button>
         <button data-tab="audit" class="btn btn-ghost small tab-btn">Audit</button>
         <button data-tab="media" class="btn btn-ghost small tab-btn">Media</button>
+        <button data-tab="comments" class="btn btn-ghost small tab-btn">Comments</button>
+        <button data-tab="events" class="btn btn-ghost small tab-btn">Events</button>
+        <button data-tab="forms" class="btn btn-ghost small tab-btn">Forms</button>
       </nav>
 
       <div id="tab-intros" class="tab-panel"></div>
@@ -38,6 +44,9 @@ import Base from "../layouts/Base.astro";
       <div id="tab-metrics" class="tab-panel" style="display:none;"></div>
       <div id="tab-audit" class="tab-panel" style="display:none;"></div>
       <div id="tab-media" class="tab-panel" style="display:none;"></div>
+      <div id="tab-comments" class="tab-panel" style="display:none;"><CommentsTab /></div>
+      <div id="tab-events" class="tab-panel" style="display:none;"><EventsTab /></div>
+      <div id="tab-forms" class="tab-panel" style="display:none;"><FormsTab /></div>
     </div>
   </section>
 
@@ -80,7 +89,7 @@ import Base from "../layouts/Base.astro";
           document.querySelectorAll(".tab-panel").forEach((x) => (x.style.display = "none"));
           b.classList.add("active");
           show("tab-" + b.dataset.tab);
-          ({ intros: loadIntros, subs: loadSubs, invites: loadInvites, users: loadUsers, metrics: loadMetrics, audit: loadAudit, media: () => loadMedia(true) })[b.dataset.tab]();
+          ({ intros: loadIntros, subs: loadSubs, invites: loadInvites, users: loadUsers, metrics: loadMetrics, audit: loadAudit, media: () => loadMedia(true), comments: () => window.loadCommentsTab && window.loadCommentsTab(), events: () => window.loadEventsTab && window.loadEventsTab(), forms: () => window.loadFormsTab && window.loadFormsTab() })[b.dataset.tab]();
         });
       });
       document.querySelector('[data-tab="intros"]').classList.add("active");

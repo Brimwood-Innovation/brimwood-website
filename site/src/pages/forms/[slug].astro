@@ -1,0 +1,181 @@
+---
+/* Dynamic form page (Phase B): renders any published form by slug.
+ * Paths generated at build time from the API; definition fetched client-side
+ * so drafts stay hidden and the page shell is static. */
+import Base from "../../layouts/Base.astro";
+
+export async function getStaticPaths() {
+  const apiBase = import.meta.env.PUBLIC_API_BASE || "";
+  try {
+    const r = await fetch(apiBase + "/api/forms", { headers: { accept: "application/json" } });
+    const d = await r.json();
+    if (d.ok && Array.isArray(d.forms)) {
+      return d.forms.map((f) => ({ params: { slug: f.slug } }));
+    }
+  } catch {}
+  return [];
+}
+---
+
+<Base
+  title="Form — Brimwood Innovation"
+  description="Fill in this Brimwood Innovation form."
+  path="/forms"
+>
+  <section class="block" style="max-width:640px;margin-inline:auto;">
+    <div id="formLoading" style="text-align:center;padding:48px 0;">
+      <p class="sec-lede">Loading…</p>
+    </div>
+
+    <div id="formNotFound" style="display:none;text-align:center;padding:48px 0;">
+      <h1 class="sec">Not found</h1>
+      <p class="sec-lede" style="margin-inline:auto;">This form does not exist or is no longer accepting responses.</p>
+    </div>
+
+    <div id="formWrap" style="display:none;">
+      <h1 class="sec" id="formTitle" style="font-size:clamp(28px,4vw,44px);margin-bottom:12px;"></h1>
+      <p class="sec-lede" id="formDesc" style="display:none;margin-bottom:32px;"></p>
+      <form id="dynForm" style="text-align:left;"></form>
+      <p id="formErr" style="display:none;color:#b3261e;margin-top:16px;"></p>
+    </div>
+
+    <div id="formDone" style="display:none;text-align:center;padding:48px 0;">
+      <div class="kicker" style="color:var(--emerald-deep);">Received</div>
+      <h1 class="sec">Thank you.</h1>
+      <p class="sec-lede" style="margin-inline:auto;">Your response is on its way — we read every one personally.</p>
+    </div>
+  </section>
+
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  <script>
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || '';
+    const slug = location.pathname.split('/').filter(Boolean).pop() || '';
+
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+    async function init() {
+      let form;
+      try {
+        const r = await fetch(API_BASE + '/api/forms/' + encodeURIComponent(slug), { headers: { accept: 'application/json' } });
+        const d = await r.json();
+        if (!r.ok || !d.ok) throw new Error('not found');
+        form = d.form;
+      } catch {
+        document.getElementById('formLoading').style.display = 'none';
+        document.getElementById('formNotFound').style.display = 'block';
+        return;
+      }
+      document.title = form.title + ' — Brimwood Innovation';
+      document.getElementById('formTitle').textContent = form.title;
+      if (form.description) {
+        const desc = document.getElementById('formDesc');
+        desc.textContent = form.description;
+        desc.style.display = 'block';
+      }
+      const f = document.getElementById('dynForm');
+      form.fields.forEach((field) => {
+        const wrap = document.createElement('div');
+        wrap.style.marginBottom = '20px';
+        const label = document.createElement('label');
+        label.style.display = 'block';
+        label.style.marginBottom = '6px';
+        label.style.fontWeight = '600';
+        label.textContent = field.label + (field.required ? ' *' : '');
+        label.htmlFor = 'ff-' + field.id;
+        wrap.appendChild(label);
+
+        const inputStyle = 'width:100%;padding:12px 16px;border:1px solid rgba(18,26,22,.15);border-radius:12px;font-size:16px;font-family:inherit;';
+        let input;
+        if (field.field_type === 'textarea') {
+          input = document.createElement('textarea');
+          input.rows = 4;
+        } else if (field.field_type === 'select') {
+          input = document.createElement('select');
+          const ph = document.createElement('option');
+          ph.value = '';
+          ph.textContent = 'Choose…';
+          input.appendChild(ph);
+          (field.options || []).forEach((o) => {
+            const opt = document.createElement('option');
+            opt.value = o;
+            opt.textContent = o;
+            input.appendChild(opt);
+          });
+        } else if (field.field_type === 'checkbox') {
+          wrap.style.display = 'flex';
+          wrap.style.alignItems = 'center';
+          wrap.style.gap = '10px';
+          label.style.marginBottom = '0';
+          label.style.fontWeight = '400';
+          input = document.createElement('input');
+          input.type = 'checkbox';
+          input.style.width = '20px';
+          input.style.height = '20px';
+          wrap.appendChild(input);
+          wrap.insertBefore(label, wrap.firstChild.nextSibling);
+          input.id = 'ff-' + field.id;
+          input.dataset.fieldId = field.id;
+          f.appendChild(wrap);
+          return;
+        } else {
+          input = document.createElement('input');
+          input.type = field.field_type === 'email' ? 'email' : 'text';
+        }
+        input.id = 'ff-' + field.id;
+        input.dataset.fieldId = field.id;
+        if (field.field_type !== 'checkbox') input.style.cssText = inputStyle;
+        if (field.required) input.required = true;
+        wrap.appendChild(input);
+        f.appendChild(wrap);
+      });
+
+      const ts = document.createElement('div');
+      ts.className = 'cf-turnstile';
+      ts.dataset.sitekey = '0x4AAAAAAFLpQ6bCYUs0w0Lx';
+      ts.style.margin = '8px 0 20px';
+      f.appendChild(ts);
+
+      const btn = document.createElement('button');
+      btn.className = 'btn';
+      btn.type = 'submit';
+      btn.textContent = 'Submit';
+      f.appendChild(btn);
+
+      f.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const err = document.getElementById('formErr');
+        err.style.display = 'none';
+        btn.disabled = true;
+        btn.textContent = 'Sending…';
+        const responses = {};
+        form.fields.forEach((field) => {
+          const el = document.getElementById('ff-' + field.id);
+          responses[field.id] = field.field_type === 'checkbox' ? el.checked : el.value.trim();
+        });
+        try {
+          const res = await fetch(API_BASE + '/api/forms/' + encodeURIComponent(slug) + '/submit', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', accept: 'application/json' },
+            body: JSON.stringify({
+              responses,
+              'cf-turnstile-response': (document.querySelector('[name="cf-turnstile-response"]') || {}).value || '',
+            }),
+          });
+          const d = await res.json().catch(() => ({}));
+          if (!res.ok || !d.ok) throw new Error(d.error || 'Submission failed. Please try again.');
+          document.getElementById('formWrap').style.display = 'none';
+          document.getElementById('formDone').style.display = 'block';
+        } catch (ex) {
+          btn.disabled = false;
+          btn.textContent = 'Submit';
+          err.textContent = ex.message;
+          err.style.display = 'block';
+        }
+      });
+
+      document.getElementById('formLoading').style.display = 'none';
+      document.getElementById('formWrap').style.display = 'block';
+    }
+    init();
+  </script>
+</Base>

@@ -1,0 +1,120 @@
+---
+/* Event detail + RSVP form. Client-rendered: always fresh, no rebuild needed.
+ * RSVP is Turnstile-protected server-side. */
+import Base from "../../layouts/Base.astro";
+
+const { slug } = Astro.params;
+
+export async function getStaticPaths() {
+  const apiBase = import.meta.env.PUBLIC_API_BASE || "";
+  try {
+    const r = await fetch(apiBase + "/api/events", { headers: { accept: "application/json" } });
+    const d = await r.json();
+    if (d.ok && Array.isArray(d.events)) {
+      return d.events.map((e: any) => ({ params: { slug: e.slug } }));
+    }
+  } catch {}
+  return [];
+}
+---
+
+<Base title="Event — Brimwood Innovation" description="Event details and RSVP." path={`/events/${slug}`}>
+  <section class="block" id="eventWrap">
+    <p class="sec-lede" id="eventLoading">Loading…</p>
+    <div id="eventBody" style="display:none;"></div>
+  </section>
+
+  <section class="block" id="rsvpSection" style="display:none;">
+    <div class="cta">
+      <h2>Save your spot.</h2>
+      <p>Tell us who is coming. One RSVP per email — update it anytime by submitting again.</p>
+      <form class="intro" id="rsvpForm">
+        <label for="rName">Your name</label>
+        <input id="rName" type="text" name="name" placeholder="Jane Appleseed" required />
+        <label for="rEmail">Email</label>
+        <input id="rEmail" type="email" name="email" placeholder="you@example.com" required />
+        <label for="rGuests">Guests (including you)</label>
+        <input id="rGuests" type="number" name="guests" min="1" max="10" value="1" required />
+        <input type="text" name="website" id="rSite" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true" />
+        <div class="cf-turnstile" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx" style="margin:16px 0;"></div>
+        <button class="btn" type="submit" id="rsvpBtn">RSVP</button>
+        <p class="form-err" id="rsvpErr" style="display:none"></p>
+      </form>
+      <div class="thanks" id="rsvpThanks">You are on the list — check your inbox for confirmation.</div>
+    </div>
+  </section>
+
+  <script define:vars={{ slug }}>
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || '';
+    const esc = (s) => String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const fmt = (iso) => new Date(iso).toLocaleString('en-CA', {
+      weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit'
+    });
+
+    (async () => {
+      const body = document.getElementById('eventBody');
+      try {
+        const r = await fetch(API_BASE + '/api/events/' + encodeURIComponent(slug), {
+          headers: { accept: 'application/json' }
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok) throw new Error('not found');
+        const e = d.event;
+        document.title = e.title + ' — Events — Brimwood Innovation';
+        document.getElementById('eventLoading').style.display = 'none';
+        body.style.display = 'block';
+        const full = e.capacity && e.rsvp_count >= e.capacity;
+        body.innerHTML =
+          '<div class="kicker">' + esc(fmt(e.starts_at)) + (e.location ? ' · ' + esc(e.location) : '') + '</div>' +
+          '<h1 class="sec" style="font-size:clamp(34px,5.4vw,56px);margin-bottom:18px;">' + esc(e.title) + '</h1>' +
+          (e.description_md ? '<div class="prose" style="padding:0;max-width:none;"><p style="white-space:pre-wrap;">' + esc(e.description_md) + '</p></div>' : '') +
+          '<p class="admin-muted" style="margin-top:16px;">' + e.rsvp_count + ' going' + (e.capacity ? ' · ' + e.capacity + ' spots' : '') + '</p>' +
+          '<p style="margin-top:12px;"><a href="/events" style="font-size:14px;">← All events</a></p>';
+        if (!full) {
+          document.getElementById('rsvpSection').style.display = 'block';
+        } else {
+          body.innerHTML += '<p class="sec-lede" style="margin-top:24px;font-weight:600;">This event is at capacity.</p>';
+        }
+      } catch {
+        document.getElementById('eventLoading').textContent = 'Event not found.';
+      }
+    })();
+
+    document.getElementById('rsvpForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const v = (id) => document.getElementById(id).value.trim();
+      const btn = document.getElementById('rsvpBtn');
+      const err = document.getElementById('rsvpErr');
+      err.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+      try {
+        if (v('rSite')) { // honeypot: bot — silently accept
+          document.getElementById('rsvpForm').style.display = 'none';
+          document.getElementById('rsvpThanks').style.display = 'block';
+          return;
+        }
+        const res = await fetch(API_BASE + '/api/events/' + encodeURIComponent(slug) + '/rsvp', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'accept': 'application/json' },
+          body: JSON.stringify({
+            name: v('rName'),
+            email: v('rEmail'),
+            guests: v('rGuests'),
+            website: '',
+            'cf-turnstile-response': (document.querySelector('#rsvpForm [name="cf-turnstile-response"]') || {}).value || ''
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.error || 'RSVP failed');
+        document.getElementById('rsvpForm').style.display = 'none';
+        document.getElementById('rsvpThanks').style.display = 'block';
+      } catch (ex) {
+        btn.disabled = false;
+        btn.textContent = 'RSVP';
+        err.textContent = ex.message;
+        err.style.display = 'block';
+      }
+    });
+  </script>
+</Base>

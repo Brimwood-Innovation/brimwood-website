@@ -1,0 +1,217 @@
+---
+/* Forms tab for the admin panel (Phase B). Self-contained: renders the tab
+ * button + panel and exposes window.loadFormsTab for admin.astro's tab
+ * dispatch map. The first mate wires it in — do not edit admin.astro here. */
+---
+
+<button data-tab="forms" class="btn btn-ghost small tab-btn">Forms</button>
+<div id="tab-forms" class="tab-panel" style="display:none;"></div>
+
+<script>
+  const FAPI_BASE = import.meta.env.PUBLIC_API_BASE || "";
+  const fapi = (p, opts = {}) =>
+    fetch(FAPI_BASE + p, { credentials: "include", headers: { accept: "application/json", ...(opts.headers || {}) }, ...opts });
+  const fesc = (s) => String(s ?? "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const FIELD_TYPES = ["text", "email", "textarea", "select", "checkbox"];
+
+  let formsView = "list"; // list | builder | submissions
+  let formsCache = [];
+  let activeFormId = null;
+  let builderFields = [];
+
+  function slugify(v) {
+    return String(v || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+  }
+
+  window.loadFormsTab = async function () {
+    const el = document.getElementById("tab-forms");
+    if (formsView === "builder") return renderBuilder(el);
+    if (formsView === "submissions") return loadSubmissions(el);
+    return loadFormsList(el);
+  };
+
+  async function loadFormsList(el) {
+    el.innerHTML = "<p class='admin-muted'>Loading…</p>";
+    const r = await fapi("/api/forms/admin");
+    const d = await r.json();
+    if (!d.ok) { el.innerHTML = "<p>Failed to load.</p>"; return; }
+    formsCache = d.forms || [];
+    el.innerHTML =
+      "<div class='admin-row' style='margin-bottom:16px;'>" +
+      "<button class='btn small' id='formsNew'>New form</button></div>" +
+      (formsCache.length === 0 ? "<p class='admin-muted'>No forms yet. Create one to get started.</p>" :
+        formsCache.map((f) => `
+        <div class="admin-card">
+          <div class="admin-row">
+            <div><strong>${fesc(f.title)}</strong>
+              <span class="admin-muted">/forms/${fesc(f.slug)}</span><br>
+              <span class="admin-muted">${fesc(f.status)} · ${f.field_count} fields · ${f.submission_count} submissions</span></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button class="btn btn-ghost small" data-fv="subs" data-id="${f.id}">Submissions</button>
+              ${f.status === "published"
+                ? `<button class="btn btn-ghost small" data-fv="close" data-id="${f.id}">Close</button>`
+                : `<button class="btn small" data-fv="publish" data-id="${f.id}">Publish</button>`}
+              <button class="btn btn-ghost small" data-fv="del" data-id="${f.id}" style="color:#b3261e;">Delete</button>
+            </div>
+          </div>
+        </div>`).join(""));
+    document.getElementById("formsNew").addEventListener("click", () => {
+      formsView = "builder"; builderFields = []; activeFormId = null;
+      renderBuilder(el);
+    });
+    el.querySelectorAll("[data-fv]").forEach((b) => b.addEventListener("click", async () => {
+      const id = b.dataset.id, act = b.dataset.fv;
+      if (act === "subs") { formsView = "submissions"; activeFormId = id; return loadSubmissions(el); }
+      if (act === "del" && !confirm("Delete this form and all its submissions?")) return;
+      const body = act === "del" ? undefined : { status: act === "publish" ? "published" : "closed" };
+      await fapi(`/api/forms/admin/${id}`, {
+        method: act === "del" ? "DELETE" : "PATCH",
+        headers: { "content-type": "application/json" },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      loadFormsList(el);
+    }));
+  }
+
+  function renderBuilder(el) {
+    el.innerHTML = `
+      <div class='admin-row' style='margin-bottom:16px;'>
+        <button class='btn btn-ghost small' id='formsBack'>← Back to forms</button>
+      </div>
+      <div class="admin-card">
+        <h3 style="margin-top:0;">New form</h3>
+        <label style="display:block;margin-bottom:12px;">Title<br>
+          <input id="fbTitle" type="text" style="width:100%;padding:10px 14px;border:1px solid rgba(18,26,22,.15);border-radius:10px;font-size:15px;" placeholder="Demo night application"></label>
+        <label style="display:block;margin-bottom:12px;">Slug (URL: /forms/<span id="fbSlugPreview">…</span>)<br>
+          <input id="fbSlug" type="text" style="width:100%;padding:10px 14px;border:1px solid rgba(18,26,22,.15);border-radius:10px;font-size:15px;" placeholder="demo-night-application"></label>
+        <label style="display:block;margin-bottom:12px;">Description<br>
+          <textarea id="fbDesc" rows="2" style="width:100%;padding:10px 14px;border:1px solid rgba(18,26,22,.15);border-radius:10px;font-size:15px;"></textarea></label>
+        <label style="display:block;margin-bottom:20px;">Notify email (optional — defaults to info@)<br>
+          <input id="fbNotify" type="email" style="width:100%;padding:10px 14px;border:1px solid rgba(18,26,22,.15);border-radius:10px;font-size:15px;" placeholder="you@brimwoodinnovation.com"></label>
+        <h3>Fields</h3>
+        <div id="fbFields"></div>
+        <button class="btn btn-ghost small" id="fbAddField" style="margin:8px 0 20px;">+ Add field</button><br>
+        <button class="btn" id="fbSave">Create form</button>
+        <p id="fbErr" class="admin-muted" style="display:none;color:#b3261e;"></p>
+      </div>`;
+    document.getElementById("formsBack").addEventListener("click", () => { formsView = "list"; loadFormsList(el); });
+    const titleEl = document.getElementById("fbTitle"), slugEl = document.getElementById("fbSlug");
+    titleEl.addEventListener("input", () => {
+      if (!slugEl.dataset.touched) {
+        slugEl.value = slugify(titleEl.value);
+        document.getElementById("fbSlugPreview").textContent = slugEl.value || "…";
+      }
+    });
+    slugEl.addEventListener("input", () => {
+      slugEl.dataset.touched = "1";
+      document.getElementById("fbSlugPreview").textContent = slugify(slugEl.value) || "…";
+    });
+    document.getElementById("fbAddField").addEventListener("click", () => {
+      builderFields.push({ label: "", field_type: "text", required: false, options: "" });
+      renderFieldRows(el);
+    });
+    document.getElementById("fbSave").addEventListener("click", () => saveForm(el));
+    renderFieldRows(el);
+  }
+
+  function renderFieldRows(el) {
+    const wrap = document.getElementById("fbFields");
+    wrap.innerHTML = builderFields.length === 0
+      ? "<p class='admin-muted'>No fields yet — add one above.</p>"
+      : builderFields.map((f, i) => `
+      <div class="admin-card" style="margin-bottom:12px;" data-fi="${i}">
+        <div class="admin-row">
+          <strong>Field ${i + 1}</strong>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-ghost small" data-fa="up" ${i === 0 ? "disabled" : ""}>↑</button>
+            <button class="btn btn-ghost small" data-fa="down" ${i === builderFields.length - 1 ? "disabled" : ""}>↓</button>
+            <button class="btn btn-ghost small" data-fa="rm" style="color:#b3261e;">Remove</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+          <label>Label<br><input data-ff="label" type="text" value="${fesc(f.label)}" style="width:100%;padding:8px 12px;border:1px solid rgba(18,26,22,.15);border-radius:8px;"></label>
+          <label>Type<br><select data-ff="field_type" style="width:100%;padding:8px 12px;border:1px solid rgba(18,26,22,.15);border-radius:8px;">
+            ${FIELD_TYPES.map((t) => `<option value="${t}" ${f.field_type === t ? "selected" : ""}>${t}</option>`).join("")}
+          </select></label>
+        </div>
+        <label style="display:block;margin-top:12px;"><input data-ff="required" type="checkbox" ${f.required ? "checked" : ""}> Required</label>
+        <label data-foWrap style="display:${f.field_type === "select" ? "block" : "none"};margin-top:12px;">Options (one per line)<br>
+          <textarea data-ff="options" rows="3" style="width:100%;padding:8px 12px;border:1px solid rgba(18,26,22,.15);border-radius:8px;">${fesc(f.options)}</textarea></label>
+      </div>`).join("");
+    wrap.querySelectorAll("[data-fi]").forEach((card) => {
+      const i = +card.dataset.fi;
+      card.querySelectorAll("[data-ff]").forEach((inp) => {
+        inp.addEventListener("input", () => {
+          const k = inp.dataset.ff;
+          builderFields[i][k] = inp.type === "checkbox" ? inp.checked : inp.value;
+          if (k === "field_type") {
+            card.querySelector("[data-foWrap]").style.display = inp.value === "select" ? "block" : "none";
+          }
+        });
+      });
+      card.querySelectorAll("[data-fa]").forEach((b) => b.addEventListener("click", () => {
+        const a = b.dataset.fa;
+        if (a === "rm") builderFields.splice(i, 1);
+        if (a === "up" && i > 0) [builderFields[i - 1], builderFields[i]] = [builderFields[i], builderFields[i - 1]];
+        if (a === "down" && i < builderFields.length - 1) [builderFields[i + 1], builderFields[i]] = [builderFields[i], builderFields[i + 1]];
+        renderFieldRows(el);
+      }));
+    });
+  }
+
+  async function saveForm(el) {
+    const err = document.getElementById("fbErr");
+    err.style.display = "none";
+    const fields = builderFields.map((f) => ({
+      label: f.label.trim(),
+      field_type: f.field_type,
+      required: !!f.required,
+      options: f.field_type === "select" ? f.options.split("\n").map((o) => o.trim()).filter(Boolean) : undefined,
+    }));
+    try {
+      const r = await fapi("/api/forms/admin", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: document.getElementById("fbTitle").value,
+          slug: document.getElementById("fbSlug").value,
+          description: document.getElementById("fbDesc").value,
+          notify_email: document.getElementById("fbNotify").value,
+          fields,
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw new Error(d.error || "Create failed");
+      formsView = "list";
+      loadFormsList(el);
+    } catch (ex) {
+      err.textContent = ex.message;
+      err.style.display = "block";
+    }
+  }
+
+  async function loadSubmissions(el) {
+    el.innerHTML = "<p class='admin-muted'>Loading…</p>";
+    const r = await fapi(`/api/forms/admin/${activeFormId}/submissions`);
+    const d = await r.json();
+    if (!d.ok) { el.innerHTML = "<p>Failed to load.</p>"; return; }
+    const fields = d.fields || [];
+    el.innerHTML =
+      "<div class='admin-row' style='margin-bottom:16px;'>" +
+      "<button class='btn btn-ghost small' id='formsBack2'>← Back to forms</button>" +
+      `<span class="admin-muted">${fesc(d.form.title)} — ${(d.submissions || []).length} submissions</span></div>` +
+      ((d.submissions || []).length === 0 ? "<p class='admin-muted'>No submissions yet.</p>" :
+        `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;">
+          <thead><tr><th style="text-align:left;padding:8px;border-bottom:2px solid rgba(18,26,22,.12);">Submitted</th>` +
+          fields.map((f) => `<th style="text-align:left;padding:8px;border-bottom:2px solid rgba(18,26,22,.12);">${fesc(f.label)}</th>`).join("") +
+          `</tr></thead><tbody>` +
+          d.submissions.map((s) => `<tr><td style="padding:8px;border-bottom:1px solid rgba(18,26,22,.08);white-space:nowrap;">${fesc((s.submitted_at || "").slice(0, 16).replace("T", " "))}</td>` +
+            fields.map((f) => {
+              const v = s.data[f.id];
+              const disp = typeof v === "boolean" ? (v ? "Yes" : "No") : (v || "—");
+              return `<td style="padding:8px;border-bottom:1px solid rgba(18,26,22,.08);max-width:240px;overflow:hidden;text-overflow:ellipsis;">${fesc(String(disp))}</td>`;
+            }).join("") + `</tr>`).join("") +
+          `</tbody></table></div>`);
+    document.getElementById("formsBack2").addEventListener("click", () => { formsView = "list"; loadFormsList(el); });
+  }
+</script>

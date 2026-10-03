@@ -1,5 +1,6 @@
-# Decap CMS config (T26, expanded Phase A): blog posts, academy content,
-# editable pages, site settings, navigation, and homepage sections.
+# Decap CMS config (T26, expanded Phase A, testimonials Phase B): blog posts,
+# academy content, editable pages, site settings, navigation, homepage
+# sections, and member testimonials.
 # Auth via the GitHub OAuth worker at /api/oauth.
 
 backend:
@@ -126,3 +127,17 @@ collections:
               - { label: "Heading", name: "heading", widget: "string" }
               - { label: "Subheading", name: "subheading", widget: "text", required: false }
               - { label: "Enabled", name: "enabled", widget: "boolean", default: true }
+
+  - name: "testimonials"
+    label: "Testimonials"
+    label_singular: "Testimonial"
+    folder: "site/src/content/testimonials"
+    create: true
+    slug: "{{slug}}"
+    summary: "{{attribution}}"
+    fields:
+      - { label: "Quote", name: "quote", widget: "text", hint: "The member's words. Short sentences. Canadian spelling. No hype." }
+      - { label: "Attribution", name: "attribution", widget: "string", hint: "Initials + role only, never full names. E.g. 'M., builder since 2026'." }
+      - { label: "Role", name: "role", widget: "string", required: false, hint: "E.g. 'Academy member'. Optional." }
+      - { label: "Featured", name: "featured", widget: "boolean", default: false, hint: "Featured quotes appear first on the wall." }
+      - { label: "Date", name: "date", widget: "datetime", format: "YYYY-MM-DD" }

@@ -1,0 +1,91 @@
+---
+/* Comments moderation tab (Phase B): pending queue with Approve/Spam actions.
+ * Self-contained — the first mate wires it into admin.astro as a tab panel.
+ * Exposes window.loadCommentsTab() for tab-click loading; also auto-loads
+ * on DOMContentLoaded if its container is present.
+ */
+const apiBase = import.meta.env.PUBLIC_API_BASE || "";
+---
+
+<div id="comments-tab-root">
+  <div class="admin-row" id="commentFilters" style="margin-bottom:16px;"></div>
+  <div id="commentQueue"><p class="admin-muted">Loading…</p></div>
+</div>
+
+<script define:vars={{ apiBase }}>
+  const cApi = (p, opts = {}) =>
+    fetch(apiBase + p, {
+      credentials: "include",
+      headers: { accept: "application/json", ...(opts.headers || {}) },
+      ...opts,
+    });
+  const cEsc = (s) => String(s || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const cDate = (iso) => {
+    try { return new Date(iso).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" }); }
+    catch { return iso || ""; }
+  };
+
+  let commentStatus = "pending";
+
+  async function loadCommentsTab(status) {
+    if (status) commentStatus = status;
+    const filtersEl = document.getElementById("commentFilters");
+    const queueEl = document.getElementById("commentQueue");
+    if (!filtersEl || !queueEl) return;
+    queueEl.innerHTML = "<p class='admin-muted'>Loading…</p>";
+    try {
+      const r = await cApi("/api/admin/comments?status=" + encodeURIComponent(commentStatus));
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw new Error(d.error || "load failed");
+      const counts = Object.fromEntries((d.counts || []).map((c) => [c.status, c.n]));
+      filtersEl.innerHTML = ["pending", "approved", "spam"]
+        .map((s) => `<button class="btn btn-ghost small" data-cs="${s}" style="${s === commentStatus ? "border-color:var(--emerald);color:var(--emerald-deep);" : ""}">${s} (${counts[s] || 0})</button>`)
+        .join("");
+      filtersEl.querySelectorAll("[data-cs]").forEach((b) =>
+        b.addEventListener("click", () => loadCommentsTab(b.dataset.cs))
+      );
+      queueEl.innerHTML = (d.comments || []).length === 0
+        ? "<p class='admin-muted'>Nothing here.</p>"
+        : d.comments.map((cm) => `
+          <div class="admin-card">
+            <div class="admin-row">
+              <div>
+                <strong>${cEsc(cm.name)}</strong>
+                <span class="admin-muted">${cEsc(cm.email)}</span><br>
+                <span class="admin-muted">${cEsc(cm.post_slug)} · ${cEsc(cDate(cm.created_at))}</span>
+                <p style="margin:8px 0 0;white-space:pre-wrap;">${cEsc(cm.body)}</p>
+              </div>
+              <div style="display:flex;gap:8px;flex-shrink:0;">
+                ${commentStatus !== "approved" ? `<button class="btn small" data-cact="approved" data-cid="${cm.id}">Approve</button>` : ""}
+                ${commentStatus !== "spam" ? `<button class="btn btn-ghost small" data-cact="spam" data-cid="${cm.id}">Spam</button>` : ""}
+              </div>
+            </div>
+          </div>`).join("");
+      queueEl.querySelectorAll("[data-cact]").forEach((b) =>
+        b.addEventListener("click", async () => {
+          b.disabled = true;
+          try {
+            const rr = await cApi("/api/admin/comments/" + encodeURIComponent(b.dataset.cid), {
+              method: "PATCH",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ status: b.dataset.cact }),
+            });
+            const dd = await rr.json().catch(() => ({}));
+            if (!rr.ok || !dd.ok) throw new Error(dd.error || "update failed");
+            loadCommentsTab();
+          } catch (e) {
+            b.disabled = false;
+            alert(e.message);
+          }
+        })
+      );
+    } catch (e) {
+      queueEl.innerHTML = `<p>Failed to load: ${cEsc(e.message)}</p>`;
+    }
+  }
+
+  window.loadCommentsTab = loadCommentsTab;
+  document.addEventListener("DOMContentLoaded", () => {
+    if (document.getElementById("comments-tab-root")) loadCommentsTab();
+  });
+</script>

@@ -1,12 +1,14 @@
-/* Editorial guardrails for Decap CMS (T27, expanded Phase A).
+/* Editorial guardrails for Decap CMS (T27, expanded Phase A, testimonials Phase B).
  * Client-side pre-publish checks: Canadian spelling, banned phrases,
  * member anonymity, SEO checklist.
  *
  * Checks apply to every collection:
  * - Spelling + banned phrases: ALL text in every entry (blog, courses,
- *   pages, settings, navigation, homepage).
+ *   pages, settings, navigation, homepage, testimonials).
  * - Anonymity + SEO checklist: blog and pages (the long-form collections
  *   with title / excerpt / body).
+ * - Attribution anonymity: testimonials (the attribution field must never
+ *   be a full name — initials + role only).
  *
  * Loaded by /cms page after Decap initializes.
  */
@@ -68,6 +70,18 @@
     return [];
   }
 
+  // Testimonials: the attribution field must never be a full name.
+  // Members are anonymous by default — initials + role only.
+  function checkAttribution(attribution) {
+    const value = (attribution || "").trim();
+    if (!value) return [];
+    const names = value.match(NAME_PATTERN) || [];
+    if (names.length > 0) {
+      return [`Attribution looks like a full name: "${names[0]}". Use initials + role only (e.g. "M., builder since 2026") — members are anonymous by default.`];
+    }
+    return [];
+  }
+
   function checkSEO(entry) {
     const issues = [];
     const title = entry.getIn(["data", "title"]) || "";
@@ -120,6 +134,10 @@
       ];
       if (SEO_COLLECTIONS.indexOf(collection) !== -1) {
         issues.push(...checkAnonymity(text), ...checkSEO(entry));
+      }
+      if (collection === "testimonials") {
+        const attribution = entry.getIn(["data", "attribution"]) || "";
+        issues.push(...checkAttribution(attribution));
       }
       if (issues.length > 0) {
         // Block publish and show issues.
