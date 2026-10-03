@@ -1,10 +1,13 @@
 # Security headers for every response (T5).
+# Note: Cross-Origin-Opener-Policy is intentionally NOT set globally because
+# Cloudflare merges _headers rules additively — a global same-origin would
+# override the relaxed policy /cms/* needs for the OAuth popup (window.opener
+# must survive for postMessage). Other pages fall back to the browser default.
 /*
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
-  Cross-Origin-Opener-Policy: same-origin
 
 # CMS OAuth popup (cross-origin worker) needs window.opener intact so the
 # callback can postMessage the token back to Decap. same-origin-allow-popups
