@@ -111,7 +111,7 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
         });
         sent++;
       } catch (e) {
-        console.error(`digest: failed for ${s.email}`, e);
+        console.error("digest: send failed for a subscriber", e);
       }
       // Gentle pacing: Resend free tier is 3k/month; don't hammer.
       if (sent % 50 === 0) await new Promise((r) => setTimeout(r, 1000));

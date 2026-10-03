@@ -80,8 +80,11 @@ app.get("/auth", async (c) => {
   const origin = cmsOriginFromReferer(c) || fallback;
   const cookieValue = JSON.stringify({ state, origin });
   // Signed cookie so the callback can verify the state wasn't tampered with.
-  // SESSION_SECRET is the signing key (already used for session cookies).
-  await setSignedCookie(c, STATE_COOKIE, cookieValue, c.env.SESSION_SECRET || "brimwood-dev", {
+  // SESSION_SECRET is the signing key. Fail closed if unset — never fall back
+  // to a hardcoded key (M3).
+  const signingKey = c.env.SESSION_SECRET;
+  if (!signingKey) return c.json({ ok: false, error: "OAuth not configured" }, 500);
+  await setSignedCookie(c, STATE_COOKIE, cookieValue, signingKey, {
     httpOnly: true,
     secure: true,
     sameSite: "Lax",
@@ -153,7 +156,12 @@ app.get("/callback", async (c) => {
 
   const code = c.req.query("code");
   const returnedState = c.req.query("state");
-  const storedRaw = await getSignedCookie(c, c.env.SESSION_SECRET || "brimwood-dev", STATE_COOKIE);
+  // Fail closed if the signing key is unset (M3) — never verify with a default.
+  const signingKey = c.env.SESSION_SECRET;
+  if (!signingKey) {
+    return new Response("OAuth not configured", { status: 500 });
+  }
+  const storedRaw = await getSignedCookie(c, signingKey, STATE_COOKIE);
 
   // Clear the state cookie regardless of outcome (single use).
   deleteCookie(c, STATE_COOKIE, { path: "/api/oauth" });
@@ -194,7 +202,7 @@ app.get("/callback", async (c) => {
     stored.origin && ALLOWED_CMS_ORIGINS.includes(stored.origin) ? stored.origin : fallback;
   const html = `<!doctype html><html><body><script>
     (function() {
-      const token = ${JSON.stringify(tokenData.access_token)};
+      const token = ${JSON.stringify(tokenData.access_token).replace(/</g, "\\u003c")};
       const targetOrigin = ${JSON.stringify(targetOrigin)};
       const msg = "authorization:github:success:" + JSON.stringify({ token, provider: "github" });
       if (window.opener) {

@@ -189,6 +189,11 @@ app.get("/media/:key", async (c) => {
   }
   // Keys are unique per upload → immutable, cache aggressively at the edge.
   headers.set("cache-control", "public, max-age=31536000, immutable");
+  // L1: SVGs can carry scripts — force download so they never execute in
+  // the worker origin's context.
+  if ((headers.get("content-type") || "").includes("svg")) {
+    headers.set("content-disposition", "attachment");
+  }
 
   return new Response(obj.body, { headers });
 });

@@ -68,133 +68,6 @@ function parseFields(rows: any[]): Field[] {
   }));
 }
 
-/* ---------------- Public ---------------- */
-
-/** GET / — public directory of published forms (slug + title only).
- * Used by the site build to pre-render form pages. */
-app.get("/", async (c) => {
-  const rows = await c.env.DB.prepare(
-    "SELECT slug, title, description FROM forms WHERE status = 'published' ORDER BY created_at DESC"
-  ).all();
-  return c.json({ ok: true, forms: rows.results });
-});
-
-/** GET /:slug — published form definition. */
-app.get("/:slug", async (c) => {
-  const slug = slugify(c.req.param("slug"));
-  const form = await c.env.DB.prepare(
-    "SELECT id, slug, title, description FROM forms WHERE slug = ? AND status = 'published'"
-  )
-    .bind(slug)
-    .first<{ id: string; slug: string; title: string; description: string | null }>();
-  if (!form) return c.json({ ok: false, error: "Form not found" }, 404);
-  const fields = await c.env.DB.prepare(
-    "SELECT id, label, field_type, required, options, position FROM form_fields WHERE form_id = ? ORDER BY position ASC"
-  )
-    .bind(form.id)
-    .all();
-  return c.json({ ok: true, form: { ...form, fields: parseFields(fields.results as any[]) } });
-});
-
-/** POST /:slug/submit — validate, Turnstile, store, notify. */
-app.post("/:slug/submit", async (c) => {
-  const { DB, RATE_LIMIT_KV } = c.env;
-  const slug = slugify(c.req.param("slug"));
-
-  const form = await DB.prepare(
-    "SELECT id, slug, title, notify_email FROM forms WHERE slug = ? AND status = 'published'"
-  )
-    .bind(slug)
-    .first<{ id: string; slug: string; title: string; notify_email: string | null }>();
-  if (!form) return c.json({ ok: false, error: "Form not found" }, 404);
-
-  if (!(await checkRateLimit(RATE_LIMIT_KV, "form:" + slug + ":" + clientIp(c.req.raw), 5, 3600))) {
-    return c.json({ ok: false, error: "Too many submissions. Please try again later." }, 429);
-  }
-
-  let body: Record<string, unknown>;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ ok: false }, 400);
-  }
-
-  // Turnstile bot check (fails closed).
-  const turnstile = await verifyTurnstile(
-    body["cf-turnstile-response"],
-    (c.env as Env).TURNSTILE_SECRET_KEY,
-    clientIp(c.req.raw)
-  );
-  if (!turnstile.ok) return c.json({ ok: false, error: turnstile.error }, 400);
-
-  const fields = await DB.prepare(
-    "SELECT id, label, field_type, required, options, position FROM form_fields WHERE form_id = ? ORDER BY position ASC"
-  )
-    .bind(form.id)
-    .all();
-  const parsed = parseFields(fields.results as any[]);
-  const responses = (body.responses || {}) as Record<string, unknown>;
-
-  // Validate each field.
-  const cleaned: Record<string, string | boolean> = {};
-  for (const f of parsed) {
-    const raw = responses[f.id];
-    let value: string | boolean = typeof raw === "boolean" ? raw : cleanStr(raw, 5000);
-
-    if (f.field_type === "checkbox") {
-      value = raw === true || raw === "true" || raw === "on";
-      if (f.required && !value) {
-        return c.json({ ok: false, error: `"${f.label}" is required.` }, 400);
-      }
-      cleaned[f.id] = value;
-      continue;
-    }
-
-    const str = String(value).trim();
-    if (f.required && !str) {
-      return c.json({ ok: false, error: `"${f.label}" is required.` }, 400);
-    }
-    if (str && f.field_type === "email" && !isEmail(str)) {
-      return c.json({ ok: false, error: `"${f.label}" must be a valid email address.` }, 400);
-    }
-    if (str && f.field_type === "select" && f.options && !f.options.includes(str)) {
-      return c.json({ ok: false, error: `"${f.label}" has an invalid choice.` }, 400);
-    }
-    cleaned[f.id] = str;
-  }
-
-  await DB.prepare("INSERT INTO form_submissions (id, form_id, data) VALUES (?, ?, ?)")
-    .bind(crypto.randomUUID(), form.id, JSON.stringify(cleaned))
-    .run();
-
-  // Notify.
-  const resendKey = (c.env as Env).RESEND_API_KEY;
-  const to = form.notify_email || INBOX;
-  if (resendKey) {
-    const rows = parsed
-      .map((f) => {
-        const v = cleaned[f.id];
-        const display = typeof v === "boolean" ? (v ? "Yes" : "No") : v || "—";
-        return fieldRow(f.label, String(display));
-      })
-      .join("");
-    const html = shell(
-      "New form submission",
-      `Someone submitted "${form.title}".`,
-      `<p style="margin:0 0 16px;">New submission for <strong>${esc(form.title)}</strong>:</p>` +
-        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">' + rows + "</table>"
-    );
-    await sendEmail(resendKey, {
-      to,
-      subject: `New submission — ${form.title}`,
-      html,
-      text: `New submission for "${form.title}":\n\n` + parsed.map((f) => `${f.label}: ${String(cleaned[f.id] ?? "—")}`).join("\n"),
-    }).catch(() => {});
-  }
-
-  return c.json({ ok: true });
-});
-
 /* ---------------- Admin ---------------- */
 
 function needAdmin(c: any, admin: any) {
@@ -397,3 +270,130 @@ app.get("/admin/:id/submissions", async (c) => {
 });
 
 export default app;
+/* ---------------- Public ---------------- */
+
+/** GET / — public directory of published forms (slug + title only).
+ * Used by the site build to pre-render form pages. */
+app.get("/", async (c) => {
+  const rows = await c.env.DB.prepare(
+    "SELECT slug, title, description FROM forms WHERE status = 'published' ORDER BY created_at DESC"
+  ).all();
+  return c.json({ ok: true, forms: rows.results });
+});
+
+/** GET /:slug — published form definition. */
+app.get("/:slug", async (c) => {
+  const slug = slugify(c.req.param("slug"));
+  const form = await c.env.DB.prepare(
+    "SELECT id, slug, title, description FROM forms WHERE slug = ? AND status = 'published'"
+  )
+    .bind(slug)
+    .first<{ id: string; slug: string; title: string; description: string | null }>();
+  if (!form) return c.json({ ok: false, error: "Form not found" }, 404);
+  const fields = await c.env.DB.prepare(
+    "SELECT id, label, field_type, required, options, position FROM form_fields WHERE form_id = ? ORDER BY position ASC"
+  )
+    .bind(form.id)
+    .all();
+  return c.json({ ok: true, form: { ...form, fields: parseFields(fields.results as any[]) } });
+});
+
+/** POST /:slug/submit — validate, Turnstile, store, notify. */
+app.post("/:slug/submit", async (c) => {
+  const { DB, RATE_LIMIT_KV } = c.env;
+  const slug = slugify(c.req.param("slug"));
+
+  const form = await DB.prepare(
+    "SELECT id, slug, title, notify_email FROM forms WHERE slug = ? AND status = 'published'"
+  )
+    .bind(slug)
+    .first<{ id: string; slug: string; title: string; notify_email: string | null }>();
+  if (!form) return c.json({ ok: false, error: "Form not found" }, 404);
+
+  if (!(await checkRateLimit(RATE_LIMIT_KV, "form:" + slug + ":" + clientIp(c.req.raw), 5, 3600))) {
+    return c.json({ ok: false, error: "Too many submissions. Please try again later." }, 429);
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ ok: false }, 400);
+  }
+
+  // Turnstile bot check (fails closed).
+  const turnstile = await verifyTurnstile(
+    body["cf-turnstile-response"],
+    (c.env as Env).TURNSTILE_SECRET_KEY,
+    clientIp(c.req.raw)
+  );
+  if (!turnstile.ok) return c.json({ ok: false, error: turnstile.error }, 400);
+
+  const fields = await DB.prepare(
+    "SELECT id, label, field_type, required, options, position FROM form_fields WHERE form_id = ? ORDER BY position ASC"
+  )
+    .bind(form.id)
+    .all();
+  const parsed = parseFields(fields.results as any[]);
+  const responses = (body.responses || {}) as Record<string, unknown>;
+
+  // Validate each field.
+  const cleaned: Record<string, string | boolean> = {};
+  for (const f of parsed) {
+    const raw = responses[f.id];
+    let value: string | boolean = typeof raw === "boolean" ? raw : cleanStr(raw, 5000);
+
+    if (f.field_type === "checkbox") {
+      value = raw === true || raw === "true" || raw === "on";
+      if (f.required && !value) {
+        return c.json({ ok: false, error: `"${f.label}" is required.` }, 400);
+      }
+      cleaned[f.id] = value;
+      continue;
+    }
+
+    const str = String(value).trim();
+    if (f.required && !str) {
+      return c.json({ ok: false, error: `"${f.label}" is required.` }, 400);
+    }
+    if (str && f.field_type === "email" && !isEmail(str)) {
+      return c.json({ ok: false, error: `"${f.label}" must be a valid email address.` }, 400);
+    }
+    if (str && f.field_type === "select" && f.options && !f.options.includes(str)) {
+      return c.json({ ok: false, error: `"${f.label}" has an invalid choice.` }, 400);
+    }
+    cleaned[f.id] = str;
+  }
+
+  await DB.prepare("INSERT INTO form_submissions (id, form_id, data) VALUES (?, ?, ?)")
+    .bind(crypto.randomUUID(), form.id, JSON.stringify(cleaned))
+    .run();
+
+  // Notify.
+  const resendKey = (c.env as Env).RESEND_API_KEY;
+  const to = form.notify_email || INBOX;
+  if (resendKey) {
+    const rows = parsed
+      .map((f) => {
+        const v = cleaned[f.id];
+        const display = typeof v === "boolean" ? (v ? "Yes" : "No") : v || "—";
+        return fieldRow(f.label, String(display));
+      })
+      .join("");
+    const html = shell(
+      "New form submission",
+      `Someone submitted "${form.title}".`,
+      `<p style="margin:0 0 16px;">New submission for <strong>${esc(form.title)}</strong>:</p>` +
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">' + rows + "</table>"
+    );
+    await sendEmail(resendKey, {
+      to,
+      subject: `New submission — ${form.title}`,
+      html,
+      text: `New submission for "${form.title}":\n\n` + parsed.map((f) => `${f.label}: ${String(cleaned[f.id] ?? "—")}`).join("\n"),
+    }).catch(() => {});
+  }
+
+  return c.json({ ok: true });
+});
+

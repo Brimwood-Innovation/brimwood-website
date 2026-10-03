@@ -56,7 +56,7 @@ app.use("*", async (c, next) => {
       status: 204,
       headers: {
         "access-control-allow-origin": allowed,
-        "access-control-allow-methods": "GET, POST, OPTIONS",
+        "access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
         "access-control-allow-headers": "content-type",
         "access-control-allow-credentials": "true",
         "access-control-max-age": "86400",
@@ -91,7 +91,7 @@ app.route("/api/forms", forms);
 app.notFound((c) => c.json({ ok: false, error: "Not found" }, 404));
 app.onError((err, c) => {
   console.error("api error:", err);
-  return c.json({ ok: false }, 502);
+  return c.json({ ok: false }, 500);
 });
 
 export default {

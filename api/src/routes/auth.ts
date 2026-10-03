@@ -11,6 +11,7 @@ import type { Bindings } from "../index";
 import { sendEmail, shell, esc } from "../lib/email";
 import { cleanStr, isEmail, clientIp, sha256Hex } from "../lib/validate";
 import { checkRateLimit } from "../lib/ratelimit";
+import { safeEqual } from "../lib/safe-equal";
 
 type Env = Bindings & {
   RESEND_API_KEY?: string;
@@ -118,7 +119,7 @@ app.post("/verify-code", async (c) => {
     await SESSIONS_KV.delete(kvKey);
     return c.json({ ok: false, error: "Too many attempts. Request a new code." }, 401);
   }
-  const ok = (await sha256Hex("code:" + code)) === rec.codeHash;
+  const ok = safeEqual(await sha256Hex("code:" + code), rec.codeHash);
   if (!ok) {
     rec.attempts += 1;
     await SESSIONS_KV.put(kvKey, JSON.stringify(rec), { expirationTtl: CODE_TTL });

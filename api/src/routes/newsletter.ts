@@ -107,6 +107,12 @@ app.get("/verify", async (c) => {
   const resendKey = keyOf(c);
   if (!resendKey) return c.json({ ok: false }, 500);
 
+  // L3: token-guarded but rate-limited anyway (defense in depth).
+  const ip = clientIp(c.req.raw);
+  if (!(await checkRateLimit(c.env.RATE_LIMIT_KV, `nl-verify:${ip}`, 30, 3600))) {
+    return c.json({ ok: false, error: "Too many attempts. Try again later." }, 429);
+  }
+
   const token = c.req.query("token") || "";
   const sub = token
     ? await DB.prepare(
@@ -182,6 +188,11 @@ app.get("/verify", async (c) => {
 
 app.get("/unsubscribe", async (c) => {
   const { DB } = c.env;
+  // L3: token-guarded but rate-limited anyway (defense in depth).
+  const ip = clientIp(c.req.raw);
+  if (!(await checkRateLimit(c.env.RATE_LIMIT_KV, `nl-unsub:${ip}`, 30, 3600))) {
+    return c.json({ ok: false, error: "Too many attempts. Try again later." }, 429);
+  }
   const email = (c.req.query("email") || "").toLowerCase();
   const token = c.req.query("token") || "";
   const sub = email && token

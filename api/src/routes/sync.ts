@@ -45,13 +45,8 @@ function slugify(s: string): string {
   return slug || "untitled";
 }
 
-/** Manual constant-time string compare (Workers have no timingSafeEqual). */
-function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
+/** Manual constant-time string compare — see lib/safe-equal.ts. */
+import { safeEqual } from "../lib/safe-equal";
 
 async function authorized(
   c: any
