@@ -3,6 +3,9 @@
 # sections, and member testimonials.
 # Auth via the GitHub OAuth worker at /api/oauth.
 
+# Brimwood branding on the login screen (replaces the Decap logo).
+logo_url: /img/brimwood-logo-colour.svg
+
 backend:
   name: github
   repo: Brimwood-Innovation/brimwood-website
