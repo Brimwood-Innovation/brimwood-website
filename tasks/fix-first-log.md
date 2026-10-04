@@ -11,7 +11,7 @@ sign-off items: written plans only, no code until the founder approves.
 
 | Fix | Branch | Worker | Sign-off | Status |
 |-----|--------|--------|----------|--------|
-| F2 prod schema audit (read-only) | - | lead | no | BLOCKED: no Cloudflare API token |
+| F2 prod schema audit (read-only) | - | lead | no | DONE: tasks/prod-schema-audit.md; 0009 confirmed applied, 0010/0011 not |
 | F5 one auth module | fix/f5-auth-module | lead | no | pending |
 | F4 CSRF middleware | fix/f4-csrf | lead | no | pending |
 | F9 rate limits + sessions to D1 | fix/f9-d1-limits | lead | no | pending |
@@ -20,9 +20,9 @@ sign-off items: written plans only, no code until the founder approves.
 | F10 contrast fixes | fix/f10-contrast | crew | no | pending |
 | F12 CI upgrade | fix/f12-ci | crew | no | pending |
 | F8 workers-runtime tests | fix/f8-workers-tests | lead/crew | no | pending (after F5/F4/F9) |
-| F1 split environments | - | - | YES | plan only, awaiting sign-off |
-| F3 same-origin API + cookies | - | - | YES | plan only, awaiting sign-off |
-| F11 licence + repo hygiene | - | - | YES | plan only, awaiting sign-off |
+| F1 split environments | fix/f1-preview-env | lead | YES (2026-10-03) | DONE: PR #10; preview D1/KV/R2 + worker live, isolation proven |
+| F3 same-origin API + cookies | fix/f3-same-origin | lead/crew | YES (2026-10-03) | routing DONE (domain /api/* -> brimwood-api); code PR pending |
+| F11 licence + repo hygiene | fix/f11-licence | crew | YES (2026-10-03) | in progress; licence = dual MIT/AGPL-3.0 |
 
 Rules: no pushes to main, one PR per fix targeting develop, PRs under ~600 lines,
 Phase D code (password.ts, profiles.ts, studio.ts) parked except F5 session dedup,
@@ -32,11 +32,16 @@ written artifact.
 ## Per-fix records
 
 ### F2 — read-only production schema audit
-- Status: BLOCKED. Needs a Cloudflare API token (read-only is enough).
-- What is known without the token: commit ef99f2f message says migration
-  0009_passwords.sql was applied to remote brimwood_db_v2 while that code is
-  not on main. Migration 0010_profiles.sql was NOT applied (blocked on token
-  earlier tonight). Remote state unverified.
+- Status: DONE (2026-10-03). Report: tasks/prod-schema-audit.md.
+- Method: Cloudflare D1 REST query API against brimwood_db_v2, read-only.
+  No writes, no migrations run.
+- Result: 26 tables (25 app + _cf_KV). Matches migrations 0001-0009 exactly,
+  zero drift. 0009_passwords CONFIRMED applied remotely (password columns on
+  users + password_resets with both indexes). 0010_profiles NOT applied (no
+  profile columns on users). 0011_d1_limits NOT applied (no rate_limits or
+  sessions tables; still on PR #8).
+- Row-count baseline captured (1651 total rows; health_checks 1623 and
+  cron-ticked). Used for the F1 acceptance.
 
 ### F5 — one auth module
 - Status: DONE. Branch fix/f5-auth-module, PR #5 targeting develop.
@@ -91,37 +96,65 @@ written artifact.
   (audit: 263ms in workerd). Confirms passwords exceed Workers Free CPU.
 - Tests: 198 passed. tsc clean.
 
-### F1 — split environments [SIGN-OFF]
-- Status: PLAN ONLY. Awaiting founder sign-off. No code written.
-- Plan:
-  1. Create preview D1: wrangler d1 create brimwood_db_preview
-  2. Create preview KV namespaces (2): wrangler kv namespace create for sessions and rate limits with preview suffix
-  3. Add [env.preview] to api/wrangler.toml binding the preview D1/KV/R2; production keeps the current bindings
-  4. Run all migrations on the preview DB; deploy worker with --env preview
-  5. Submit a test introduction via the preview URL
-- Acceptance: row counts in production D1 before/after are identical (paste counts).
-- Rollback: delete the preview D1/KV namespaces; revert wrangler.toml. Production untouched.
-- Commands need CLOUDFLARE_API_TOKEN (founder provides transiently).
+### F1 — split environments [SIGNED OFF 2026-10-03, DONE]
+- Status: DONE. Branch fix/f1-preview-env, PR #10 targeting develop.
+- Resources created (account-level): D1 brimwood_db_preview
+  (71b2f3ec-b0c8-4602-99ba-3ee82de5dca4) with migrations 0001-0010 applied;
+  KV brimwood-sessions-preview, brimwood-rate-limit-preview,
+  brimwood-newsletter-preview; R2 brimwood-media-preview.
+- api/wrangler.toml: [env.preview] bound to the preview resources, preview
+  crons disabled, SITE_URL set to the preview worker URL.
+- Worker brimwood-api-preview deployed:
+  https://brimwood-api-preview.adamsayani.workers.dev
+  (preview-only dummy secrets, clearly labelled).
+- Isolation evidence: GET /api/courses on preview returns [] (prod has 2);
+  rate-limit key written to preview RATE_LIMIT_KV, prod KV empty; marker row
+  inserted in preview D1 then production counts re-snapshotted: all 25 tables
+  identical to the F2 baseline except health_checks (+3 cron ticks, expected);
+  marker deleted afterwards.
+- Plan extension (noted): created a third preview KV (newsletter) and a
+  preview R2 bucket beyond the signed plan's two KVs, for a true split.
+  Rollback: delete the preview D1/KV/R2 resources and revert the commit.
+- Follow-up for full e2e form tests: production Resend + Turnstile secrets
+  would need to be set on the preview env (founder dashboard job); binding
+  isolation is already proven without them.
 
-### F3 — same-origin API + cookie hardening [SIGN-OFF]
-- Status: PLAN ONLY. Awaiting founder sign-off. No code written.
-- Plan:
-  1. In Cloudflare dashboard (or via API): add route brimwoodinnovation.com/api/* to the brimwood-api worker
-  2. Update site env: PUBLIC_API_BASE = "" (same-origin) or "https://brimwoodinnovation.com"
-  3. Rename cookie to __Host-brimwood-sess; set SameSite=Lax, Secure, HttpOnly, Path=/
-  4. Remove the SameSite=None branch in auth.ts/password.ts (deferred from F4)
-  5. Update CORS: same-origin needs no CORS headers for the site
-- Acceptance: test asserts exact Set-Cookie header (__Host- prefix, Lax, Secure, HttpOnly); sign-in works in Safari on preview (screenshot or tester note).
-- Rollback: revert worker route and cookie name; restore PUBLIC_API_BASE. One deploy.
-- Note: changes production routing. Safari third-party cookie blocking is the motivator.
+### F3 — same-origin API + cookie hardening [SIGNED OFF 2026-10-03]
+- Status: ROUTING DONE; code hardening in progress (branch fix/f3-same-origin,
+  based on fix/f5-auth-module like PR #8; PR to develop pending).
+- Routing (production, done 2026-10-03): brimwoodinnovation.com/api/* worker
+  route moved from brimwood-introduction to brimwood-api (route id
+  14a23385a19040178de660fd0eca83e2, updated via API). Added
+  www.brimwoodinnovation.com/api/* -> brimwood-api as well (same intent).
+  Verified: https://brimwoodinnovation.com/api/courses returns 200 with live
+  data; /api/introduction honeypot returns ok:true. The old
+  brimwood-introduction worker is kept untouched as rollback.
+- Code (crew): cookie -> __Host-brimwood-sess with Path=/; HttpOnly; Secure;
+  SameSite=Lax; remove all SameSite=None branches (completes deferred F4
+  item); CORS tightened for same-origin; site PUBLIC_API_BASE -> same-origin;
+  exact Set-Cookie test assertions.
+- Rollback: revert the two worker routes to brimwood-introduction; revert the
+  code PR. One deploy each.
 
-### F11 — licence and repo hygiene [SIGN-OFF]
-- Status: PLAN ONLY. Awaiting founder sign-off (licence choice first).
-- Plan (after founder picks AGPL-3.0 or MIT):
-  1. Add LICENSE file at repo root with the chosen licence + copyright notice
-  2. Add NOTICE: site/public/img, fonts, and site content are all rights reserved (brand assets excluded from code licence)
-  3. Move docs/BRIMWOOD-FULLSTACK-FRAMEWORK-REPORT.md, docs/*.html, CAPABILITY-MAP.md internal sections to a private repo; remove from public repo
-  4. Scrub the owner personal email from the working tree (grep to verify zero hits)
-  5. Tag and archive preview/ and build/ dirs, remove from develop
-- Acceptance: LICENSE present; grep for "do not publish" and the personal email returns nothing.
-- Rollback: git revert (before the private-repo move); licence change is hard to reverse once forks exist, which is why this needs sign-off.
+### F11 — licence and repo hygiene [SIGNED OFF 2026-10-03]
+- Status: IN PROGRESS (branch fix/f11-licence from develop; PR to develop
+  pending).
+- Licence decision (founder, 2026-10-03): BOTH. Dual-licensed MIT OR
+  AGPL-3.0 at the recipient's choice.
+- Plan: LICENSE (dual-licence statement) + LICENSE-MIT + LICENSE-AGPL-3.0
+  at root, copyright Brimwood Innovation 2026; NOTICE reserving brand assets
+  (img, fonts, site content); move internal docs
+  (BRIMWOOD-FULLSTACK-FRAMEWORK-REPORT.md, docs/*.html, CAPABILITY-MAP.md
+  internal sections) to a private repo then remove from public; scrub the
+  owner personal email from the tree (placeholder substitution, account IDs
+  kept); tag and remove dead preview/ and build/ dirs.
+- Rollback: git revert; licence choice is hard to reverse after forks exist.
+
+## Decision D1 — passwordless (founder, 2026-10-03)
+- Direction: passkeys + magic code + GitHub login at C$0. Workers Paid
+  (~USD 5/mo) declined.
+- The 305 ms PBKDF2 measurement stands as the evidence. Do NOT silently
+  weaken PBKDF2 iterations.
+- Implementation is POST-Gate-1 work (fix-first rule: no new features in
+  this phase). password.ts and the 0009 password columns stay parked;
+  passkeys are new feature work for Phase E planning, not for fix-first.
