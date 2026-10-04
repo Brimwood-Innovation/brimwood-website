@@ -6,13 +6,14 @@
  * revealed; auth endpoints are strictly rate-limited; sessions are
  * httpOnly + secure + sameSite=lax cookies. */
 import { Hono } from "hono";
-import { getCookie, setCookie, deleteCookie } from "hono/cookie";
+import { setCookie } from "hono/cookie";
 import type { Bindings } from "../index";
 import { sendEmail, shell, esc } from "../lib/email";
 import { cleanStr, isEmail, clientIp, sha256Hex } from "../lib/validate";
 import { checkRateLimit } from "../lib/ratelimit";
 import { safeEqual } from "../lib/safe-equal";
 import { hashPassword, validatePassword } from "../lib/password";
+import { COOKIE, SESS_TTL, createSession, destroySession, readSession } from "../lib/auth";
 
 type Env = Bindings & {
   RESEND_API_KEY?: string;
@@ -20,9 +21,7 @@ type Env = Bindings & {
 };
 
 const app = new Hono<{ Bindings: Env }>();
-const COOKIE = "brimwood_sess";
 const CODE_TTL = 600; // 10 minutes
-const SESS_TTL = 30 * 86400; // 30 days
 const MAX_ATTEMPTS = 5;
 
 function codeKey(email: string) {
@@ -138,13 +137,9 @@ app.post("/verify-code", async (c) => {
   }
 
   await SESSIONS_KV.delete(kvKey); // single-use
-  const token = crypto.randomUUID();
-  await SESSIONS_KV.put(
-    "sess:" + token,
-    JSON.stringify({ userId: user.id, role: user.role, createdAt: Date.now() }),
-    { expirationTtl: SESS_TTL }
-  );
+  const token = await createSession(c.env, user.id, user.role);
   // SameSite=None for cross-origin staging (preview → worker); Lax for same-origin.
+  // NOTE (F3): this branch is removed by the same-origin fix; kept until then.
   const origin = c.req.header("origin") || "";
   const crossOrigin = origin && !origin.includes("workers.dev");
   setCookie(c, COOKIE, token, {
@@ -158,9 +153,7 @@ app.post("/verify-code", async (c) => {
 });
 
 app.post("/logout", async (c) => {
-  const token = getCookie(c, COOKIE);
-  if (token) await c.env.SESSIONS_KV.delete("sess:" + token);
-  deleteCookie(c, COOKIE, { path: "/" });
+  await destroySession(c);
   return c.json({ ok: true });
 });
 
@@ -282,12 +275,8 @@ app.post("/redeem-invite", async (c) => {
 });
 
 app.get("/me", async (c) => {
-  const cookie = c.req.header("cookie") || "";
-  const m = cookie.match(new RegExp(COOKIE + "=([^;]+)"));
-  if (!m) return c.json({ ok: false }, 401);
-  const raw = await c.env.SESSIONS_KV.get("sess:" + m[1]);
-  if (!raw) return c.json({ ok: false }, 401);
-  const sess = JSON.parse(raw) as { userId: string; role: string };
+  const sess = await readSession(c);
+  if (!sess) return c.json({ ok: false }, 401);
   const user = await c.env.DB.prepare(
     "SELECT id, email, name, role FROM users WHERE id = ? AND status = 'active'"
   )
@@ -298,21 +287,10 @@ app.get("/me", async (c) => {
 });
 
 /** Auth middleware for protected routes: resolves the session or 401s. */
-export async function requireAuth(
-  c: { env: Env; req: { header: (n: string) => string | undefined } },
-  next: () => Promise<Response>
-): Promise<Response> {
-  const cookie = c.req.header("cookie") || "";
-  const m = cookie.match(new RegExp(COOKIE + "=([^;]+)"));
-  if (!m) {
+export async function requireAuth(c: any, next: () => Promise<Response>): Promise<Response> {
+  const sess = await readSession(c);
+  if (!sess) {
     return new Response(JSON.stringify({ ok: false, error: "Not signed in." }), {
-      status: 401,
-      headers: { "content-type": "application/json" },
-    });
-  }
-  const raw = await c.env.SESSIONS_KV.get("sess:" + m[1]);
-  if (!raw) {
-    return new Response(JSON.stringify({ ok: false, error: "Session expired." }), {
       status: 401,
       headers: { "content-type": "application/json" },
     });
