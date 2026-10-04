@@ -22,7 +22,7 @@ sign-off items: written plans only, no code until the founder approves.
 | F8 workers-runtime tests | fix/f8-workers-tests | lead/crew | no | pending (after F5/F4/F9) |
 | F1 split environments | fix/f1-preview-env | lead | YES (2026-10-03) | DONE: PR #10; preview D1/KV/R2 + worker live, isolation proven |
 | F3 same-origin API + cookies | fix/f3-same-origin | lead/crew | YES (2026-10-03) | DONE: PR #11; routing live on domain; 210 tests green |
-| F11 licence + repo hygiene | fix/f11-licence | crew | YES (2026-10-03) | in progress; licence = dual MIT/AGPL-3.0 |
+| F11 licence + repo hygiene | fix/f11-licence | crew | YES (2026-10-03) | DONE: PR #12; dual MIT/AGPL-3.0, email scrub verified 0 hits |
 
 Rules: no pushes to main, one PR per fix targeting develop, PRs under ~600 lines,
 Phase D code (password.ts, profiles.ts, studio.ts) parked except F5 session dedup,
@@ -150,18 +150,23 @@ written artifact.
   brimwood-introduction. One deploy each. Note: the cookie rename signs all
   members out once on deploy.
 
-### F11 — licence and repo hygiene [SIGNED OFF 2026-10-03]
-- Status: IN PROGRESS (branch fix/f11-licence from develop; PR to develop
-  pending).
+### F11 - licence and repo hygiene [SIGNED OFF 2026-10-03]
+- Status: DONE. Branch fix/f11-licence, PR #12 targeting develop.
 - Licence decision (founder, 2026-10-03): BOTH. Dual-licensed MIT OR
   AGPL-3.0 at the recipient's choice.
-- Plan: LICENSE (dual-licence statement) + LICENSE-MIT + LICENSE-AGPL-3.0
-  at root, copyright Brimwood Innovation 2026; NOTICE reserving brand assets
-  (img, fonts, site content); move internal docs
-  (BRIMWOOD-FULLSTACK-FRAMEWORK-REPORT.md, docs/*.html, CAPABILITY-MAP.md
-  internal sections) to a private repo then remove from public; scrub the
-  owner personal email from the tree (placeholder substitution, account IDs
-  kept); tag and remove dead preview/ and build/ dirs.
+- Delivered (commit 649f3bc + follow-up): LICENSE (dual-licence statement,
+  copyright Brimwood Innovation 2026), LICENSE-MIT, LICENSE-AGPL-3.0,
+  NOTICE reserving brand assets (img, fonts, site content - all rights
+  reserved, excluded from the code licence). site/package.json licence field
+  set to the dual expression.
+- Internal docs moved to the new PRIVATE repo
+  Brimwood-Innovation/brimwood-internal-docs (verified: report md + html,
+  CAPABILITY-MAP.md, staged report body all present there), then removed
+  from the public tree.
+- Owner personal email scrubbed from the working tree: final grep returns
+  zero hits (one occurrence in tasks/todo.md missed by the crew was fixed
+  by lead). Account IDs kept; placeholders used.
+- Dead preview/ and build/ content removed from the branch.
 - Rollback: git revert; licence choice is hard to reverse after forks exist.
 
 ## Decision D1 — passwordless (founder, 2026-10-03)
