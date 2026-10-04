@@ -18,31 +18,15 @@ import { sendEmail, shell, fieldRow, esc, INBOX } from "../lib/email";
 import { cleanStr, isEmail, clientIp } from "../lib/validate";
 import { checkRateLimit } from "../lib/ratelimit";
 import { verifyTurnstile } from "../lib/turnstile";
+import { getAdminUser } from "../lib/auth";
 
 type Env = Bindings & { RESEND_API_KEY?: string; TURNSTILE_SECRET_KEY?: string };
 const app = new Hono<{ Bindings: Env }>();
-const COOKIE = "brimwood_sess";
 
 const FIELD_TYPES = ["text", "email", "textarea", "select", "checkbox"] as const;
 const STATUSES = ["draft", "published", "closed"] as const;
 
-async function requireAdmin(c: { env: Env; req: { header: (n: string) => string | undefined }; json: (o: object, s?: number) => Response }) {
-  const cookie = c.req.header("cookie") || "";
-  const m = cookie.match(new RegExp(COOKIE + "=([^;]+)"));
-  if (!m) return null;
-  const raw = await c.env.SESSIONS_KV.get("sess:" + m[1]);
-  if (!raw) return null;
-  try {
-    const s = JSON.parse(raw) as { userId: string; role: string };
-    if (s.role !== "admin") return null;
-    const user = await c.env.DB.prepare("SELECT id FROM users WHERE id = ? AND status = 'active'")
-      .bind(s.userId)
-      .first<{ id: string }>();
-    return user ? { id: user.id } : null;
-  } catch {
-    return null;
-  }
-}
+
 
 function slugify(v: string): string {
   return v.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
@@ -84,7 +68,7 @@ async function audit(DB: D1Database, actorId: string, action: string, detail: st
 
 /** GET /admin — list forms with counts. */
 app.get("/admin", async (c) => {
-  const admin = await requireAdmin(c);
+  const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
   if (no) return no;
   const rows = await c.env.DB.prepare(
@@ -124,7 +108,7 @@ function validateFields(raw: unknown): { ok: boolean; error?: string; fields?: {
 
 /** POST /admin — create form with fields. */
 app.post("/admin", async (c) => {
-  const admin = await requireAdmin(c);
+  const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
   if (no) return no;
   const { DB } = c.env;
@@ -170,7 +154,7 @@ app.post("/admin", async (c) => {
 
 /** PATCH /admin/:id — update form metadata (not fields; delete + recreate fields via POST for structural changes). */
 app.patch("/admin/:id", async (c) => {
-  const admin = await requireAdmin(c);
+  const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
   if (no) return no;
   const { DB } = c.env;
@@ -226,7 +210,7 @@ app.patch("/admin/:id", async (c) => {
 
 /** DELETE /admin/:id — delete form (fields + submissions cascade). */
 app.delete("/admin/:id", async (c) => {
-  const admin = await requireAdmin(c);
+  const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
   if (no) return no;
   const { DB } = c.env;
@@ -239,7 +223,7 @@ app.delete("/admin/:id", async (c) => {
 
 /** GET /admin/:id/submissions — list submissions for a form. */
 app.get("/admin/:id/submissions", async (c) => {
-  const admin = await requireAdmin(c);
+  const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
   if (no) return no;
   const { DB } = c.env;
