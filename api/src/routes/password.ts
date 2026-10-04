@@ -9,13 +9,12 @@
  * strict rate limits; reset tokens are hashed at rest, single-use, 30-min TTL;
  * password changes/resets are audit-logged. Never log passwords. */
 import { Hono } from "hono";
-import { setCookie } from "hono/cookie";
 import type { Bindings } from "../index";
 import { sendEmail, shell, button, esc, SITE } from "../lib/email";
 import { cleanStr, isEmail, clientIp, sha256Hex } from "../lib/validate";
 import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 import { hashPassword, verifyPassword, validatePassword } from "../lib/password";
-import { COOKIE, SESS_TTL, createSession, readSession, destroyUserSessions } from "../lib/auth";
+import { setSessionCookie, createSession, readSession, destroyUserSessions } from "../lib/auth";
 
 type Env = Bindings & {
   RESEND_API_KEY?: string;
@@ -34,17 +33,9 @@ async function sessionUser(c: any) {
 }
 
 /** Create a session + set the cookie (same mechanism as magic-code verify). */
-async function setSessionCookie(c: any, userId: string, role: string) {
+async function setSessionCookieFor(c: any, userId: string, role: string) {
   const token = await createSession(c.env, userId, role);
-  const origin = c.req.header("origin") || "";
-  const crossOrigin = origin && !origin.includes("workers.dev");
-  setCookie(c, COOKIE, token, {
-    httpOnly: true,
-    secure: true,
-    sameSite: crossOrigin ? "None" : "Lax",
-    path: "/",
-    maxAge: SESS_TTL,
-  });
+  setSessionCookie(c, token);
 }
 
 async function audit(
@@ -112,7 +103,7 @@ app.post("/login", async (c) => {
     return c.json({ ok: false, error: GENERIC_FAIL }, 401);
   }
 
-  await setSessionCookie(c, user.id, user.role);
+  await setSessionCookieFor(c, user.id, user.role);
   return c.json({ ok: true });
 });
 

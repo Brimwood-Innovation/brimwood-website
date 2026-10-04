@@ -35,12 +35,15 @@ export type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-// CORS for staging: allow the preview site to call the API directly.
-// Production will use same-origin (no CORS needed) when cut over.
+// CORS (F3): the site calls the API same-origin via brimwoodinnovation.com/api/*,
+// so the production domains get NO CORS headers. The allowlist is for local
+// development and Pages preview deployments calling the worker directly.
 const ALLOWED_ORIGINS = [
+  "http://localhost:4321", // Astro dev server
+  "http://localhost:8787", // wrangler dev
+  "http://127.0.0.1:4321",
+  "http://127.0.0.1:8787",
   "https://brimwood-website-preview.pages.dev",
-  "https://brimwoodinnovation.com",
-  "https://www.brimwoodinnovation.com",
 ];
 
 app.use("*", async (c, next) => {
@@ -54,7 +57,14 @@ app.use("*", async (c, next) => {
 
 app.use("*", async (c, next) => {
   const origin = c.req.header("origin");
-  const allowed = origin && ALLOWED_ORIGINS.includes(origin) ? origin : "";
+  // Exact allowlist plus any branch deploy of the project's own preview site
+  // (e.g. https://fix-f3-same-origin.brimwood-website-preview.pages.dev).
+  const allowed =
+    origin &&
+    (ALLOWED_ORIGINS.includes(origin) ||
+      /^https:\/\/[a-z0-9-]+\.brimwood-website-preview\.pages\.dev$/.test(origin))
+      ? origin
+      : "";
   if (c.req.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
