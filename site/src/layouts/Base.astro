@@ -12,8 +12,11 @@ interface Props {
   description: string;
   path?: string;
   image?: string;
+  /* F7: Turnstile loads only on pages that render a cf-turnstile widget.
+   * Pages opt in with <Base turnstile>. Never load it globally. */
+  turnstile?: boolean;
 }
-const { title, description, path = "/", image } = Astro.props;
+const { title, description, path = "/", image, turnstile = false } = Astro.props;
 const canonical = `https://brimwoodinnovation.com${path}`;
 const ogImage = image || "https://brimwoodinnovation.com/img/brimwood-logo-colour.svg";
 // Brand rule: logo left, four links, one emerald button. Extra CMS links
@@ -73,7 +76,9 @@ const siteTitle = siteSettings.site_title || "Brimwood Innovation";
         },
       })}
     </script>
-    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    {turnstile && (
+      <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    )}
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>

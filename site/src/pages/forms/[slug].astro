@@ -21,6 +21,7 @@ export async function getStaticPaths() {
   title="Form — Brimwood Innovation"
   description="Fill in this Brimwood Innovation form."
   path="/forms"
+  turnstile
 >
   <section class="block" style="max-width:640px;margin-inline:auto;">
     <div id="formLoading" style="text-align:center;padding:48px 0;">
@@ -46,7 +47,6 @@ export async function getStaticPaths() {
     </div>
   </section>
 
-  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   <script>
     const API_BASE = import.meta.env.PUBLIC_API_BASE || '';
     const slug = location.pathname.split('/').filter(Boolean).pop() || '';
