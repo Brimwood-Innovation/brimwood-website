@@ -29,6 +29,7 @@ export async function getStaticPaths() {
 
 const { username } = Astro.params;
 const profile = Astro.props.profile;
+const apiBase = import.meta.env.PUBLIC_API_BASE || "";
 const ogTitle = `${profile.display_name} — Brimwood Innovation`;
 const ogDesc = profile.bio?.slice(0, 160) || "A Brimwood Innovation member.";
 const ogImage = profile.avatar_url
@@ -37,7 +38,7 @@ const ogImage = profile.avatar_url
 ---
 
 <Base title={ogTitle} description={ogDesc} path={`/@${username}`} image={ogImage}>
-  <section class="block" style="text-align:center;max-width:640px;margin-inline:auto;">
+  <section class="block" style="text-align:center;max-width:640px;margin-inline:auto;" id="profileSection" data-profile-key={username} data-api-base={apiBase}>
     {profile.avatar_url && (
       <img id="uAvatar" src={profile.avatar_url} alt={`${profile.display_name}'s avatar`} style="width:120px;height:120px;border-radius:50%;object-fit:cover;margin:0 auto 20px;" />
     )}
@@ -78,25 +79,5 @@ const ogImage = profile.avatar_url
     )}
   </section>
 
-  <script define:vars={{ username }}>
-    // Refresh in case the profile changed since the build.
-    const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
-    fetch(API_BASE + "/api/users/" + encodeURIComponent(username || ""), {
-      headers: { accept: "application/json" },
-    })
-      .then((r) => r.json())
-      .then((d) => {
-        if (!d.ok || !d.user) return;
-        const u = d.user;
-        const nameEl = document.getElementById("uName");
-        if (nameEl && u.display_name) nameEl.textContent = u.display_name;
-        const bioEl = document.getElementById("uBio");
-        if (bioEl && u.bio) bioEl.textContent = u.bio;
-        const img = document.getElementById("uAvatar");
-        if (img && u.avatar_url && img.getAttribute("src") !== u.avatar_url) {
-          img.setAttribute("src", u.avatar_url);
-        }
-      })
-      .catch(() => {});
-  </script>
+  <script is:inline src="/js/profile-refresh.js"></script>
 </Base>

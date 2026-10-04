@@ -33,7 +33,7 @@ if (!course) return Astro.redirect("/academy");
     <h1 class="sec" style="font-size:clamp(34px,5.4vw,56px);margin-bottom:18px;">{course.title}</h1>
     <p class="sec-lede">{course.tagline}</p>
 
-    <div style="margin-bottom:32px;">
+    <div style="margin-bottom:32px;" id="enrolWrap" data-slug={slug} data-api-base={apiBase}>
       <button class="btn" id="enrolBtn">Enrol in this course</button>
       <p id="enrolMsg" style="display:none;font-weight:600;color:var(--emerald-deep);"></p>
     </div>
@@ -60,57 +60,5 @@ if (!course) return Astro.redirect("/academy");
     ))}
   </section>
 
-  <script define:vars={{ slug, apiBase }}>
-    // Enrol + progress checkmarks.
-    (async () => {
-      try {
-        const pr = await fetch(apiBase + "/api/progress", {
-          headers: { accept: "application/json" },
-          credentials: "include",
-        });
-        const d = await pr.json().catch(() => ({}));
-        if (!d.ok) return;
-        if ((d.enrolments || []).some((e) => e.slug === slug)) {
-          document.getElementById("enrolBtn").style.display = "none";
-          const msg = document.getElementById("enrolMsg");
-          msg.style.display = "block";
-          msg.textContent = "You're enrolled in this course.";
-        }
-        const dr = await fetch(apiBase + "/api/progress/detail", {
-          headers: { accept: "application/json" },
-          credentials: "include",
-        });
-        const dd = await dr.json().catch(() => ({}));
-        const doneIds = new Set(dd.ok ? dd.done || [] : []);
-        document.querySelectorAll(".lesson-link").forEach((a) => {
-          if (doneIds.has(a.dataset.lessonId)) {
-            a.querySelector(".done-mark").style.display = "inline";
-            a.style.borderColor = "var(--emerald)";
-          }
-        });
-      } catch {}
-    })();
-
-    document.getElementById("enrolBtn").addEventListener("click", async () => {
-      const btn = document.getElementById("enrolBtn");
-      const msg = document.getElementById("enrolMsg");
-      btn.disabled = true; btn.textContent = "Enrolling…";
-      try {
-        const r = await fetch(apiBase + "/api/enrol/" + encodeURIComponent(slug), {
-          method: "POST",
-          credentials: "include",
-          headers: { accept: "application/json" },
-        });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok || !d.ok) throw new Error(d.error || "enrol failed");
-        btn.style.display = "none";
-        msg.style.display = "block";
-        msg.textContent = "You're enrolled. Start with the first lesson below.";
-      } catch (e) {
-        btn.disabled = false; btn.textContent = "Enrol in this course";
-        msg.style.display = "block";
-        msg.textContent = e.message === "Sign in required" ? "Please sign in first." : "Could not enrol. Try again.";
-      }
-    });
-  </script>
+  <script is:inline src="/js/academy-course.js"></script>
 </Base>
