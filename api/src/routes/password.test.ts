@@ -105,6 +105,25 @@ describe("password policy (Canadian spelling)", () => {
   it("rejects missing digit", () => {
     expect(validatePassword("NoDigitsHereAa")).toMatch(/at least one number/);
   });
+  it("hashing stays within the CPU budget (F8)", async () => {
+    // The Workers Free plan has a tight CPU limit per request. This test
+    // fails if the PBKDF2 cost grows past the budget, so an iteration bump
+    // cannot slip through CI unnoticed. Budget is wall-clock and generous;
+    // it catches order-of-magnitude regressions, not edge limits.
+    vi.useRealTimers();
+    try {
+      const budgetMs = 5000;
+      const start = Date.now();
+      const { hash, salt } = await hashPassword("CorrectHorse12");
+      const ok = await verifyPassword("CorrectHorse12", salt, hash);
+      const elapsed = Date.now() - start;
+      console.log(`hash+verify: ${elapsed}ms (budget ${budgetMs}ms)`);
+      expect(ok).toBe(true);
+      expect(elapsed).toBeLessThan(budgetMs);
+    } finally {
+      vi.useFakeTimers();
+    }
+  });
   it("rejects single case", () => {
     expect(validatePassword("alllowercase12")).toMatch(/upper-case and lower-case/);
     expect(validatePassword("ALLUPPERCASE12")).toMatch(/upper-case and lower-case/);
