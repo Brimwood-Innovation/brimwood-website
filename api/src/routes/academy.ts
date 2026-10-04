@@ -7,25 +7,16 @@
  *                                         full lessons require a session
  */
 import { Hono } from "hono";
-import { getCookie } from "hono/cookie";
+import { readSession } from "../lib/auth";
 import type { Bindings } from "../index";
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-const COOKIE = "brimwood_sess";
 
 /** Return the session's user, or null. */
 async function sessionUser(c: any): Promise<{ id: string; role: string } | null> {
-  const token = getCookie(c, COOKIE);
-  if (!token) return null;
-  const raw = await c.env.SESSIONS_KV.get("sess:" + token);
-  if (!raw) return null;
-  try {
-    const s = JSON.parse(raw);
-    return s.userId ? { id: s.userId, role: s.role } : null;
-  } catch {
-    return null;
-  }
+  const s = await readSession(c);
+  return s && s.userId ? { id: s.userId, role: s.role } : null;
 }
 
 /** List published courses. Public. */

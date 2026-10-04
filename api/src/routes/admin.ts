@@ -2,29 +2,13 @@
  * All endpoints require admin role. Every mutation writes to audit_log.
  */
 import { Hono } from "hono";
-import { getCookie } from "hono/cookie";
 import type { Bindings } from "../index";
+import { requireAdmin, type AuthVariables } from "../lib/auth";
 
-const app = new Hono<{ Bindings: Bindings }>();
-const COOKIE = "brimwood_sess";
+const app = new Hono<{ Bindings: Bindings; Variables: AuthVariables }>();
 
-async function adminUser(c: any): Promise<{ id: string; email: string } | null> {
-  const token = getCookie(c, COOKIE);
-  if (!token) return null;
-  const raw = await c.env.SESSIONS_KV.get("sess:" + token);
-  if (!raw) return null;
-  try {
-    const s = JSON.parse(raw);
-    if (s.role !== "admin") return null;
-    // Get email for audit log.
-    const u: any = await c.env.DB.prepare("SELECT email FROM users WHERE id = ?")
-      .bind(s.userId)
-      .first();
-    return { id: s.userId, email: u?.email || "unknown" };
-  } catch {
-    return null;
-  }
-}
+/* Every admin endpoint requires a fresh admin role check (F5). */
+app.use(requireAdmin);
 
 async function audit(c: any, admin: { id: string; email: string }, action: string, detail: string) {
   await c.env.DB.prepare(
@@ -34,17 +18,10 @@ async function audit(c: any, admin: { id: string; email: string }, action: strin
     .run();
 }
 
-function needAdmin(c: any, admin: any) {
-  if (!admin) return c.json({ ok: false, error: "Admin only" }, 403);
-  return null;
-}
-
 /* --- Introduction requests --- */
 
 app.get("/intros", async (c) => {
-  const admin = await adminUser(c);
-  const no = needAdmin(c, admin);
-  if (no) return no;
+  const admin = c.get("admin");
   const { DB } = c.env;
   const status = c.req.query("status") || "new";
   const rows = await DB.prepare(
@@ -60,9 +37,7 @@ app.get("/intros", async (c) => {
 });
 
 app.post("/intros/:id", async (c) => {
-  const admin = await adminUser(c);
-  const no = needAdmin(c, admin);
-  if (no) return no;
+  const admin = c.get("admin");
   const { DB } = c.env;
   const id = c.req.param("id");
   const { status } = await c.req.json().catch(() => ({}));
@@ -79,9 +54,7 @@ app.post("/intros/:id", async (c) => {
 /* --- Subscribers --- */
 
 app.get("/subscribers", async (c) => {
-  const admin = await adminUser(c);
-  const no = needAdmin(c, admin);
-  if (no) return no;
+  const admin = c.get("admin");
   const { DB } = c.env;
   const status = c.req.query("status") || "active";
   const rows = await DB.prepare(
@@ -99,9 +72,7 @@ app.get("/subscribers", async (c) => {
 /* --- Invite codes --- */
 
 app.get("/invites", async (c) => {
-  const admin = await adminUser(c);
-  const no = needAdmin(c, admin);
-  if (no) return no;
+  const admin = c.get("admin");
   const { DB } = c.env;
   const rows = await DB.prepare(
     `SELECT ic.id, ic.code, ic.max_uses, ic.uses, ic.expires_at, ic.created_at, u.email as created_by
@@ -112,9 +83,7 @@ app.get("/invites", async (c) => {
 });
 
 app.post("/invites", async (c) => {
-  const admin = await adminUser(c);
-  const no = needAdmin(c, admin);
-  if (no) return no;
+  const admin = c.get("admin");
   const { DB } = c.env;
   const { max_uses, expires_days } = await c.req.json().catch(() => ({}));
   const code = "BRM-" + crypto.randomUUID().slice(0, 8).toUpperCase();
@@ -134,9 +103,7 @@ app.post("/invites", async (c) => {
 /* --- Users --- */
 
 app.get("/users", async (c) => {
-  const admin = await adminUser(c);
-  const no = needAdmin(c, admin);
-  if (no) return no;
+  const admin = c.get("admin");
   const { DB } = c.env;
   const q = (c.req.query("q") || "").slice(0, 100);
   const page = Math.max(1, parseInt(c.req.query("page") || "1", 10) || 1);
@@ -164,9 +131,7 @@ app.get("/users", async (c) => {
 /* --- Audit log --- */
 
 app.get("/audit", async (c) => {
-  const admin = await adminUser(c);
-  const no = needAdmin(c, admin);
-  if (no) return no;
+  const admin = c.get("admin");
   const { DB } = c.env;
   const rows = await DB.prepare(
     `SELECT action, detail, created_at FROM audit_log ORDER BY created_at DESC LIMIT 100`

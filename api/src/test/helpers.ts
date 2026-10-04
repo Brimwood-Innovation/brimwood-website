@@ -180,10 +180,14 @@ export function mockEnv(overrides: Partial<MockEnv> = {}): MockEnv {
 
 /** Logged-in admin session: cookie + KV entry + users row via the D1 handler. */
 export function adminSession(env: MockEnv, userId = "admin-1", email = "admin@example.com") {
-  env.SESSIONS_KV.store.set("sess:tok-admin", JSON.stringify({ userId, role: "admin" }));
+  // Sessions are keyed by SHA-256 of the token (F5).
+  env.SESSIONS_KV.store.set(
+    "sess:df6adb0b23fa33235f4aee6a0d62c118b00d71c07c81be87067b4f5892e66dbc",
+    JSON.stringify({ userId, role: "admin" })
+  );
   const prev = env.DB.handler;
   env.DB.handler = (sql, params) => {
-    if (/from\s+users/i.test(sql)) return { row: { id: userId, email } };
+    if (/from\s+users/i.test(sql)) return { row: { id: userId, email, role: "admin", status: "active" } };
     return prev?.(sql, params);
   };
   return { Cookie: "brimwood_sess=tok-admin" };
@@ -191,7 +195,11 @@ export function adminSession(env: MockEnv, userId = "admin-1", email = "admin@ex
 
 /** Logged-in non-admin member session. */
 export function memberSession(env: MockEnv, userId = "member-1") {
-  env.SESSIONS_KV.store.set("sess:tok-member", JSON.stringify({ userId, role: "member" }));
+  // Sessions are keyed by SHA-256 of the token (F5).
+  env.SESSIONS_KV.store.set(
+    "sess:1f01ccd79fa83611b7efefef57e9f6fca2f70f5fa6f3fb943c6bf7733dccaea4",
+    JSON.stringify({ userId, role: "member" })
+  );
   return { Cookie: "brimwood_sess=tok-member" };
 }
 

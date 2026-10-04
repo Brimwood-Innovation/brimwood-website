@@ -1,34 +1,15 @@
 /* Admin metrics endpoint (T20): aggregate counts for the analytics dashboard.
  * Admin-only: requires a valid session with role='admin'. */
 import { Hono } from "hono";
-import { getCookie } from "hono/cookie";
 import type { Bindings } from "../index";
+import { requireAdmin, type AuthVariables } from "../lib/auth";
 
 type Env = Bindings & { SESSIONS_KV: KVNamespace };
-const app = new Hono<{ Bindings: Env }>();
-const COOKIE = "brimwood_sess";
+const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
-async function requireAdmin(c: {
-  env: Env;
-  req: { header: (n: string) => string | undefined };
-  json: (o: object, s?: number) => Response;
-}): Promise<{ id: string; role: string } | null> {
-  const cookie = c.req.header("cookie") || "";
-  const m = cookie.match(new RegExp(COOKIE + "=([^;]+)"));
-  if (!m) return null;
-  const raw = await c.env.SESSIONS_KV.get("sess:" + m[1]);
-  if (!raw) return null;
-  const sess = JSON.parse(raw) as { userId: string; role: string };
-  if (sess.role !== "admin") return null;
-  const user = await c.env.DB.prepare("SELECT id FROM users WHERE id = ? AND status = 'active'")
-    .bind(sess.userId)
-    .first<{ id: string }>();
-  return user ? { id: user.id, role: sess.role } : null;
-}
+app.use(requireAdmin);
 
 app.get("/", async (c) => {
-  const admin = await requireAdmin(c);
-  if (!admin) return c.json({ ok: false, error: "Forbidden." }, 403);
 
   const { DB } = c.env;
   const [intro, news, users, emails] = await DB.batch([

@@ -17,13 +17,12 @@
  * registration order, otherwise "me" would be treated as an id.
  */
 import { Hono } from "hono";
-import { getCookie } from "hono/cookie";
+import { readSession, getAdminUser } from "../lib/auth";
 import type { Bindings } from "../index";
 import { cleanStr, clientIp } from "../lib/validate";
 import { checkRateLimit } from "../lib/ratelimit";
 
 const app = new Hono<{ Bindings: Bindings }>();
-const COOKIE = "brimwood_sess";
 
 const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 const AVATAR_TYPES: Record<string, string> = {
@@ -138,35 +137,12 @@ function validateEntryList(
 
 /** Member session (any authenticated user), or null. */
 async function sessionUser(c: any): Promise<{ id: string; role: string } | null> {
-  const token = getCookie(c, COOKIE);
-  if (!token) return null;
-  const raw = await c.env.SESSIONS_KV.get("sess:" + token);
-  if (!raw) return null;
-  try {
-    const s = JSON.parse(raw);
-    return s.userId ? { id: s.userId, role: s.role } : null;
-  } catch {
-    return null;
-  }
+  const s = await readSession(c);
+  return s && s.userId ? { id: s.userId, role: s.role } : null;
 }
 
 /** Admin session, or null. */
-async function adminUser(c: any): Promise<{ id: string; email: string } | null> {
-  const token = getCookie(c, COOKIE);
-  if (!token) return null;
-  const raw = await c.env.SESSIONS_KV.get("sess:" + token);
-  if (!raw) return null;
-  try {
-    const s = JSON.parse(raw);
-    if (s.role !== "admin") return null;
-    const u: any = await c.env.DB.prepare("SELECT email FROM users WHERE id = ?")
-      .bind(s.userId)
-      .first();
-    return { id: s.userId, email: u?.email || "unknown" };
-  } catch {
-    return null;
-  }
-}
+
 
 function needAdmin(c: any, admin: any) {
   if (!admin) return c.json({ ok: false, error: "Admin only" }, 403);
@@ -482,7 +458,7 @@ app.get("/users/:id", async (c) => {
 
 /** PATCH /admin/users/:id — role, status, display_name, show_profile override. Audit-logged. */
 app.patch("/admin/users/:id", async (c) => {
-  const admin = await adminUser(c);
+  const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
   if (no) return no;
 
