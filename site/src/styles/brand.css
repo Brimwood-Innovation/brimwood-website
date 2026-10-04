@@ -45,9 +45,9 @@ img { max-width: 100%; }
 h1, h2, h3 { line-height: 1.15; letter-spacing: -0.02em; }
 p { max-width: 62ch; }
 a { color: var(--emerald-deep); text-underline-offset: 3px; }
-a:hover { color: var(--emerald); }
+a:hover { color: var(--forest); }
 
-:focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; }
+:focus-visible { outline: 3px solid var(--forest); outline-offset: 2px; }
 
 .skip-link {
   position: absolute; left: -9999px; top: 0;
@@ -58,7 +58,7 @@ a:hover { color: var(--emerald); }
 
 /* CMS announcement bar (settings.json). Hidden when empty. */
 .announcement-bar {
-  background: var(--emerald); color: #fff;
+  background: var(--emerald-deep); color: #fff;
   text-align: center; font-size: 0.9rem;
   padding: 0.6rem 1rem;
 }
@@ -107,16 +107,16 @@ header.site img.logo { height: 38px; width: auto; display: block; }
 
 /* ---- buttons ---- */
 .btn {
-  display: inline-block; background: var(--emerald); color: #fff;
+  display: inline-block; background: var(--emerald-deep); color: #fff;
   text-decoration: none; font-weight: 600; font-size: 14px;
   padding: 12px 26px; border-radius: 10px; border: 0; cursor: pointer;
   transition: background 0.2s, transform 0.15s; font-family: var(--brand);
   min-height: var(--brimwood-touch-min);
 }
-.btn:hover { background: var(--emerald-deep); transform: translateY(-1px); color: #fff; }
+.btn:hover { background: var(--forest); transform: translateY(-1px); color: #fff; }
 .btn.small { padding: 9px 20px; font-size: 13px; }
-.btn-primary { background: var(--emerald); color: #fff; }
-.btn-primary:hover { background: var(--emerald-deep); color: #fff; }
+.btn-primary { background: var(--emerald-deep); color: #fff; }
+.btn-primary:hover { background: var(--forest); color: #fff; }
 .btn-ghost {
   border: 2px solid var(--emerald); color: var(--emerald-deep);
   background: transparent;
@@ -176,7 +176,7 @@ section.block { max-width: 1080px; margin: 0 auto; padding: 88px 24px 24px; }
 section.block:last-of-type { padding-bottom: 88px; }
 .kicker {
   font-size: 12px; font-weight: 500; letter-spacing: 0.22em;
-  text-transform: uppercase; color: var(--emerald); margin-bottom: 12px;
+  text-transform: uppercase; color: var(--emerald-deep); margin-bottom: 12px;
 }
 h2.sec {
   font-size: clamp(26px, 3.6vw, 34px); font-weight: 700;
@@ -191,7 +191,7 @@ p.sec-lede { color: var(--stone); max-width: 62ch; margin-bottom: 40px; font-siz
   transition: transform 0.2s, box-shadow 0.2s;
 }
 .card:hover { transform: translateY(-3px); box-shadow: 0 14px 34px rgba(10, 61, 43, 0.1); }
-.card .n { font-size: 12px; font-weight: 700; letter-spacing: 0.18em; color: var(--emerald); margin-bottom: 12px; }
+.card .n { font-size: 12px; font-weight: 700; letter-spacing: 0.18em; color: var(--emerald-deep); margin-bottom: 12px; }
 .card h3 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
 .card p { font-size: 14.5px; color: var(--stone); margin: 0; }
 
@@ -202,7 +202,7 @@ p.sec-lede { color: var(--stone); max-width: 62ch; margin-bottom: 40px; font-siz
 }
 .step .num {
   width: 40px; height: 40px; border-radius: 50%;
-  background: var(--emerald); color: #fff;
+  background: var(--emerald-deep); color: #fff;
   display: flex; align-items: center; justify-content: center;
   font-weight: 700; font-size: 16px; margin-bottom: 16px;
 }
@@ -210,7 +210,7 @@ p.sec-lede { color: var(--stone); max-width: 62ch; margin-bottom: 40px; font-siz
 .step p { font-size: 14.5px; color: var(--stone); margin: 0; }
 .step .arrow {
   position: absolute; right: -31px; top: 50%; transform: translateY(-50%);
-  color: var(--emerald); font-size: 22px; font-weight: 700; z-index: 2;
+  color: var(--emerald-deep); font-size: 22px; font-weight: 700; z-index: 2;
 }
 
 /* ---- CTA / introduction form ---- */
