@@ -16,7 +16,7 @@
 import { Hono } from "hono";
 import type { Bindings } from "../index";
 import { clientIp } from "../lib/validate";
-import { checkRateLimit } from "../lib/ratelimit";
+import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -39,9 +39,9 @@ function excerptOf(body: string, max = 160): string {
 }
 
 app.get("/", async (c) => {
-  const { DB, RATE_LIMIT_KV } = c.env;
+  const { DB } = c.env;
 
-  if (!(await checkRateLimit(RATE_LIMIT_KV, "search:" + clientIp(c.req.raw), 30, 60))) {
+  if (!(await checkRateLimitD1(DB, "search:" + clientIp(c.req.raw), 30, 60))) {
     return c.json({ ok: false, error: "Too many requests. Please try again shortly." }, 429);
   }
 

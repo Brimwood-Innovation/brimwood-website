@@ -5,18 +5,18 @@ import { Hono } from "hono";
 import type { Bindings } from "../index";
 import { sendEmail, shell, fieldRow, esc, INBOX } from "../lib/email";
 import { cleanStr, isEmail, clientIp, sha256Hex } from "../lib/validate";
-import { checkRateLimit } from "../lib/ratelimit";
+import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 
 import { verifyTurnstile } from "../lib/turnstile";
 
 const app = new Hono<{ Bindings: Bindings }>();
 
 app.post("/", async (c) => {
-  const { DB, RATE_LIMIT_KV } = c.env;
+  const { DB } = c.env;
   const resendKey = (c.env as Bindings & { RESEND_API_KEY?: string }).RESEND_API_KEY;
   if (!resendKey) return c.json({ ok: false }, 500);
 
-  if (!(await checkRateLimit(RATE_LIMIT_KV, "intro:" + clientIp(c.req.raw), 5, 3600))) {
+  if (!(await checkRateLimitD1(DB, "intro:" + clientIp(c.req.raw), 5, 3600))) {
     return c.json({ ok: false, error: "Too many requests. Please try again later." }, 429);
   }
 

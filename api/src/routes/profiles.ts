@@ -20,7 +20,7 @@ import { Hono } from "hono";
 import { readSession, getAdminUser } from "../lib/auth";
 import type { Bindings } from "../index";
 import { cleanStr, clientIp } from "../lib/validate";
-import { checkRateLimit } from "../lib/ratelimit";
+import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -261,7 +261,7 @@ app.patch("/users/me", async (c) => {
   if (no) return no;
 
   const ip = clientIp(c.req.raw);
-  if (!(await checkRateLimit(c.env.RATE_LIMIT_KV, `profile:${user!.id}`, 30, 3600))) {
+  if (!(await checkRateLimitD1(c.env.DB, `profile:${user!.id}`, 30, 3600))) {
     return c.json({ ok: false, error: "Too many updates. Try again later." }, 429);
   }
 
@@ -382,7 +382,7 @@ app.post("/users/me/avatar", async (c) => {
   const no = needAuth(c, user);
   if (no) return no;
 
-  if (!(await checkRateLimit(c.env.RATE_LIMIT_KV, `avatar:${user!.id}`, 10, 3600))) {
+  if (!(await checkRateLimitD1(c.env.DB, `avatar:${user!.id}`, 10, 3600))) {
     return c.json({ ok: false, error: "Too many uploads. Try again later." }, 429);
   }
 

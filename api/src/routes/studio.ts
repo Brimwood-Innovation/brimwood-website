@@ -10,7 +10,7 @@
 import { Hono } from "hono";
 import { getAdminUser } from "../lib/auth";
 import type { Bindings } from "../index";
-import { checkRateLimit } from "../lib/ratelimit";
+import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 import { clientIp } from "../lib/validate";
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -36,7 +36,7 @@ async function audit(c: any, admin: { id: string; email: string }, action: strin
 
 async function rateLimited(c: any): Promise<boolean> {
   const ip = clientIp(c.req.raw);
-  return !(await checkRateLimit(c.env.RATE_LIMIT_KV, "studio:" + ip, 30, 3600));
+  return !(await checkRateLimitD1(c.env.DB, "studio:" + ip, 30, 3600));
 }
 
 /* --- Path validation --- */

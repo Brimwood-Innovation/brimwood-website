@@ -10,7 +10,7 @@ import { getAdminUser } from "../lib/auth";
 import { sendEmail, shell, esc, SITE } from "../lib/email";
 import { cleanStr, isEmail, clientIp } from "../lib/validate";
 import { verifyTurnstile } from "../lib/turnstile";
-import { checkRateLimit } from "../lib/ratelimit";
+import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 
 type Env = Bindings & {
   RESEND_API_KEY?: string;
@@ -90,7 +90,7 @@ app.post("/events/:slug/rsvp", async (c) => {
   const { DB, RATE_LIMIT_KV } = c.env;
   const env = c.env as Env;
 
-  if (!(await checkRateLimit(RATE_LIMIT_KV, "rsvp:" + clientIp(c.req.raw), 5, 3600))) {
+  if (!(await checkRateLimitD1(DB, "rsvp:" + clientIp(c.req.raw), 5, 3600))) {
     return c.json({ ok: false, error: "Too many requests. Please try again later." }, 429);
   }
 

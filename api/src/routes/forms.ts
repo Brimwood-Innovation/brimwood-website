@@ -16,7 +16,7 @@ import { Hono } from "hono";
 import type { Bindings } from "../index";
 import { sendEmail, shell, fieldRow, esc, INBOX } from "../lib/email";
 import { cleanStr, isEmail, clientIp } from "../lib/validate";
-import { checkRateLimit } from "../lib/ratelimit";
+import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 import { verifyTurnstile } from "../lib/turnstile";
 import { getAdminUser } from "../lib/auth";
 
@@ -294,7 +294,7 @@ app.post("/:slug/submit", async (c) => {
     .first<{ id: string; slug: string; title: string; notify_email: string | null }>();
   if (!form) return c.json({ ok: false, error: "Form not found" }, 404);
 
-  if (!(await checkRateLimit(RATE_LIMIT_KV, "form:" + slug + ":" + clientIp(c.req.raw), 5, 3600))) {
+  if (!(await checkRateLimitD1(DB, "form:" + slug + ":" + clientIp(c.req.raw), 5, 3600))) {
     return c.json({ ok: false, error: "Too many submissions. Please try again later." }, 429);
   }
 

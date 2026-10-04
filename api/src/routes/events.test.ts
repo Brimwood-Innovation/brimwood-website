@@ -159,7 +159,7 @@ describe("RSVP upsert + email", () => {
     try {
       await postJSON(app, "/events/x/rsvp", rsvpBody, env);
       await postJSON(app, "/events/x/rsvp", { ...rsvpBody, guests: 3 }, env);
-      const upserts = env.DB.calls.filter((c) => /on\s+conflict/i.test(c.sql));
+      const upserts = env.DB.calls.filter((c) => /on\s+conflict/i.test(c.sql) && /rsvp/i.test(c.sql));
       expect(upserts.length).toBe(2);
       expect(rsvps).toHaveLength(0); // fake DB: handler owns state, INSERTs are recorded not applied
     } finally {

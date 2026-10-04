@@ -1,5 +1,7 @@
-/* One auth module (F5). All session handling lives here.
+/* One auth module (F5, F9). All session handling lives here.
  * Sessions are keyed by SHA-256 of the token, never the raw token.
+ * Since F9, sessions live in D1 (not KV): atomic, indexed per user,
+ * zero KV writes per login.
  * Admin checks re-read the role from D1 so demotion takes effect immediately.
  */
 import { getCookie, deleteCookie } from "hono/cookie";
@@ -40,11 +42,12 @@ export async function createSession(
 ): Promise<string> {
   const token = crypto.randomUUID();
   const key = PREFIX + (await hashToken(token));
-  await env.SESSIONS_KV.put(
-    key,
-    JSON.stringify({ userId, role, createdAt: Date.now() } as Session),
-    { expirationTtl: SESS_TTL }
-  );
+  const now = Date.now();
+  await env.DB.prepare(
+    "INSERT INTO sessions (key, user_id, role, created_at, expires_at) VALUES (?, ?, ?, ?, ?)"
+  )
+    .bind(key, userId, role, now, now + SESS_TTL * 1000)
+    .run();
   return token;
 }
 
@@ -52,30 +55,42 @@ export async function createSession(
 export async function readSession(c: any): Promise<Session | null> {
   const token = getCookie(c, COOKIE);
   if (!token) return null;
-  const raw = await c.env.SESSIONS_KV.get(PREFIX + (await hashToken(token)));
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as Session;
-  } catch {
-    return null;
-  }
+  const row = (await c.env.DB.prepare(
+    "SELECT user_id, role, created_at FROM sessions WHERE key = ? AND expires_at > ?"
+  )
+    .bind(PREFIX + (await hashToken(token)), Date.now())
+    .first()) as { user_id: string; role: string; created_at: number } | null;
+  if (!row) return null;
+  return { userId: row.user_id, role: row.role, createdAt: row.created_at };
 }
 
 /** Delete the session for the request cookie. */
 export async function destroySession(c: any): Promise<void> {
   const token = getCookie(c, COOKIE);
   if (token) {
-    await c.env.SESSIONS_KV.delete(PREFIX + (await hashToken(token)));
+    await c.env.DB.prepare("DELETE FROM sessions WHERE key = ?")
+      .bind(PREFIX + (await hashToken(token)))
+      .run();
   }
   deleteCookie(c, COOKIE, { path: "/" });
 }
 
-/** Delete a single session by its raw token (used by password reset). */
-export async function destroySessionByToken(
+/** Delete every session belonging to a user (password reset). Uses the
+ * per-user index; cost scales with the user's sessions, not all members. */
+export async function destroyUserSessions(
   env: Bindings,
-  token: string
+  userId: string
 ): Promise<void> {
-  await env.SESSIONS_KV.delete(PREFIX + (await hashToken(token)));
+  await env.DB.prepare("DELETE FROM sessions WHERE user_id = ?")
+    .bind(userId)
+    .run();
+}
+
+/** Delete expired sessions. Call from a scheduled job. */
+export async function pruneSessions(env: Bindings): Promise<void> {
+  await env.DB.prepare("DELETE FROM sessions WHERE expires_at < ?")
+    .bind(Date.now())
+    .run();
 }
 
 /**

@@ -13,9 +13,9 @@ import { setCookie } from "hono/cookie";
 import type { Bindings } from "../index";
 import { sendEmail, shell, button, esc, SITE } from "../lib/email";
 import { cleanStr, isEmail, clientIp, sha256Hex } from "../lib/validate";
-import { checkRateLimit } from "../lib/ratelimit";
+import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 import { hashPassword, verifyPassword, validatePassword } from "../lib/password";
-import { COOKIE, SESS_TTL, createSession, readSession } from "../lib/auth";
+import { COOKIE, SESS_TTL, createSession, readSession, destroyUserSessions } from "../lib/auth";
 
 type Env = Bindings & {
   RESEND_API_KEY?: string;
@@ -47,29 +47,6 @@ async function setSessionCookie(c: any, userId: string, role: string) {
   });
 }
 
-/** Delete every session belonging to a user (used after password reset). */
-async function invalidateUserSessions(kv: KVNamespace, userId: string) {
-  let cursor: string | undefined;
-  do {
-    const page = (await (kv as any).list({ prefix: "sess:", cursor })) as {
-      keys: { name: string }[];
-      list_complete: boolean;
-      cursor?: string;
-    };
-    for (const k of page.keys || []) {
-      const raw = await kv.get(k.name);
-      if (!raw) continue;
-      try {
-        const s = JSON.parse(raw) as { userId: string };
-        if (s.userId === userId) await kv.delete(k.name);
-      } catch {
-        /* ignore malformed entries */
-      }
-    }
-    cursor = page.list_complete ? undefined : page.cursor;
-  } while (cursor);
-}
-
 async function audit(
   DB: D1Database,
   actorId: string,
@@ -94,9 +71,9 @@ async function jsonBody(c: any): Promise<Record<string, unknown> | null> {
 
 /** POST /login {email, password} → session cookie. Generic errors only. */
 app.post("/login", async (c) => {
-  const { DB, SESSIONS_KV, RATE_LIMIT_KV } = c.env;
+  const { DB, SESSIONS_KV } = c.env;
   const ip = clientIp(c.req.raw);
-  if (!(await checkRateLimit(RATE_LIMIT_KV, "pwlogin:" + ip, 10, 900))) {
+  if (!(await checkRateLimitD1(DB, "pwlogin:" + ip, 10, 900))) {
     return c.json({ ok: false, error: "Too many requests. Please try again later." }, 429);
   }
 
@@ -110,7 +87,7 @@ app.post("/login", async (c) => {
 
   // Per-email throttle (anti brute-force) — checked before the DB lookup
   // result is revealed, error stays generic either way.
-  if (!(await checkRateLimit(RATE_LIMIT_KV, "pwlogin:email:" + email, 5, 3600))) {
+  if (!(await checkRateLimitD1(DB, "pwlogin:email:" + email, 5, 3600))) {
     return c.json({ ok: false, error: GENERIC_FAIL }, 401);
   }
 
@@ -143,8 +120,8 @@ app.post("/login", async (c) => {
 
 /** POST /password/set {password} — authenticated; for users without one yet. */
 app.post("/password/set", async (c) => {
-  const { DB, RATE_LIMIT_KV } = c.env;
-  if (!(await checkRateLimit(RATE_LIMIT_KV, "pwset:" + clientIp(c.req.raw), 5, 3600))) {
+  const { DB } = c.env;
+  if (!(await checkRateLimitD1(DB, "pwset:" + clientIp(c.req.raw), 5, 3600))) {
     return c.json({ ok: false, error: "Too many requests. Please try again later." }, 429);
   }
   const sess = await sessionUser(c);
@@ -182,8 +159,8 @@ app.post("/password/set", async (c) => {
 
 /** POST /password/change {currentPassword, newPassword} — authenticated. */
 app.post("/password/change", async (c) => {
-  const { DB, RATE_LIMIT_KV } = c.env;
-  if (!(await checkRateLimit(RATE_LIMIT_KV, "pwchange:" + clientIp(c.req.raw), 5, 3600))) {
+  const { DB } = c.env;
+  if (!(await checkRateLimitD1(DB, "pwchange:" + clientIp(c.req.raw), 5, 3600))) {
     return c.json({ ok: false, error: "Too many requests. Please try again later." }, 429);
   }
   const sess = await sessionUser(c);
@@ -224,9 +201,9 @@ app.post("/password/change", async (c) => {
 
 /** POST /password/reset/request {email} — always returns ok (no enumeration). */
 app.post("/password/reset/request", async (c) => {
-  const { DB, RATE_LIMIT_KV } = c.env;
+  const { DB } = c.env;
   const resendKey = (c.env as Env).RESEND_API_KEY;
-  if (!(await checkRateLimit(RATE_LIMIT_KV, "pwreset:" + clientIp(c.req.raw), 5, 3600))) {
+  if (!(await checkRateLimitD1(DB, "pwreset:" + clientIp(c.req.raw), 5, 3600))) {
     return c.json({ ok: false, error: "Too many requests. Please try again later." }, 429);
   }
 
@@ -280,8 +257,8 @@ function toHexToken(): string {
 
 /** POST /password/reset/confirm {token, newPassword} — single-use, 30-min TTL. */
 app.post("/password/reset/confirm", async (c) => {
-  const { DB, SESSIONS_KV, RATE_LIMIT_KV } = c.env;
-  if (!(await checkRateLimit(RATE_LIMIT_KV, "pwconfirm:" + clientIp(c.req.raw), 10, 900))) {
+  const { DB, SESSIONS_KV } = c.env;
+  if (!(await checkRateLimitD1(DB, "pwconfirm:" + clientIp(c.req.raw), 10, 900))) {
     return c.json({ ok: false, error: "Too many requests. Please try again later." }, 429);
   }
 
@@ -324,7 +301,7 @@ app.post("/password/reset/confirm", async (c) => {
     .bind(now, rec.id)
     .run();
   // A reset invalidates every existing session for this user.
-  await invalidateUserSessions(SESSIONS_KV, user.id);
+  await destroyUserSessions(c.env, user.id);
   await audit(DB, user.id, "password.reset", "Password reset via email link");
   return c.json({ ok: true });
 });

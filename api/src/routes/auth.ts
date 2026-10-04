@@ -10,7 +10,7 @@ import { setCookie } from "hono/cookie";
 import type { Bindings } from "../index";
 import { sendEmail, shell, esc } from "../lib/email";
 import { cleanStr, isEmail, clientIp, sha256Hex } from "../lib/validate";
-import { checkRateLimit } from "../lib/ratelimit";
+import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 import { safeEqual } from "../lib/safe-equal";
 import { hashPassword, validatePassword } from "../lib/password";
 import { COOKIE, SESS_TTL, createSession, destroySession, readSession } from "../lib/auth";
@@ -29,12 +29,12 @@ function codeKey(email: string) {
 }
 
 app.post("/request-code", async (c) => {
-  const { DB, SESSIONS_KV, RATE_LIMIT_KV } = c.env;
+  const { DB, SESSIONS_KV } = c.env;
   const resendKey = c.env.RESEND_API_KEY;
   if (!resendKey) return c.json({ ok: false }, 500);
 
   // Strict rate limit on the auth endpoint (security skill: ~10/15min).
-  if (!(await checkRateLimit(RATE_LIMIT_KV, "authreq:" + clientIp(c.req.raw), 10, 900))) {
+  if (!(await checkRateLimitD1(DB, "authreq:" + clientIp(c.req.raw), 10, 900))) {
     return c.json({ ok: false, error: "Too many requests. Please try again later." }, 429);
   }
 
@@ -93,8 +93,8 @@ app.post("/request-code", async (c) => {
 });
 
 app.post("/verify-code", async (c) => {
-  const { DB, SESSIONS_KV, RATE_LIMIT_KV } = c.env;
-  if (!(await checkRateLimit(RATE_LIMIT_KV, "authver:" + clientIp(c.req.raw), 10, 900))) {
+  const { DB, SESSIONS_KV } = c.env;
+  if (!(await checkRateLimitD1(DB, "authver:" + clientIp(c.req.raw), 10, 900))) {
     return c.json({ ok: false, error: "Too many requests. Please try again later." }, 429);
   }
 
@@ -162,8 +162,8 @@ app.post("/logout", async (c) => {
  * as a member, increments the code's use count, then sends a magic sign-in
  * code so they can sign in immediately. */
 app.post("/redeem-invite", async (c) => {
-  const { DB, RATE_LIMIT_KV } = c.env;
-  if (!(await checkRateLimit(RATE_LIMIT_KV, "redeem:" + clientIp(c.req.raw), 5, 3600))) {
+  const { DB } = c.env;
+  if (!(await checkRateLimitD1(DB, "redeem:" + clientIp(c.req.raw), 5, 3600))) {
     return c.json({ ok: false, error: "Too many requests. Please try again later." }, 429);
   }
 
