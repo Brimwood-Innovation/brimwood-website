@@ -13,6 +13,7 @@ export async function getStaticPaths() {
 
 const { post } = Astro.props;
 const slug = post.id.replace(/\.md$/, "");
+const apiBase = import.meta.env.PUBLIC_API_BASE || "";
 const { Content } = await render(post);
 
 const pillars: Record<string, string> = {
@@ -27,6 +28,7 @@ const pillars: Record<string, string> = {
   title={`${post.data.title} — Brimwood Innovation`}
   description={post.data.description}
   path={`/blog/${slug}`}
+  turnstile
 >
   <article class="prose">
     <div class="kicker">{pillars[post.data.pillar]}{post.data.draft ? " · DRAFT" : ""}</div>
@@ -58,7 +60,7 @@ const pillars: Record<string, string> = {
     </p>
   </article>
 
-  <section id="comments" style="margin-top:4rem;max-width:720px;">
+  <section id="comments" style="margin-top:4rem;max-width:720px;" data-slug={slug} data-api-base={apiBase}>
     <h2 class="sec" style="font-size:clamp(22px,3vw,30px);margin-bottom:8px;">Comments</h2>
     <div id="commentList"><p class="sec-lede">Loading comments…</p></div>
 
@@ -80,64 +82,5 @@ const pillars: Record<string, string> = {
     </div>
   </section>
 
-  <script define:vars={{ slug, apiBase: import.meta.env.PUBLIC_API_BASE || "" }}>
-    const listEl = document.getElementById("commentList");
-    const esc = (s) => String(s || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const fmtDate = (iso) => {
-      try { return new Date(iso).toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric" }); }
-      catch { return ""; }
-    };
-
-    (async () => {
-      try {
-        const r = await fetch(apiBase + "/api/comments/" + encodeURIComponent(slug), {
-          headers: { accept: "application/json" },
-        });
-        const d = await r.json();
-        const comments = (d.ok && d.comments) || [];
-        listEl.innerHTML = comments.length === 0
-          ? "<p class='sec-lede'>No comments yet — be the first.</p>"
-          : comments.map((cm) => `
-            <div class="admin-card" style="margin-bottom:12px;">
-              <p style="margin:0 0 8px;"><strong>${esc(cm.name)}</strong>
-                <span class="admin-muted"> · ${esc(fmtDate(cm.created_at))}</span></p>
-              <p style="margin:0;white-space:pre-wrap;">${esc(cm.body)}</p>
-            </div>`).join("");
-      } catch {
-        listEl.innerHTML = "<p class='sec-lede'>Could not load comments.</p>";
-      }
-    })();
-
-    document.getElementById("commentForm").addEventListener("submit", async function (e) {
-      e.preventDefault();
-      const v = (id) => document.getElementById(id).value.trim();
-      const btn = document.getElementById("commentBtn");
-      const err = document.getElementById("commentErr");
-      err.style.display = "none";
-      btn.disabled = true;
-      btn.textContent = "Posting…";
-      try {
-        const res = await fetch(apiBase + "/api/comments", {
-          method: "POST",
-          headers: { "content-type": "application/json", accept: "application/json" },
-          body: JSON.stringify({
-            post_slug: slug,
-            name: v("cName"),
-            email: v("cEmail"),
-            body: v("cBody"),
-            "cf-turnstile-response": (document.querySelector('#commentForm [name="cf-turnstile-response"]') || {}).value || "",
-          }),
-        });
-        const d = await res.json().catch(() => ({}));
-        if (!res.ok || !d.ok) throw new Error(d.error || "Could not post your comment.");
-        document.getElementById("commentForm").style.display = "none";
-        document.getElementById("commentThanks").style.display = "block";
-      } catch (ex) {
-        btn.disabled = false;
-        btn.textContent = "Post comment";
-        err.textContent = ex.message;
-        err.style.display = "block";
-      }
-    });
-  </script>
+  <script is:inline src="/js/blog-comments.js"></script>
 </Base>
