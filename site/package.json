@@ -1,1 +1,1 @@
-{"dependencies":{"astro":"^5.0.0"},"license":"MIT","name":"brimwood-site","private":true,"scripts":{"build":"astro build","dev":"astro dev","preview":"astro preview"},"type":"module","version":"0.1.0"}
+{"dependencies":{"astro":"^5.0.0"},"license":"(MIT OR AGPL-3.0)","name":"brimwood-site","private":true,"scripts":{"build":"astro build","dev":"astro dev","preview":"astro preview"},"type":"module","version":"0.1.0"}
