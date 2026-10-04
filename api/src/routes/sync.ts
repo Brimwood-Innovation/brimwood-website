@@ -19,12 +19,10 @@
  *   stale slugs deleted
  */
 import { Hono } from "hono";
-import { getCookie } from "hono/cookie";
 import type { Bindings } from "../index";
 import { cleanStr } from "../lib/validate";
 
 const app = new Hono<{ Bindings: Bindings }>();
-const COOKIE = "brimwood_sess";
 
 const LEVELS = ["foundations", "builder", "operator"];
 const VISIBILITIES = ["public", "members"];
@@ -47,30 +45,14 @@ function slugify(s: string): string {
 
 /** Manual constant-time string compare — see lib/safe-equal.ts. */
 import { safeEqual } from "../lib/safe-equal";
+import { getAdminUser } from "../lib/auth";
 
 async function authorized(
   c: any
 ): Promise<{ ok: boolean; actor: string; actorId: string | null }> {
-  // 1. Admin session cookie (same pattern as admin.ts).
-  const token = getCookie(c, COOKIE);
-  if (token) {
-    const raw = await c.env.SESSIONS_KV.get("sess:" + token);
-    if (raw) {
-      try {
-        const s = JSON.parse(raw);
-        if (s.role === "admin") {
-          const u: any = await c.env.DB.prepare(
-            "SELECT id, email FROM users WHERE id = ? AND status = 'active'"
-          )
-            .bind(s.userId)
-            .first();
-          if (u) return { ok: true, actor: u.email, actorId: u.id };
-        }
-      } catch {
-        /* fall through to bearer check */
-      }
-    }
-  }
+  // 1. Admin session cookie (shared auth module, F5).
+  const admin = await getAdminUser(c);
+  if (admin) return { ok: true, actor: admin.email, actorId: admin.id };
   // 2. Bearer sync secret (GitHub Action; cannot do magic-link login).
   const secret = c.env.SYNC_SECRET;
   const header = c.req.header("authorization") || "";

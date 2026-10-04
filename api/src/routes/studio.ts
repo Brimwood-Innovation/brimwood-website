@@ -8,14 +8,13 @@
  * If GITHUB_CONTENT_TOKEN is unset, endpoints return 500 "not configured".
  */
 import { Hono } from "hono";
-import { getCookie } from "hono/cookie";
+import { getAdminUser } from "../lib/auth";
 import type { Bindings } from "../index";
 import { checkRateLimit } from "../lib/ratelimit";
 import { clientIp } from "../lib/validate";
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-const COOKIE = "brimwood_sess";
 const REPO = "Brimwood-Innovation/brimwood-website";
 const BRANCH = "develop";
 const GH_API = "https://api.github.com";
@@ -24,27 +23,7 @@ const MAX_CONTENT_BYTES = 500 * 1024; // 500 KB per file
 
 /* --- Admin gate (same pattern as admin.ts) --- */
 
-async function adminUser(c: any): Promise<{ id: string; email: string } | null> {
-  const token = getCookie(c, COOKIE);
-  if (!token) return null;
-  const raw = await c.env.SESSIONS_KV.get("sess:" + token);
-  if (!raw) return null;
-  try {
-    const s = JSON.parse(raw);
-    if (s.role !== "admin") return null;
-    const u: any = await c.env.DB.prepare("SELECT email FROM users WHERE id = ?")
-      .bind(s.userId)
-      .first();
-    return { id: s.userId, email: u?.email || "unknown" };
-  } catch {
-    return null;
-  }
-}
 
-function needAdmin(c: any, admin: any) {
-  if (!admin) return c.json({ ok: false, error: "Admin only" }, 403);
-  return null;
-}
 
 async function audit(c: any, admin: { id: string; email: string }, action: string, detail: string) {
   await c.env.DB.prepare(
@@ -125,9 +104,8 @@ export function b64decode(b64: string): string {
 
 /** GET /file?path= — read a content file from GitHub (develop branch). */
 app.get("/file", async (c) => {
-  const admin = await adminUser(c);
-  const no = needAdmin(c, admin);
-  if (no) return no;
+  const admin = await getAdminUser(c);
+  if (!admin) return c.json({ ok: false, error: "Admin only." }, 403);
   if (await rateLimited(c)) return c.json({ ok: false, error: "Too many requests" }, 429);
 
   const path = c.req.query("path") || "";
@@ -154,9 +132,8 @@ app.get("/file", async (c) => {
 
 /** GET /list?dir= — list files under a content dir via the trees API. */
 app.get("/list", async (c) => {
-  const admin = await adminUser(c);
-  const no = needAdmin(c, admin);
-  if (no) return no;
+  const admin = await getAdminUser(c);
+  if (!admin) return c.json({ ok: false, error: "Admin only." }, 403);
   if (await rateLimited(c)) return c.json({ ok: false, error: "Too many requests" }, 429);
 
   const dir = c.req.query("dir") || "";
@@ -185,9 +162,8 @@ app.get("/list", async (c) => {
 
 /** POST /commit — {path, content, message} → commit to GitHub (develop). */
 app.post("/commit", async (c) => {
-  const admin = await adminUser(c);
-  const no = needAdmin(c, admin);
-  if (no) return no;
+  const admin = await getAdminUser(c);
+  if (!admin) return c.json({ ok: false, error: "Admin only." }, 403);
   if (await rateLimited(c)) return c.json({ ok: false, error: "Too many requests" }, 429);
 
   let body: any;

@@ -15,30 +15,15 @@
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import type { Bindings } from "../index";
+import { getAdminUser } from "../lib/auth";
 import { cleanStr, isEmail, clientIp } from "../lib/validate";
 import { checkRateLimit } from "../lib/ratelimit";
 import { verifyTurnstile } from "../lib/turnstile";
 
 const app = new Hono<{ Bindings: Bindings }>();
-const COOKIE = "brimwood_sess";
 
 /* Admin helpers (same pattern as routes/admin.ts and routes/media.ts). */
-async function adminUser(c: any): Promise<{ id: string; email: string } | null> {
-  const token = getCookie(c, COOKIE);
-  if (!token) return null;
-  const raw = await c.env.SESSIONS_KV.get("sess:" + token);
-  if (!raw) return null;
-  try {
-    const s = JSON.parse(raw);
-    if (s.role !== "admin") return null;
-    const u: any = await c.env.DB.prepare("SELECT email FROM users WHERE id = ?")
-      .bind(s.userId)
-      .first();
-    return { id: s.userId, email: u?.email || "unknown" };
-  } catch {
-    return null;
-  }
-}
+
 
 function needAdmin(c: any, admin: any) {
   if (!admin) return c.json({ ok: false, error: "Admin only" }, 403);
@@ -120,7 +105,7 @@ app.get("/comments/:slug", async (c) => {
 /* --- Admin: moderation queue --- */
 
 app.get("/admin/comments", async (c) => {
-  const admin = await adminUser(c);
+  const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
   if (no) return no;
   const { DB } = c.env;
@@ -146,7 +131,7 @@ app.get("/admin/comments", async (c) => {
 /* --- Admin: approve or mark spam --- */
 
 app.patch("/admin/comments/:id", async (c) => {
-  const admin = await adminUser(c);
+  const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
   if (no) return no;
   const { DB } = c.env;

@@ -15,6 +15,7 @@ import { sendEmail, shell, button, esc, SITE } from "../lib/email";
 import { cleanStr, isEmail, clientIp, sha256Hex } from "../lib/validate";
 import { checkRateLimit } from "../lib/ratelimit";
 import { hashPassword, verifyPassword, validatePassword } from "../lib/password";
+import { COOKIE, SESS_TTL, createSession, readSession } from "../lib/auth";
 
 type Env = Bindings & {
   RESEND_API_KEY?: string;
@@ -22,37 +23,19 @@ type Env = Bindings & {
 };
 
 const app = new Hono<{ Bindings: Env }>();
-const COOKIE = "brimwood_sess";
-const SESS_TTL = 30 * 86400; // 30 days
 const RESET_TTL_MIN = 30;
 
 const GENERIC_FAIL = "Invalid email or password.";
 
-type Session = { userId: string; role: string };
-
 /** Resolve the current session from the cookie, or null. */
-async function sessionUser(c: any): Promise<Session | null> {
-  const cookie = c.req.header("cookie") || "";
-  const m = cookie.match(new RegExp(COOKIE + "=([^;]+)"));
-  if (!m) return null;
-  const raw = await c.env.SESSIONS_KV.get("sess:" + m[1]);
-  if (!raw) return null;
-  try {
-    const s = JSON.parse(raw) as Session;
-    return s.userId ? s : null;
-  } catch {
-    return null;
-  }
+async function sessionUser(c: any) {
+  const s = await readSession(c);
+  return s && s.userId ? s : null;
 }
 
 /** Create a session + set the cookie (same mechanism as magic-code verify). */
-async function createSession(c: any, userId: string, role: string) {
-  const token = crypto.randomUUID();
-  await c.env.SESSIONS_KV.put(
-    "sess:" + token,
-    JSON.stringify({ userId, role, createdAt: Date.now() }),
-    { expirationTtl: SESS_TTL }
-  );
+async function setSessionCookie(c: any, userId: string, role: string) {
+  const token = await createSession(c.env, userId, role);
   const origin = c.req.header("origin") || "";
   const crossOrigin = origin && !origin.includes("workers.dev");
   setCookie(c, COOKIE, token, {
@@ -77,7 +60,7 @@ async function invalidateUserSessions(kv: KVNamespace, userId: string) {
       const raw = await kv.get(k.name);
       if (!raw) continue;
       try {
-        const s = JSON.parse(raw) as Session;
+        const s = JSON.parse(raw) as { userId: string };
         if (s.userId === userId) await kv.delete(k.name);
       } catch {
         /* ignore malformed entries */
@@ -152,7 +135,7 @@ app.post("/login", async (c) => {
     return c.json({ ok: false, error: GENERIC_FAIL }, 401);
   }
 
-  await createSession(c, user.id, user.role);
+  await setSessionCookie(c, user.id, user.role);
   return c.json({ ok: true });
 });
 

@@ -6,6 +6,7 @@
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import type { Bindings } from "../index";
+import { getAdminUser } from "../lib/auth";
 import { sendEmail, shell, esc, SITE } from "../lib/email";
 import { cleanStr, isEmail, clientIp } from "../lib/validate";
 import { verifyTurnstile } from "../lib/turnstile";
@@ -18,25 +19,9 @@ type Env = Bindings & {
 };
 
 const app = new Hono<{ Bindings: Env }>();
-const COOKIE = "brimwood_sess";
 
 /* --- admin guard (same pattern as admin.ts) --- */
-async function adminUser(c: any): Promise<{ id: string; email: string } | null> {
-  const token = getCookie(c, COOKIE);
-  if (!token) return null;
-  const raw = await c.env.SESSIONS_KV.get("sess:" + token);
-  if (!raw) return null;
-  try {
-    const s = JSON.parse(raw);
-    if (s.role !== "admin") return null;
-    const u: any = await c.env.DB.prepare("SELECT email FROM users WHERE id = ?")
-      .bind(s.userId)
-      .first();
-    return { id: s.userId, email: u?.email || "unknown" };
-  } catch {
-    return null;
-  }
-}
+
 
 function needAdmin(c: any, admin: any) {
   if (!admin) return c.json({ ok: false, error: "Admin only" }, 403);
@@ -214,7 +199,7 @@ app.post("/events/:slug/rsvp", async (c) => {
 
 /** All events, newest first, with RSVP counts. */
 app.get("/admin/events", async (c) => {
-  const admin = await adminUser(c);
+  const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
   if (no) return no;
   const { DB } = c.env;
@@ -228,7 +213,7 @@ app.get("/admin/events", async (c) => {
 
 /** Create an event. */
 app.post("/admin/events", async (c) => {
-  const admin = await adminUser(c);
+  const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
   if (no) return no;
   const { DB } = c.env;
@@ -277,7 +262,7 @@ app.post("/admin/events", async (c) => {
 
 /** Update an event. */
 app.patch("/admin/events/:id", async (c) => {
-  const admin = await adminUser(c);
+  const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
   if (no) return no;
   const { DB } = c.env;
@@ -340,7 +325,7 @@ app.patch("/admin/events/:id", async (c) => {
 
 /** Attendee list for an event. */
 app.get("/admin/events/:id/rsvps", async (c) => {
-  const admin = await adminUser(c);
+  const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
   if (no) return no;
   const { DB } = c.env;
