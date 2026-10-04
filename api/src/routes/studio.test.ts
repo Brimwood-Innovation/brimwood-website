@@ -1,0 +1,242 @@
+/* Brimwood Studio API tests (Phase D3): path allowlist, admin gates,
+ * GitHub commit SHA flow (mocked fetch), token-missing behaviour. */
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import app, { validContentPath, validContentDir, b64encode, b64decode } from "./studio";
+import { mockEnv, adminSession, memberSession, stubFetch } from "../test/helpers";
+
+describe("validContentPath", () => {
+  it("accepts md/json under site/src/content/", () => {
+    expect(validContentPath("site/src/content/blog/hello.md")).toBe(true);
+    expect(validContentPath("site/src/content/pages/about.md")).toBe(true);
+    expect(validContentPath("site/src/content/settings.json")).toBe(true);
+    expect(validContentPath("site/src/content/testimonials/a.md")).toBe(true);
+  });
+  it("rejects traversal and trickery", () => {
+    expect(validContentPath("site/src/content/../api/index.ts")).toBe(false);
+    expect(validContentPath("site/src/content/blog/../../wrangler.toml")).toBe(false);
+    expect(validContentPath("..\\site\\src\\content\\x.md")).toBe(false);
+  });
+  it("rejects absolute paths, wrong roots, wrong extensions", () => {
+    expect(validContentPath("/site/src/content/blog/x.md")).toBe(false);
+    expect(validContentPath("api/src/index.ts")).toBe(false);
+    expect(validContentPath("site/src/content/blog/x.txt")).toBe(false);
+    expect(validContentPath("site/src/content/blog/x.md ")).toBe(false);
+    expect(validContentPath("site/src/content/")).toBe(false);
+    expect(validContentPath("")).toBe(false);
+    expect(validContentPath(null)).toBe(false);
+    expect(validContentPath(42)).toBe(false);
+  });
+});
+
+describe("validContentDir", () => {
+  it("accepts content dirs", () => {
+    expect(validContentDir("site/src/content/blog")).toBe(true);
+    expect(validContentDir("site/src/content/blog/")).toBe(true);
+    expect(validContentDir("site/src/content/")).toBe(true);
+  });
+  it("rejects traversal and outside dirs", () => {
+    expect(validContentDir("site/src/content/../api")).toBe(false);
+    expect(validContentDir("site/src")).toBe(false);
+    expect(validContentDir("/etc")).toBe(false);
+    expect(validContentDir("")).toBe(false);
+  });
+});
+
+describe("b64 helpers", () => {
+  it("round-trips unicode", () => {
+    const s = "Héllo — Canadian spelling: behaviour ✓";
+    expect(b64decode(b64encode(s))).toBe(s);
+  });
+});
+
+describe("admin gates", () => {
+  it("GET /file rejects anonymous (403)", async () => {
+    const res = await app.request("/file?path=site/src/content/blog/x.md", {}, mockEnv() as any);
+    expect(res.status).toBe(403);
+  });
+  it("GET /list rejects members (403)", async () => {
+    const env = mockEnv();
+    const h = memberSession(env);
+    const res = await app.request("/list?dir=site/src/content/blog", { headers: h }, env as any);
+    expect(res.status).toBe(403);
+  });
+  it("POST /commit rejects anonymous (403)", async () => {
+    const res = await app.request(
+      "/commit",
+      { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
+      mockEnv() as any
+    );
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("token not configured", () => {
+  let restore: () => void;
+  beforeEach(() => {
+    restore = stubFetch(async () => new Response("{}", { status: 200 }));
+  });
+  afterEach(() => restore());
+
+  it("GET /file returns 500 without GITHUB_CONTENT_TOKEN", async () => {
+    const env = mockEnv({ GITHUB_CONTENT_TOKEN: undefined });
+    const h = adminSession(env);
+    const res = await app.request("/file?path=site/src/content/blog/x.md", { headers: h }, env as any);
+    expect(res.status).toBe(500);
+    const d = (await res.json()) as any;
+    expect(d.error).toMatch(/not configured/);
+  });
+  it("POST /commit returns 500 without GITHUB_CONTENT_TOKEN", async () => {
+    const env = mockEnv({ GITHUB_CONTENT_TOKEN: undefined });
+    const h = adminSession(env);
+    const res = await app.request(
+      "/commit",
+      {
+        method: "POST",
+        headers: { ...h, "content-type": "application/json" },
+        body: JSON.stringify({ path: "site/src/content/blog/x.md", content: "# hi" }),
+      },
+      env as any
+    );
+    expect(res.status).toBe(500);
+  });
+});
+
+describe("commit SHA flow (mocked GitHub)", () => {
+  let restore: () => void;
+  let calls: { method: string; url: string; body: any }[];
+  beforeEach(() => {
+    calls = [];
+    restore = stubFetch(async (url: string, init?: RequestInit) => {
+      const method = (init?.method || "GET").toUpperCase();
+      let body: any = null;
+      try {
+        body = init?.body ? JSON.parse(String(init.body)) : null;
+      } catch {
+        body = null;
+      }
+      calls.push({ method, url, body });
+      if (method === "GET" && url.includes("/contents/")) {
+        return new Response(
+          JSON.stringify({ sha: "abc123", content: b64encode("# existing"), type: "file" }),
+          { status: 200 }
+        );
+      }
+      if (method === "PUT" && url.includes("/contents/")) {
+        return new Response(JSON.stringify({ commit: { sha: "def456" } }), { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    });
+  });
+  afterEach(() => restore());
+
+  function adminEnv() {
+    const env = mockEnv({ GITHUB_CONTENT_TOKEN: "gh_test_token" });
+    const h = adminSession(env);
+    return { env, h };
+  }
+
+  it("update includes existing SHA and base64 content", async () => {
+    const { env, h } = adminEnv();
+    const res = await app.request(
+      "/commit",
+      {
+        method: "POST",
+        headers: { ...h, "content-type": "application/json" },
+        body: JSON.stringify({ path: "site/src/content/blog/x.md", content: "# updated ✓" }),
+      },
+      env as any
+    );
+    expect(res.status).toBe(200);
+    const d = (await res.json()) as any;
+    expect(d.ok).toBe(true);
+    expect(d.commitSha).toBe("def456");
+    const put = calls.find((c) => c.method === "PUT");
+    expect(put).toBeTruthy();
+    expect(put!.body.sha).toBe("abc123");
+    expect(put!.body.branch).toBe("develop");
+    expect(put!.body.committer.name).toBe("Brimwood Studio");
+    expect(b64decode(put!.body.content)).toBe("# updated ✓");
+    expect(put!.url).toContain("Brimwood-Innovation/brimwood-website");
+  });
+
+  it("new file omits SHA when GET returns 404", async () => {
+    restore();
+    const seen: string[] = [];
+    restore = stubFetch(async (url: string, init?: RequestInit) => {
+      const method = (init?.method || "GET").toUpperCase();
+      seen.push(method + " " + url.split("?")[0]);
+      if (method === "GET") return new Response("{}", { status: 404 });
+      const body = JSON.parse(String(init?.body || "{}"));
+      expect(body.sha).toBeUndefined();
+      return new Response(JSON.stringify({ commit: { sha: "new789" } }), { status: 200 });
+    });
+    const { env, h } = adminEnv();
+    const res = await app.request(
+      "/commit",
+      {
+        method: "POST",
+        headers: { ...h, "content-type": "application/json" },
+        body: JSON.stringify({ path: "site/src/content/pages/new.md", content: "# new" }),
+      },
+      env as any
+    );
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as any).commitSha).toBe("new789");
+  });
+
+  it("rejects invalid path before touching GitHub", async () => {
+    const { env, h } = adminEnv();
+    const res = await app.request(
+      "/commit",
+      {
+        method: "POST",
+        headers: { ...h, "content-type": "application/json" },
+        body: JSON.stringify({ path: "site/src/content/../wrangler.toml", content: "x" }),
+      },
+      env as any
+    );
+    expect(res.status).toBe(400);
+    expect(calls.filter((c) => c.url.includes("api.github.com")).length).toBe(0);
+  });
+
+  it("GET /file decodes content from GitHub", async () => {
+    const { env, h } = adminEnv();
+    const res = await app.request(
+      "/file?path=" + encodeURIComponent("site/src/content/blog/x.md"),
+      { headers: h },
+      env as any
+    );
+    expect(res.status).toBe(200);
+    const d = (await res.json()) as any;
+    expect(d.content).toBe("# existing");
+    expect(d.sha).toBe("abc123");
+  });
+
+  it("GET /list filters the recursive tree to the dir", async () => {
+    restore();
+    restore = stubFetch(async (url: string) => {
+      expect(url).toContain("/git/trees/develop?recursive=1");
+      return new Response(
+        JSON.stringify({
+          tree: [
+            { path: "site/src/content/blog/a.md", type: "blob" },
+            { path: "site/src/content/blog/b.md", type: "blob" },
+            { path: "site/src/content/pages/c.md", type: "blob" },
+            { path: "site/src/content/blog/d.txt", type: "blob" },
+            { path: "api/src/index.ts", type: "blob" },
+          ],
+        }),
+        { status: 200 }
+      );
+    });
+    const { env, h } = adminEnv();
+    const res = await app.request(
+      "/list?dir=" + encodeURIComponent("site/src/content/blog"),
+      { headers: h },
+      env as any
+    );
+    expect(res.status).toBe(200);
+    const d = (await res.json()) as any;
+    expect(d.files.map((f: any) => f.name)).toEqual(["a.md", "b.md"]);
+  });
+});

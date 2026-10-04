@@ -12,6 +12,7 @@ import { sendEmail, shell, esc } from "../lib/email";
 import { cleanStr, isEmail, clientIp, sha256Hex } from "../lib/validate";
 import { checkRateLimit } from "../lib/ratelimit";
 import { safeEqual } from "../lib/safe-equal";
+import { hashPassword, validatePassword } from "../lib/password";
 
 type Env = Bindings & {
   RESEND_API_KEY?: string;
@@ -186,6 +187,20 @@ app.post("/redeem-invite", async (c) => {
     return c.json({ ok: false, error: "Please include your name, email, and invite code." }, 400);
   }
 
+  // Optional password at signup (Phase D1). Validated now, stored with the user.
+  const rawPassword = typeof data.password === "string" ? data.password : "";
+  let pwHash: string | null = null;
+  let pwSalt: string | null = null;
+  let pwSetAt: string | null = null;
+  if (rawPassword) {
+    const policyError = validatePassword(rawPassword);
+    if (policyError) return c.json({ ok: false, error: policyError }, 400);
+    const hashed = await hashPassword(rawPassword);
+    pwHash = hashed.hash;
+    pwSalt = hashed.salt;
+    pwSetAt = new Date().toISOString();
+  }
+
   // Check for existing user.
   const existing = await DB.prepare("SELECT id FROM users WHERE email = ?")
     .bind(email)
@@ -210,12 +225,13 @@ app.post("/redeem-invite", async (c) => {
     return c.json({ ok: false, error: "This invite code has already been used." }, 400);
   }
 
-  // Create the user.
+  // Create the user (password columns exist after migration 0009).
   const userId = crypto.randomUUID();
   await DB.prepare(
-    `INSERT INTO users (id, email, name, role, status) VALUES (?, ?, ?, 'member', 'active')`
+    `INSERT INTO users (id, email, name, role, status, password_hash, password_salt, password_set_at)
+     VALUES (?, ?, ?, 'member', 'active', ?, ?, ?)`
   )
-    .bind(userId, email, name)
+    .bind(userId, email, name, pwHash, pwSalt, pwSetAt)
     .run();
 
   // Consume one use of the invite code.

@@ -1,0 +1,557 @@
+---
+/* Brimwood Studio (Phase D3): first-party CMS. Admin-only.
+ * Users authenticate with Brimwood password auth; the worker commits to
+ * GitHub via a server-side token. No GitHub login for users.
+ * Decap at /cms/ remains as backup — do not remove. */
+import Base from "../layouts/Base.astro";
+---
+
+<Base
+  title="Brimwood Studio — Brimwood Innovation"
+  description="Brimwood Studio: edit site content."
+  path="/studio"
+>
+  <div id="studio-loading"><p class="sec-lede">Loading…</p></div>
+  <div id="studio-denied" style="display:none;text-align:center;padding:48px 0;">
+    <div class="kicker">Admin only</div>
+    <h2 class="sec">You need an admin account.</h2>
+    <p class="sec-lede" style="margin-inline:auto;"><a href="/members">Sign in</a> with an admin email.</p>
+  </div>
+
+  <div id="studio-home" style="display:none;">
+    <div class="kicker">Brimwood Studio</div>
+    <h1 class="sec" style="font-size:clamp(28px,4.5vw,44px);margin-bottom:8px;">Content Studio</h1>
+    <p class="sec-lede" style="margin-bottom:24px;">
+      Edit blog posts, pages, testimonials, courses, and site settings.
+      Saving commits to the <code>develop</code> branch — the site rebuilds automatically.
+    </p>
+
+    <div id="studio-status" class="admin-muted" style="margin-bottom:16px;"></div>
+
+    <div style="display:grid;grid-template-columns:260px 1fr;gap:24px;align-items:start;" id="studio-grid">
+      <aside>
+        <div class="admin-card">
+          <h3 style="margin-top:0;">Collections</h3>
+          <div id="studio-nav" style="display:flex;flex-direction:column;gap:4px;"></div>
+        </div>
+        <div class="admin-card" style="margin-top:16px;">
+          <h3 style="margin-top:0;">Site files</h3>
+          <div id="studio-json-nav" style="display:flex;flex-direction:column;gap:4px;"></div>
+        </div>
+      </aside>
+      <div>
+        <div class="admin-card" id="studio-main">
+          <p class="admin-muted">Select a collection on the left to begin.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const SAPI_BASE = import.meta.env.PUBLIC_API_BASE || "";
+    const sapi = (p, opts = {}) =>
+      fetch(SAPI_BASE + p, {
+        credentials: "include",
+        headers: { accept: "application/json", ...(opts.headers || {}) },
+        ...opts,
+      });
+    const sesc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+    // ---- Collection schemas (mirror site/src/content/config.ts) ----
+    const PILLARS = ["micro-business", "ai-in-practice", "owner-mindset", "members-hub"];
+    const SCHEMAS = {
+      blog: {
+        label: "Blog posts", dir: "site/src/content/blog", ext: ".md",
+        fields: [
+          { key: "title", label: "Title", type: "text", required: true },
+          { key: "description", label: "Description", type: "textarea" },
+          { key: "publishDate", label: "Publish date", type: "date" },
+          { key: "pillar", label: "Pillar", type: "select", options: PILLARS },
+          { key: "tags", label: "Tags (comma-separated)", type: "text", array: true },
+          { key: "author", label: "Author", type: "text" },
+          { key: "draft", label: "Draft (hidden until published)", type: "checkbox" },
+        ],
+      },
+      pages: {
+        label: "Pages", dir: "site/src/content/pages", ext: ".md",
+        fields: [
+          { key: "title", label: "Title", type: "text", required: true },
+          { key: "slug", label: "Slug", type: "text", required: true, hint: "URL path, lowercase + hyphens" },
+          { key: "excerpt", label: "Excerpt", type: "textarea" },
+          { key: "draft", label: "Draft (hidden until published)", type: "checkbox" },
+        ],
+      },
+      testimonials: {
+        label: "Testimonials", dir: "site/src/content/testimonials", ext: ".md",
+        fields: [
+          { key: "quote", label: "Quote", type: "textarea", required: true },
+          { key: "attribution", label: "Attribution", type: "text", required: true, hint: "Initials + role only — never full names" },
+          { key: "role", label: "Role", type: "text" },
+          { key: "featured", label: "Featured", type: "checkbox" },
+          { key: "date", label: "Date", type: "date" },
+        ],
+      },
+      courses: {
+        label: "Courses", dir: "site/src/content/courses", ext: ".md",
+        fields: [
+          { key: "title", label: "Title", type: "text", required: true },
+          { key: "tagline", label: "Tagline", type: "text" },
+          { key: "level", label: "Level", type: "select", options: ["foundations", "builder", "founder"] },
+          { key: "visibility", label: "Visibility", type: "select", options: ["public", "members"] },
+          { key: "status", label: "Status", type: "select", options: ["draft", "published"] },
+          { key: "description", label: "Description", type: "textarea" },
+        ],
+        rawSection: "modules",
+        rawHint: "Modules & lessons YAML — edit carefully, indentation matters.",
+      },
+    };
+    const JSON_FILES = {
+      settings: { label: "Site settings", path: "site/src/content/settings.json" },
+      navigation: { label: "Navigation", path: "site/src/content/navigation.json" },
+      homepage: { label: "Homepage", path: "site/src/content/homepage.json" },
+    };
+
+    let state = { view: null, collection: null, files: [], current: null, fm: {}, body: "", raw: "" };
+
+    function setStatus(msg, isErr) {
+      const el = document.getElementById("studio-status");
+      el.textContent = msg || "";
+      el.style.color = isErr ? "#b3261e" : "";
+    }
+
+    // ---- Minimal frontmatter parse/serialize (flat fields + block scalars) ----
+    function parseFrontmatter(text) {
+      const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(text);
+      if (!m) return { fields: {}, body: text, rawRest: "" };
+      const fields = {};
+      const rawRest = [];
+      const lines = m[1].split(/\r?\n/);
+      let i = 0;
+      while (i < lines.length) {
+        const line = lines[i];
+        const kv = /^([A-Za-z0-9_]+):\s*(.*)$/.exec(line);
+        if (!kv) { rawRest.push(line); i++; continue; }
+        const key = kv[1];
+        let val = kv[2];
+        if (val === "|" || val === ">") {
+          // Block scalar: collect indented lines.
+          const buf = [];
+          i++;
+          while (i < lines.length && /^(  |\t)/.test(lines[i])) { buf.push(lines[i].replace(/^  /, "")); i++; }
+          fields[key] = buf.join("\n");
+          continue;
+        }
+        if (/^\[.*\]$/.test(val)) {
+          try { fields[key] = JSON.parse(val); } catch { fields[key] = val; }
+        } else if (val === "true") fields[key] = true;
+        else if (val === "false") fields[key] = false;
+        else if (/^".*"$/.test(val) || /^'.*'$/.test(val)) fields[key] = val.slice(1, -1);
+        else fields[key] = val;
+        i++;
+      }
+      return { fields, body: m[2], rawRest: rawRest.join("\n") };
+    }
+
+    function yamlVal(v) {
+      if (typeof v === "boolean") return v ? "true" : "false";
+      if (Array.isArray(v)) return JSON.stringify(v);
+      if (v === null || v === undefined) return '""';
+      const s = String(v);
+      if (s.includes("\n")) return "|\n" + s.split("\n").map((l) => "  " + l).join("\n");
+      if (/[:#\[\]{}&*!|>'"%@`,]/.test(s) || /^\s|\s$/.test(s) || s === "") return JSON.stringify(s);
+      return s;
+    }
+
+    function serializeFrontmatter(fields, order, rawRest, rawSection, rawContent) {
+      let out = "---\n";
+      for (const key of order) {
+        if (!(key in fields)) continue;
+        out += `${key}: ${yamlVal(fields[key])}\n`;
+      }
+      // Preserve any unrecognized keys verbatim.
+      if (rawRest && rawRest.trim()) out += rawRest.trim() + "\n";
+      if (rawSection && rawContent !== undefined) {
+        out += `${rawSection}:\n` + rawContent.split("\n").map((l) => (l.trim() ? "  " + l : l)).join("\n") + "\n";
+      }
+      out += "---\n";
+      return out;
+    }
+
+    // ---- Tiny Markdown preview (subset: headings, bold/italic, links, lists, code, quotes) ----
+    function mdPreview(src) {
+      const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const inline = (s) =>
+        esc(s)
+          .replace(/`([^`]+)`/g, "<code>$1</code>")
+          .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+          .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+          .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+      const lines = String(src || "").split("\n");
+      let html = "", inList = false, inCode = false;
+      for (const line of lines) {
+        if (/^```/.test(line)) { html += inCode ? "</code></pre>" : "<pre><code>"; inCode = !inCode; continue; }
+        if (inCode) { html += esc(line) + "\n"; continue; }
+        const h = /^(#{1,4})\s+(.*)/.exec(line);
+        if (h) { if (inList) { html += "</ul>"; inList = false; } html += `<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`; continue; }
+        if (/^\s*[-*]\s+/.test(line)) {
+          if (!inList) { html += "<ul>"; inList = true; }
+          html += "<li>" + inline(line.replace(/^\s*[-*]\s+/, "")) + "</li>"; continue;
+        }
+        if (/^\s*\d+\.\s+/.test(line)) {
+          if (!inList) { html += "<ol>"; inList = true; }
+          html += "<li>" + inline(line.replace(/^\s*\d+\.\s+/, "")) + "</li>"; continue;
+        }
+        if (inList && line.trim() === "") { html += inList ? (html.includes("<ol>") ? "</ol>" : "</ul>") : ""; inList = false; continue; }
+        if (/^>\s?/.test(line)) { html += "<blockquote>" + inline(line.replace(/^>\s?/, "")) + "</blockquote>"; continue; }
+        if (/^---+$/.test(line.trim())) { html += "<hr>"; continue; }
+        if (line.trim() === "") continue;
+        html += "<p>" + inline(line) + "</p>";
+      }
+      if (inList) html += "</ul>";
+      if (inCode) html += "</code></pre>";
+      return html;
+    }
+
+    function slugify(v) {
+      return String(v || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+    }
+
+    // ---- Navigation ----
+    function renderNav() {
+      const nav = document.getElementById("studio-nav");
+      nav.innerHTML = Object.entries(SCHEMAS).map(([key, s]) =>
+        `<button class="btn btn-ghost small" data-coll="${key}" style="justify-content:flex-start;">${sesc(s.label)}</button>`
+      ).join("");
+      nav.querySelectorAll("button").forEach((b) =>
+        b.addEventListener("click", () => loadCollection(b.dataset.coll))
+      );
+      const jnav = document.getElementById("studio-json-nav");
+      jnav.innerHTML = Object.entries(JSON_FILES).map(([key, f]) =>
+        `<button class="btn btn-ghost small" data-jf="${key}" style="justify-content:flex-start;">${sesc(f.label)}</button>`
+      ).join("");
+      jnav.querySelectorAll("button").forEach((b) =>
+        b.addEventListener("click", () => loadJsonFile(b.dataset.jf))
+      );
+    }
+
+    // ---- Collection file list ----
+    async function loadCollection(key) {
+      const schema = SCHEMAS[key];
+      state = { view: "list", collection: key, files: [], current: null, fm: {}, body: "", raw: "" };
+      const main = document.getElementById("studio-main");
+      main.innerHTML = `<h3 style="margin-top:0;">${sesc(schema.label)}</h3><p class="admin-muted">Loading…</p>`;
+      setStatus("");
+      try {
+        const r = await sapi("/api/studio/list?dir=" + encodeURIComponent(schema.dir));
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.error || "list failed");
+        state.files = d.files || [];
+        main.innerHTML =
+          `<div class="admin-row" style="margin-bottom:16px;display:flex;gap:8px;align-items:center;">` +
+          `<h3 style="margin:0;">${sesc(schema.label)}</h3>` +
+          `<button class="btn small" id="st-new">+ New</button></div>` +
+          (state.files.length
+            ? `<div style="display:flex;flex-direction:column;gap:4px;">` + state.files.map((f) =>
+              `<button class="btn btn-ghost small" data-path="${sesc(f.path)}" style="justify-content:flex-start;">${sesc(f.name)}</button>`
+            ).join("") + `</div>`
+            : `<p class="admin-muted">No files yet.</p>`);
+        document.getElementById("st-new").addEventListener("click", newFile);
+        main.querySelectorAll("[data-path]").forEach((b) =>
+          b.addEventListener("click", () => loadFile(b.dataset.path))
+        );
+      } catch (e) {
+        main.innerHTML = `<p>Failed to load: ${sesc(e.message)}</p>`;
+      }
+    }
+
+    function newFile() {
+      const schema = SCHEMAS[state.collection];
+      const name = prompt(`Filename for new ${schema.label.toLowerCase()} (e.g. my-post${schema.ext}):`);
+      if (!name) return;
+      const clean = slugify(name.replace(/\.[a-z]+$/i, "")) + schema.ext || ("untitled" + schema.ext);
+      const path = schema.dir + "/" + clean;
+      state.current = { path, isNew: true };
+      state.fm = { draft: true };
+      state.body = "";
+      state.raw = "";
+      renderEditor();
+    }
+
+    async function loadFile(path) {
+      const main = document.getElementById("studio-main");
+      main.innerHTML = `<p class="admin-muted">Loading…</p>`;
+      setStatus("");
+      try {
+        const r = await sapi("/api/studio/file?path=" + encodeURIComponent(path));
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.error || "load failed");
+        const parsed = parseFrontmatter(d.content || "");
+        state.current = { path, isNew: false };
+        state.fm = parsed.fields;
+        state.body = parsed.body;
+        // For courses: split nested `modules` into the raw editor.
+        // rawRest lines carry their 2-space nesting indent; strip it for
+        // editing, serializeFrontmatter re-indents on save.
+        const schema = SCHEMAS[state.collection];
+        if (schema.rawSection && parsed.fields[schema.rawSection] !== undefined) {
+          delete parsed.fields[schema.rawSection];
+          state.raw = (parsed.rawRest || "").split("\n").map((l) => l.replace(/^  /, "")).join("\n");
+          state.fm = parsed.fields;
+        } else {
+          state.raw = parsed.rawRest || "";
+        }
+        renderEditor();
+      } catch (e) {
+        main.innerHTML = `<p>Failed to load: ${sesc(e.message)}</p>`;
+      }
+    }
+
+    // ---- Markdown editor ----
+    function fieldInput(f, val) {
+      const v = val ?? "";
+      const req = f.required ? "required" : "";
+      const hint = f.hint ? `<div class="admin-muted" style="font-size:12px;">${sesc(f.hint)}</div>` : "";
+      let input = "";
+      if (f.type === "textarea") input = `<textarea id="sf-${f.key}" rows="3" style="width:100%;">${sesc(v)}</textarea>`;
+      else if (f.type === "select") input = `<select id="sf-${f.key}">${f.options.map((o) => `<option value="${sesc(o)}" ${String(v) === o ? "selected" : ""}>${sesc(o)}</option>`).join("")}</select>`;
+      else if (f.type === "checkbox") input = `<input type="checkbox" id="sf-${f.key}" ${v ? "checked" : ""} style="width:auto;">`;
+      else if (f.type === "date") input = `<input type="date" id="sf-${f.key}" value="${sesc(String(v).slice(0, 10))}">`;
+      else input = `<input type="text" id="sf-${f.key}" value="${sesc(v)}" ${req} style="width:100%;">`;
+      return `<label style="display:block;margin-bottom:12px;"><strong>${sesc(f.label)}</strong>${hint}<div style="margin-top:4px;">${input}</div></label>`;
+    }
+
+    function renderEditor() {
+      const schema = SCHEMAS[state.collection];
+      const main = document.getElementById("studio-main");
+      const fm = state.fm;
+      main.innerHTML =
+        `<div class="admin-row" style="margin-bottom:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">` +
+        `<button class="btn btn-ghost small" id="st-back">← ${sesc(schema.label)}</button>` +
+        `<code style="font-size:12px;">${sesc(state.current.path)}</code>` +
+        `<span style="flex:1;"></span>` +
+        `<button class="btn small" id="st-save">Save</button></div>` +
+        `<div id="st-fields">${schema.fields.map((f) => fieldInput(f, fm[f.key])).join("")}</div>` +
+        (schema.rawSection ? `<label style="display:block;margin-bottom:12px;"><strong>Modules (YAML)</strong><div class="admin-muted" style="font-size:12px;">${sesc(schema.rawHint || "")}</div><textarea id="st-raw" rows="10" style="width:100%;font-family:monospace;font-size:13px;">${sesc(state.raw)}</textarea></label>` : "") +
+        `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px;">` +
+        `<div><strong>Body (Markdown)</strong><textarea id="st-body" rows="18" style="width:100%;font-family:monospace;font-size:13px;">${sesc(state.body)}</textarea></div>` +
+        `<div><strong>Preview</strong><div id="st-preview" class="prose" style="border:1px solid rgba(18,26,22,.12);border-radius:8px;padding:16px;min-height:200px;max-height:520px;overflow:auto;"></div></div>` +
+        `</div>`;
+
+      document.getElementById("st-back").addEventListener("click", () => loadCollection(state.collection));
+      const bodyEl = document.getElementById("st-body");
+      const prevEl = document.getElementById("st-preview");
+      const updatePreview = () => { prevEl.innerHTML = mdPreview(bodyEl.value); };
+      bodyEl.addEventListener("input", updatePreview);
+      updatePreview();
+      document.getElementById("st-save").addEventListener("click", saveMarkdown);
+    }
+
+    function collectFields(schema) {
+      const fm = {};
+      for (const f of schema.fields) {
+        const el = document.getElementById("sf-" + f.key);
+        if (!el) continue;
+        if (f.type === "checkbox") fm[f.key] = el.checked;
+        else if (f.array) fm[f.key] = String(el.value).split(",").map((s) => s.trim()).filter(Boolean);
+        else fm[f.key] = el.value;
+      }
+      return fm;
+    }
+
+    async function saveMarkdown() {
+      const schema = SCHEMAS[state.collection];
+      const fm = collectFields(schema);
+      for (const f of schema.fields) {
+        if (f.required && !String(fm[f.key] || "").trim()) {
+          setStatus(f.label + " is required.", true);
+          return;
+        }
+      }
+      // Canadian spelling nudge for testimonials attribution (no full names).
+      if (state.collection === "testimonials" && /\s/.test(String(fm.attribution || "").trim().replace(/^[A-Z]\.,?\s*/, ""))) {
+        if (!confirm("Attribution looks like it may contain a full name. Members stay anonymous — initials + role only. Save anyway?")) return;
+      }
+      const body = document.getElementById("st-body").value;
+      const rawEl = document.getElementById("st-raw");
+      const order = schema.fields.map((f) => f.key);
+      const content = serializeFrontmatter(fm, order, state.raw && !schema.rawSection ? state.raw : "", schema.rawSection, rawEl ? rawEl.value : undefined) + body;
+      await doCommit(state.current.path, content, state.current.isNew);
+    }
+
+    async function doCommit(path, content, isNew) {
+      setStatus("Saving…");
+      try {
+        const r = await sapi("/api/studio/commit", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            path,
+            content,
+            message: `studio: ${isNew ? "create" : "update"} ${path}`,
+          }),
+        });
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.error || "save failed");
+        setStatus("Saved ✓ Commit " + String(d.commitSha || "").slice(0, 7) + " — the site will rebuild in a minute or two.");
+        state.current.isNew = false;
+      } catch (e) {
+        setStatus("Save failed: " + e.message, true);
+      }
+    }
+
+    // ---- JSON file editors ----
+    async function loadJsonFile(key) {
+      const meta = JSON_FILES[key];
+      const main = document.getElementById("studio-main");
+      main.innerHTML = `<h3 style="margin-top:0;">${sesc(meta.label)}</h3><p class="admin-muted">Loading…</p>`;
+      setStatus("");
+      try {
+        const r = await sapi("/api/studio/file?path=" + encodeURIComponent(meta.path));
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.error || "load failed");
+        const data = JSON.parse(d.content);
+        state = { view: "json", jsonKey: key, jsonPath: meta.path, jsonData: data };
+        if (key === "settings") renderSettingsEditor(main);
+        else if (key === "navigation") renderNavEditor(main);
+        else renderHomepageEditor(main);
+      } catch (e) {
+        main.innerHTML = `<p>Failed to load: ${sesc(e.message)}</p>`;
+      }
+    }
+
+    function jsonSaveBar(path) {
+      return `<div class="admin-row" style="margin-bottom:16px;display:flex;gap:8px;align-items:center;">` +
+        `<code style="font-size:12px;">${sesc(path)}</code><span style="flex:1;"></span>` +
+        `<button class="btn small" id="st-jsave">Save</button></div><div id="st-jfields"></div>`;
+    }
+
+    function renderSettingsEditor(main) {
+      const d = state.jsonData;
+      const fields = [
+        ["site_title", "Site title", "text"],
+        ["hero_headline", "Hero headline", "text"],
+        ["hero_subtext", "Hero subtext", "textarea"],
+        ["cta_text", "CTA text", "text"],
+        ["cta_link", "CTA link", "text"],
+        ["contact_email", "Contact email", "text"],
+        ["announcement_bar", "Announcement bar (empty = hidden)", "text"],
+      ];
+      main.innerHTML = `<h3 style="margin-top:0;">Site settings</h3>` + jsonSaveBar(state.jsonPath);
+      document.getElementById("st-jfields").innerHTML = fields.map(([k, label, t]) =>
+        `<label style="display:block;margin-bottom:12px;"><strong>${sesc(label)}</strong><div style="margin-top:4px;">` +
+        (t === "textarea"
+          ? `<textarea id="sj-${k}" rows="3" style="width:100%;">${sesc(d[k] || "")}</textarea>`
+          : `<input type="text" id="sj-${k}" value="${sesc(d[k] || "")}" style="width:100%;">`) +
+        `</div></label>`
+      ).join("");
+      document.getElementById("st-jsave").addEventListener("click", () => {
+        const out = { ...d };
+        for (const [k] of fields) out[k] = document.getElementById("sj-" + k).value;
+        saveJson(out);
+      });
+    }
+
+    function linkRows(list, prefix) {
+      return list.map((l, i) =>
+        `<div style="display:flex;gap:8px;margin-bottom:8px;" data-idx="${i}">` +
+        `<input type="text" placeholder="Label" value="${sesc(l.label || "")}" data-f="label" style="flex:1;">` +
+        `<input type="text" placeholder="/url" value="${sesc(l.url || "")}" data-f="url" style="flex:2;">` +
+        `<button class="btn btn-ghost small" data-del="${i}">✕</button></div>`
+      ).join("");
+    }
+
+    function renderNavEditor(main) {
+      const d = state.jsonData;
+      main.innerHTML = `<h3 style="margin-top:0;">Navigation</h3>` + jsonSaveBar(state.jsonPath) +
+        `<p class="admin-muted">Header shows at most 4 links (brand rule).</p>`;
+      const wrap = document.getElementById("st-jfields");
+      const draw = () => {
+        wrap.innerHTML =
+          `<h4>Header links</h4><div id="sj-header">${linkRows(d.header_links || [], "h")}</div>` +
+          `<button class="btn btn-ghost small" id="sj-add-h">+ Add header link</button>` +
+          `<h4 style="margin-top:16px;">Footer links</h4><div id="sj-footer">${linkRows(d.footer_links || [], "f")}</div>` +
+          `<button class="btn btn-ghost small" id="sj-add-f">+ Add footer link</button>` +
+          `<h4 style="margin-top:16px;">Footer tagline</h4>` +
+          `<input type="text" id="sj-tagline" value="${sesc(d.footer_tagline || "")}" style="width:100%;">`;
+        const collect = (id) => Array.from(document.querySelectorAll(`#${id} [data-idx]`)).map((row) => ({
+          label: row.querySelector('[data-f="label"]').value.trim(),
+          url: row.querySelector('[data-f="url"]').value.trim(),
+        })).filter((l) => l.label && l.url);
+        wrap.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", () => {
+          const row = b.closest("[data-idx]");
+          const list = row.parentElement.id === "sj-header" ? d.header_links : d.footer_links;
+          list.splice(Number(row.dataset.idx), 1);
+          draw();
+        }));
+        document.getElementById("sj-add-h").addEventListener("click", () => { (d.header_links ||= []).push({ label: "", url: "" }); draw(); });
+        document.getElementById("sj-add-f").addEventListener("click", () => { (d.footer_links ||= []).push({ label: "", url: "" }); draw(); });
+        document.getElementById("st-jsave").onclick = () => {
+          saveJson({
+            ...d,
+            header_links: collect("sj-header").slice(0, 4),
+            footer_links: collect("sj-footer"),
+            footer_tagline: document.getElementById("sj-tagline").value,
+          });
+        };
+      };
+      draw();
+    }
+
+    function renderHomepageEditor(main) {
+      const d = state.jsonData;
+      main.innerHTML = `<h3 style="margin-top:0;">Homepage sections</h3>` + jsonSaveBar(state.jsonPath) +
+        `<p class="admin-muted">Toggle sections on/off. Types: hero, features, testimonials, stats, cta.</p>`;
+      const wrap = document.getElementById("st-jfields");
+      wrap.innerHTML = (d.sections || []).map((s, i) =>
+        `<div class="admin-card" style="margin-bottom:12px;" data-sec="${i}">` +
+        `<div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;">` +
+        `<code>${sesc(s.type || "")}</code>` +
+        `<label style="margin:0;"><input type="checkbox" data-f="enabled" ${s.enabled ? "checked" : ""} style="width:auto;"> Enabled</label></div>` +
+        `<label style="display:block;margin-bottom:8px;">Heading<input type="text" data-f="heading" value="${sesc(s.heading || "")}" style="width:100%;"></label>` +
+        `<label style="display:block;">Subheading<textarea data-f="subheading" rows="2" style="width:100%;">${sesc(s.subheading || "")}</textarea></label>` +
+        `</div>`
+      ).join("");
+      document.getElementById("st-jsave").addEventListener("click", () => {
+        const sections = Array.from(wrap.querySelectorAll("[data-sec]")).map((el, i) => ({
+          ...d.sections[i],
+          enabled: el.querySelector('[data-f="enabled"]').checked,
+          heading: el.querySelector('[data-f="heading"]').value,
+          subheading: el.querySelector('[data-f="subheading"]').value,
+        }));
+        saveJson({ ...d, sections });
+      });
+    }
+
+    async function saveJson(obj) {
+      await doCommit(state.jsonPath, JSON.stringify(obj, null, 2) + "\n", false);
+    }
+
+    // ---- Boot: admin gate ----
+    (async function boot() {
+      renderNav();
+      try {
+        const r = await sapi("/api/auth/me");
+        const d = await r.json();
+        if (!r.ok || !d.ok || d.user.role !== "admin") throw 0;
+        document.getElementById("studio-loading").style.display = "none";
+        document.getElementById("studio-home").style.display = "block";
+      } catch {
+        document.getElementById("studio-loading").style.display = "none";
+        document.getElementById("studio-denied").style.display = "block";
+      }
+    })();
+  </script>
+
+  <style>
+    .prose h1, .prose h2, .prose h3 { margin: 1.2em 0 0.5em; }
+    .prose p { margin: 0.6em 0; line-height: 1.65; }
+    .prose ul, .prose ol { margin: 0.6em 0; padding-left: 1.4em; }
+    .prose code { background: rgba(18,26,22,.06); padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
+    .prose pre { background: #10231b; color: #e8f5ee; padding: 12px; border-radius: 8px; overflow: auto; }
+    .prose pre code { background: none; padding: 0; }
+    .prose blockquote { border-left: 3px solid var(--emerald); margin: 0.8em 0; padding: 0.2em 0 0.2em 1em; color: var(--stone); }
+    @media (max-width: 900px) {
+      #studio-grid { grid-template-columns: 1fr !important; }
+    }
+  </style>
+</Base>

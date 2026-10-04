@@ -152,6 +152,7 @@ export interface MockEnv {
   SITE_URL: string;
   SESSION_SECRET: string;
   SYNC_SECRET: string;
+  GITHUB_CONTENT_TOKEN?: string;
 }
 
 /** Full fake Bindings for route tests. */

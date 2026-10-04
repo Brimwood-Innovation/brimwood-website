@@ -138,10 +138,27 @@ app.get("/users", async (c) => {
   const no = needAdmin(c, admin);
   if (no) return no;
   const { DB } = c.env;
+  const q = (c.req.query("q") || "").slice(0, 100);
+  const page = Math.max(1, parseInt(c.req.query("page") || "1", 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(c.req.query("limit") || "25", 10) || 25));
+  const offset = (page - 1) * limit;
+  let where = "";
+  const binds: any[] = [];
+  if (q) {
+    where = "WHERE email LIKE ? OR name LIKE ? OR display_name LIKE ?";
+    const like = `%${q.replace(/[%_]/g, "")}%`;
+    binds.push(like, like, like);
+  }
   const rows = await DB.prepare(
-    `SELECT id, email, name, role, status, created_at FROM users ORDER BY created_at DESC LIMIT 200`
-  ).all();
-  return c.json({ ok: true, users: rows.results });
+    `SELECT id, email, name, role, status, display_name, show_profile, created_at
+     FROM users ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`
+  )
+    .bind(...binds, limit, offset)
+    .all();
+  const count: any = await DB.prepare(`SELECT COUNT(*) AS n FROM users ${where}`)
+    .bind(...binds)
+    .first();
+  return c.json({ ok: true, users: rows.results, page, limit, total: count?.n || 0 });
 });
 
 /* --- Audit log --- */

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import introduction from "./routes/introduction";
 import newsletter from "./routes/newsletter";
 import auth from "./routes/auth";
+import password from "./routes/password";
 import metrics from "./routes/metrics";
 import academy from "./routes/academy";
 import enrolment from "./routes/enrolment";
@@ -14,6 +15,8 @@ import search from "./routes/search";
 import comments from "./routes/comments";
 import events from "./routes/events";
 import forms from "./routes/forms";
+import profiles from "./routes/profiles";
+import studio from "./routes/studio";
 import { handleScheduled } from "./cron";
 
 export type Bindings = {
@@ -27,6 +30,7 @@ export type Bindings = {
   SESSION_SECRET?: string;
   TURNSTILE_SECRET_KEY?: string;
   SYNC_SECRET?: string;
+  GITHUB_CONTENT_TOKEN?: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -75,6 +79,7 @@ app.get("/health", (c) => c.json({ ok: true, service: "brimwood-api" }));
 app.route("/api/introduction", introduction);
 app.route("/api/newsletter", newsletter);
 app.route("/api/auth", auth);
+app.route("/api/auth", password);
 app.route("/api/metrics", metrics);
 app.route("/api/courses", academy);
 app.route("/api", enrolment);
@@ -87,6 +92,8 @@ app.route("/api/search", search);
 app.route("/api", comments);
 app.route("/api", events);
 app.route("/api/forms", forms);
+app.route("/api/studio", studio);
+app.route("/api", profiles);
 
 app.notFound((c) => c.json({ ok: false, error: "Not found" }, 404));
 app.onError((err, c) => {

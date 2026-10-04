@@ -11,9 +11,11 @@ interface Props {
   title: string;
   description: string;
   path?: string;
+  image?: string;
 }
-const { title, description, path = "/" } = Astro.props;
+const { title, description, path = "/", image } = Astro.props;
 const canonical = `https://brimwoodinnovation.com${path}`;
+const ogImage = image || "https://brimwoodinnovation.com/img/brimwood-logo-colour.svg";
 // Brand rule: logo left, four links, one emerald button. Extra CMS links
 // are ignored so the CMS can never break the nav structure.
 const headerLinks = (navigation.header_links || []).slice(0, 4);
@@ -37,7 +39,7 @@ const siteTitle = siteSettings.site_title || "Brimwood Innovation";
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
-    <meta property="og:image" content="https://brimwoodinnovation.com/img/brimwood-logo-colour.svg" />
+    <meta property="og:image" content={ogImage} />
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
