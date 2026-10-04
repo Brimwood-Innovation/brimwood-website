@@ -6,14 +6,13 @@
  * revealed; auth endpoints are strictly rate-limited; sessions are
  * httpOnly + secure + sameSite=lax cookies. */
 import { Hono } from "hono";
-import { setCookie } from "hono/cookie";
 import type { Bindings } from "../index";
 import { sendEmail, shell, esc } from "../lib/email";
 import { cleanStr, isEmail, clientIp, sha256Hex } from "../lib/validate";
 import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 import { safeEqual } from "../lib/safe-equal";
 import { hashPassword, validatePassword } from "../lib/password";
-import { COOKIE, SESS_TTL, createSession, destroySession, readSession } from "../lib/auth";
+import { setSessionCookie, createSession, destroySession, readSession } from "../lib/auth";
 
 type Env = Bindings & {
   RESEND_API_KEY?: string;
@@ -138,17 +137,7 @@ app.post("/verify-code", async (c) => {
 
   await SESSIONS_KV.delete(kvKey); // single-use
   const token = await createSession(c.env, user.id, user.role);
-  // SameSite=None for cross-origin staging (preview → worker); Lax for same-origin.
-  // NOTE (F3): this branch is removed by the same-origin fix; kept until then.
-  const origin = c.req.header("origin") || "";
-  const crossOrigin = origin && !origin.includes("workers.dev");
-  setCookie(c, COOKIE, token, {
-    httpOnly: true,
-    secure: true,
-    sameSite: crossOrigin ? "None" : "Lax",
-    path: "/",
-    maxAge: SESS_TTL,
-  });
+  setSessionCookie(c, token);
   return c.json({ ok: true });
 });
 

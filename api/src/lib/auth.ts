@@ -7,9 +7,24 @@
 import { getCookie, deleteCookie } from "hono/cookie";
 import type { Bindings } from "../index";
 
-export const COOKIE = "brimwood_sess";
+export const COOKIE = "__Host-brimwood-sess";
 const PREFIX = "sess:";
 export const SESS_TTL = 30 * 24 * 3600;
+
+/* __Host- prefix rules (F3): no Domain attribute, Path=/, Secure, and the
+ * cookie is only ever set from an https response. All session cookies go
+ * through setSessionCookie so the attributes cannot drift between routes. */
+export const SESSION_COOKIE_ATTRS = "Path=/; HttpOnly; Secure; SameSite=Lax";
+
+/** Set the session cookie with the exact hardened attributes:
+ * `__Host-brimwood-sess=<token>; Path=/; HttpOnly; Secure; SameSite=Lax`.
+ * SameSite=None branches were removed (F3): the site calls the API
+ * same-origin, so cross-origin cookies are no longer needed. */
+export function setSessionCookie(c: any, token: string): void {
+  c.header("Set-Cookie", `${COOKIE}=${token}; ${SESSION_COOKIE_ATTRS}`, {
+    append: true,
+  });
+}
 
 export interface Session {
   userId: string;
@@ -72,7 +87,7 @@ export async function destroySession(c: any): Promise<void> {
       .bind(PREFIX + (await hashToken(token)))
       .run();
   }
-  deleteCookie(c, COOKIE, { path: "/" });
+  deleteCookie(c, COOKIE, { path: "/", secure: true });
 }
 
 /** Delete every session belonging to a user (password reset). Uses the
