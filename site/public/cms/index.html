@@ -21,5 +21,33 @@
   <!-- Decap CMS: MIT-licensed. Config at /cms/config.yml. -->
   <script src="https://unpkg.com/decap-cms@^3.0.0/dist/decap-cms.js"></script>
   <script src="/cms/editorial.js"></script>
+  <script>
+    /* Brimwood Content Studio: hide Decap's attribution credit on the login
+     * screen. Scoped tightly: only runs while the "Login with GitHub" button
+     * is visible, and only hides the absolutely-positioned credit pinned to
+     * the bottom of the login view. Disconnects once done. */
+    (function () {
+      var obs;
+      function hide() {
+        var onLogin = Array.prototype.some.call(
+          document.querySelectorAll("button"),
+          function (b) { return /login with github/i.test(b.textContent || ""); }
+        );
+        if (!onLogin) { if (obs) obs.disconnect(); return; }
+        var spans = document.querySelectorAll("span");
+        for (var i = 0; i < spans.length; i++) {
+          var cs = getComputedStyle(spans[i]);
+          if (cs.position === "absolute" && cs.bottom === "10px") {
+            spans[i].style.display = "none";
+            if (obs) obs.disconnect();
+            return;
+          }
+        }
+      }
+      obs = new MutationObserver(hide);
+      obs.observe(document.documentElement, { childList: true, subtree: true });
+      hide();
+    })();
+  </script>
 </body>
 </html>
