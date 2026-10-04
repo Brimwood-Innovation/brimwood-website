@@ -1,20 +1,42 @@
-# Security headers for every response (T5, hardened Phase C).
+# Security headers for every response (T5, hardened Phase C, tightened F7).
 # Note: Cross-Origin-Opener-Policy is intentionally NOT set globally because
-# Cloudflare merges _headers rules additively — a global same-origin would
+# Cloudflare merges _headers rules additively, so a global same-origin would
 # override the relaxed policy /cms/* needs for the OAuth popup (window.opener
 # must survive for postMessage). Other pages fall back to the browser default.
+#
+# CSP notes (F7):
+# - script-src has no 'unsafe-inline': every <script> in .astro sources is
+#   either bundled to /_astro/*.js by Astro or lives in /js/*.js as a static
+#   file (both 'self'). The only inline executable scripts that existed were
+#   Astro define:vars blocks; all seven were moved to /js/*.js with config
+#   passed via data-* attributes.
+# - script-src has no 'unsafe-eval' globally; it is allowed ONLY under /cms/*
+#   (Decap needs it). See the detach note there.
+# - https://unpkg.com was removed (F6 self-hosts Decap at /cms/vendor/).
+# - Turnstile (challenges.cloudflare.com) stays in script-src/frame-src/
+#   connect-src so the five form pages that opt in via <Base turnstile> can
+#   load it. It is no longer included on every page.
+# - style-src keeps 'unsafe-inline': dozens of inline style="" attributes
+#   across pages; moving them all to the stylesheet is out of scope for F7.
 /*
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
   Strict-Transport-Security: max-age=31536000; includeSubDomains
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://brimwood-api.adamsayani.workers.dev https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://brimwood-api.adamsayani.workers.dev https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'
 
-# CMS OAuth popup (cross-origin worker) needs window.opener intact so the
+# CMS: Decap needs 'unsafe-eval'. Cloudflare comma-joins duplicate headers
+# from matching rules and browsers enforce EVERY CSP received, so the strict
+# global policy would still block Decap if we just added a second header.
+# Detach the global CSP here, then set the CMS-only policy. This is the only
+# place 'unsafe-eval' appears. Depends on F6 (Decap self-hosted, no unpkg).
+# The OAuth popup (cross-origin worker) needs window.opener intact so the
 # callback can postMessage the token back to Decap. same-origin-allow-popups
 # keeps isolation but preserves the opener relationship for popups we open.
 /cms/*
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://brimwood-api.adamsayani.workers.dev https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'self'
   Cross-Origin-Opener-Policy: same-origin-allow-popups
 
 # Long-lived cache for fingerprinted build assets.
