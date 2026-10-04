@@ -37,3 +37,36 @@ SITE_URL = "https://brimwoodinnovation.com"
 # every 15 min; weekly digest Mondays 09:00 UTC.
 [triggers]
 crons = ["*/5 * * * *", "*/15 * * * *", "0 9 * * 1"]
+
+# F1: isolated preview environment. Preview binds to preview-only D1, KV and
+# R2 resources so staging traffic can never touch production data. Deploy with
+# `wrangler deploy --env preview`. Crons are disabled on preview; the weekly
+# digest and scheduled publishing only run in production.
+[env.preview]
+
+[[env.preview.d1_databases]]
+binding = "DB"
+database_name = "brimwood_db_preview"
+database_id = "71b2f3ec-b0c8-4602-99ba-3ee82de5dca4"
+
+[[env.preview.kv_namespaces]]
+binding = "NEWSLETTER_KV"
+id = "aa6afe0ebdeb4c48b3f8519b4d4a4a17"
+
+[[env.preview.kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "74b1ad1d85d44c468b0ee0becbad6bd8"
+
+[[env.preview.kv_namespaces]]
+binding = "SESSIONS_KV"
+id = "e6d122e3ef8247418d80f77829b46217"
+
+[[env.preview.r2_buckets]]
+binding = "MEDIA"
+bucket_name = "brimwood-media-preview"
+
+[env.preview.vars]
+SITE_URL = "https://brimwood-api-preview.adamsayani.workers.dev"
+
+[env.preview.triggers]
+crons = []
