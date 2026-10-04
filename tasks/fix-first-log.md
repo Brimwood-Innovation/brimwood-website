@@ -13,16 +13,16 @@ sign-off items: written plans only, no code until the founder approves.
 |-----|--------|--------|----------|--------|
 | F2 prod schema audit (read-only) | - | lead | no | DONE: tasks/prod-schema-audit.md; 0009 confirmed applied, 0010/0011 not |
 | F5 one auth module | fix/f5-auth-module | lead | no | MERGED 2026-10-03 (PR #5) |
-| F4 CSRF middleware | fix/f4-csrf | lead | no | pending |
-| F9 rate limits + sessions to D1 | fix/f9-d1-limits | lead | no | PR #8 retargeted to develop, rebased, 206 tests |
-| F6 self-host Decap | fix/f6-decap | crew | no | pending |
-| F7 tighten CSP | fix/f7-csp | crew | no | pending |
-| F10 contrast fixes | fix/f10-contrast | crew | no | pending |
-| F12 CI upgrade | fix/f12-ci | crew | no | pending |
-| F8 workers-runtime tests | fix/f8-workers-tests | lead/crew | no | pending (after F5/F4/F9) |
-| F1 split environments | fix/f1-preview-env | lead | YES (2026-10-03) | DONE: PR #10; preview D1/KV/R2 + worker live, isolation proven |
-| F3 same-origin API + cookies | fix/f3-same-origin | lead/crew | YES (2026-10-03) | DONE: PR #11; routing live on domain; 210 tests green |
-| F11 licence + repo hygiene | fix/f11-licence | crew | YES (2026-10-03) | DONE: PR #12; dual MIT/AGPL-3.0, email scrub verified 0 hits |
+| F4 CSRF middleware | fix/f4-csrf | lead | no | MERGED 2026-10-03 (PR #7) |
+| F9 rate limits + sessions to D1 | fix/f9-d1-limits | lead | no | MERGED 2026-10-03 (PR #8) |
+| F6 self-host Decap | fix/f6-decap | crew | no | MERGED 2026-10-03 (PR #3) |
+| F7 tighten CSP | fix/f7-csp | crew | no | MERGED 2026-10-03 (PR #6) |
+| F10 contrast fixes | fix/f10-contrast | crew | no | MERGED 2026-10-03 (PR #4) |
+| F12 CI upgrade | fix/f12-ci | crew | no | MERGED 2026-10-03 (PR #2) |
+| F8 workers-runtime tests | fix/f8-workers-tests | lead/crew | no | MERGED 2026-10-03 (PR #9) |
+| F1 split environments | fix/f1-preview-env | lead | YES (2026-10-03) | MERGED 2026-10-03 (PR #10) |
+| F3 same-origin API + cookies | fix/f3-same-origin | lead/crew | YES (2026-10-03) | MERGED 2026-10-03 (PR #11) |
+| F11 licence + repo hygiene | fix/f11-licence | crew | YES (2026-10-03) | MERGED 2026-10-03 (PR #12) |
 
 Rules: no pushes to main, one PR per fix targeting develop, PRs under ~600 lines,
 Phase D code (password.ts, profiles.ts, studio.ts) parked except F5 session dedup,
@@ -177,3 +177,13 @@ written artifact.
 - Implementation is POST-Gate-1 work (fix-first rule: no new features in
   this phase). password.ts and the 0009 password columns stay parked;
   passkeys are new feature work for Phase E planning, not for fix-first.
+
+## Merge-all session (2026-10-03, founder: "merge all")
+All 11 remaining PRs merged to develop in order: #5 (F5), #8 (F9), #11 (F3),
+#7 (F4), #2 (F12), #6 (F7), #3 (F6), #4 (F10), #9 (F8), #10 (F1), #12 (F11).
+Conflicts resolved during merge: F3 vs F9 (password.ts imports, test helper
+session store), F6 vs F7 (_headers CSP). Post-merge verification on develop:
+API 236/236 tests pass, tsc clean, Astro build 20 pages.
+Known pre-existing CI failures on develop (from the F12 CI upgrade, not from
+any fix): npm audit finds 4 vulnerabilities in site deps, gitleaks-action
+needs an org license (misconfigured), lighthouse failing. Follow-up needed.
