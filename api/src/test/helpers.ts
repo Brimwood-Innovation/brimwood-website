@@ -22,6 +22,10 @@ export interface MockD1 {
   calls: { sql: string; params: unknown[]; op: string }[];
   /** captured INSERT rows per table (table name -> rows) */
   inserts: Map<string, Record<string, unknown>[]>;
+  /** built-in sessions table (F9): key -> session row */
+  sessionStore: Map<string, { user_id: string; role: string; created_at: number; expires_at: number }>;
+  /** built-in rate_limits table (F9): key -> { count, window_start } */
+  rateLimitStore: Map<string, { count: number; window_start: number }>;
 }
 
 /** Parse the target table out of an INSERT/UPDATE/DELETE statement. */
@@ -64,6 +68,8 @@ export function mockD1(handler: SqlHandler | null = null): MockD1 {
     handler,
     calls: [],
     inserts: new Map(),
+    sessionStore: new Map(),
+    rateLimitStore: new Map(),
     prepare(sql: string): MockStatement {
       const stmt: MockStatement = {
         bind(...params: unknown[]) {
@@ -72,9 +78,29 @@ export function mockD1(handler: SqlHandler | null = null): MockD1 {
             async run() {
               db.calls.push({ sql, params, op: "run" });
               const t = tableOf(sql);
+              // Built-in sessions DELETE (F9): destroySession / destroyUserSessions / prune.
+              if (/^\s*delete\s+from\s+sessions/i.test(sql)) {
+                if (/where\s+key\s*=\s*\?/i.test(sql)) db.sessionStore.delete(params[0] as string);
+                else if (/where\s+user_id\s*=\s*\?/i.test(sql)) {
+                  for (const [k, v] of db.sessionStore) if (v.user_id === params[0]) db.sessionStore.delete(k);
+                } else if (/where\s+expires_at\s*</i.test(sql)) {
+                  const now = params[0] as number;
+                  for (const [k, v] of db.sessionStore) if (v.expires_at < now) db.sessionStore.delete(k);
+                }
+              }
               if (/^\s*insert/i.test(sql)) {
                 if (!db.inserts.has(t)) db.inserts.set(t, []);
                 db.inserts.get(t)!.push(rowOf(sql, params));
+                // Built-in sessions INSERT (F9): createSession.
+                if (t === "sessions") {
+                  const r = rowOf(sql, params);
+                  db.sessionStore.set(r.key as string, {
+                    user_id: r.user_id as string,
+                    role: r.role as string,
+                    created_at: r.created_at as number,
+                    expires_at: r.expires_at as number,
+                  });
+                }
               }
               if (db.handler) {
                 const r = db.handler(sql, params) as { changes?: number } | void;
@@ -92,6 +118,26 @@ export function mockD1(handler: SqlHandler | null = null): MockD1 {
             },
             async first<T>() {
               db.calls.push({ sql, params, op: "first" });
+              // Built-in sessions SELECT (F9): readSession.
+              if (/from\s+sessions/i.test(sql)) {
+                const s = db.sessionStore.get(params[0] as string);
+                if (s && s.expires_at > Date.now()) {
+                  return { user_id: s.user_id, role: s.role, created_at: s.created_at } as T;
+                }
+                return null as T;
+              }
+              // Built-in rate_limits UPSERT (F9): checkRateLimitD1.
+              if (/insert\s+into\s+rate_limits/i.test(sql)) {
+                const [key, now, windowMs] = params as [string, number, number];
+                let row = db.rateLimitStore.get(key);
+                if (!row || now - row.window_start >= windowMs) {
+                  row = { count: 1, window_start: now };
+                } else {
+                  row = { count: row.count + 1, window_start: row.window_start };
+                }
+                db.rateLimitStore.set(key, row);
+                return { count: row.count } as T;
+              }
               if (db.handler) {
                 const r = (db.handler(sql, params) as { row?: any; results?: any[] } | void) || {};
                 if (r.row !== undefined) return (r.row ?? null) as T | null;
@@ -178,13 +224,12 @@ export function mockEnv(overrides: Partial<MockEnv> = {}): MockEnv {
   };
 }
 
-/** Logged-in admin session: cookie + KV entry + users row via the D1 handler. */
+/** Logged-in admin session: cookie + built-in D1 session row (F9). */
 export function adminSession(env: MockEnv, userId = "admin-1", email = "admin@example.com") {
-  // Sessions are keyed by SHA-256 of the token (F5).
-  env.SESSIONS_KV.store.set(
-    "sess:df6adb0b23fa33235f4aee6a0d62c118b00d71c07c81be87067b4f5892e66dbc",
-    JSON.stringify({ userId, role: "admin" })
-  );
+  // SHA-256("tok-admin") — must match lib/auth hashToken.
+  const key = "sess:df6adb0b23fa33235f4aee6a0d62c118b00d71c07c81be87067b4f5892e66dbc";
+  const now = Date.now();
+  env.DB.sessionStore.set(key, { user_id: userId, role: "admin", created_at: now, expires_at: now + 30 * 24 * 3600 * 1000 });
   const prev = env.DB.handler;
   env.DB.handler = (sql, params) => {
     if (/from\s+users/i.test(sql)) return { row: { id: userId, email, role: "admin", status: "active" } };
@@ -193,13 +238,12 @@ export function adminSession(env: MockEnv, userId = "admin-1", email = "admin@ex
   return { Cookie: "brimwood_sess=tok-admin" };
 }
 
-/** Logged-in non-admin member session. */
+/** Logged-in non-admin member session (F9: sessions in D1). */
 export function memberSession(env: MockEnv, userId = "member-1") {
-  // Sessions are keyed by SHA-256 of the token (F5).
-  env.SESSIONS_KV.store.set(
-    "sess:1f01ccd79fa83611b7efefef57e9f6fca2f70f5fa6f3fb943c6bf7733dccaea4",
-    JSON.stringify({ userId, role: "member" })
-  );
+  // SHA-256("tok-member") — must match lib/auth hashToken.
+  const key = "sess:1f01ccd79fa83611b7efefef57e9f6fca2f70f5fa6f3fb943c6bf7733dccaea4";
+  const now = Date.now();
+  env.DB.sessionStore.set(key, { user_id: userId, role: "member", created_at: now, expires_at: now + 30 * 24 * 3600 * 1000 });
   return { Cookie: "brimwood_sess=tok-member" };
 }
 

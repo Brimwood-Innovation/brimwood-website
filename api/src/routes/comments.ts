@@ -17,7 +17,7 @@ import { getCookie } from "hono/cookie";
 import type { Bindings } from "../index";
 import { getAdminUser } from "../lib/auth";
 import { cleanStr, isEmail, clientIp } from "../lib/validate";
-import { checkRateLimit } from "../lib/ratelimit";
+import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 import { verifyTurnstile } from "../lib/turnstile";
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -35,7 +35,7 @@ function needAdmin(c: any, admin: any) {
 app.post("/comments", async (c) => {
   const { DB, RATE_LIMIT_KV } = c.env;
 
-  if (!(await checkRateLimit(RATE_LIMIT_KV, "comment:" + clientIp(c.req.raw), 5, 3600))) {
+  if (!(await checkRateLimitD1(DB, "comment:" + clientIp(c.req.raw), 5, 3600))) {
     return c.json({ ok: false, error: "Too many requests. Please try again later." }, 429);
   }
 

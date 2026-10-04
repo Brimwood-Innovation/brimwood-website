@@ -11,7 +11,7 @@ describe("GET / query bounds", () => {
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ ok: true, results: [] });
     }
-    expect(env.DB.calls).toHaveLength(0); // no DB hit at all
+    expect(env.DB.calls.filter((c) => !/rate_limits/i.test(c.sql))).toHaveLength(0); // no search DB hit
   });
 
   it("truncates queries to 100 chars", async () => {

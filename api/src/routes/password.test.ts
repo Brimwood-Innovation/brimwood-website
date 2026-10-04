@@ -125,6 +125,18 @@ describe("POST /login", () => {
     expect(setCookie).toContain("HttpOnly");
   });
 
+  it("performs zero KV writes per login (F9)", async () => {
+    await seedUser({ withPassword: true });
+    const kvWritesBefore =
+      env.SESSIONS_KV.store.size + env.RATE_LIMIT_KV.store.size + env.NEWSLETTER_KV.store.size;
+    await postJSON(app, "/login", { email: "user@example.com", password: "CorrectHorse12" }, env);
+    const kvWritesAfter =
+      env.SESSIONS_KV.store.size + env.RATE_LIMIT_KV.store.size + env.NEWSLETTER_KV.store.size;
+    expect(kvWritesAfter).toBe(kvWritesBefore);
+    // Session landed in D1, not KV.
+    expect(env.DB.sessionStore.size).toBe(1);
+  });
+
   it("rejects a wrong password with the generic error", async () => {
     await seedUser({ withPassword: true });
     const res = await postJSON(app, "/login", { email: "user@example.com", password: "WrongPassword99" }, env);
@@ -292,8 +304,9 @@ describe("POST /password/reset/confirm", () => {
       return prev?.(sql, params);
     };
     withSessionList();
-    env.SESSIONS_KV.store.set("sess:old-1", JSON.stringify({ userId: "user-1", role: "member" }));
-    env.SESSIONS_KV.store.set("sess:other", JSON.stringify({ userId: "user-9", role: "member" }));
+    const now = Date.now();
+    env.DB.sessionStore.set("sess:old-1", { user_id: "user-1", role: "member", created_at: now, expires_at: now + 3600000 });
+    env.DB.sessionStore.set("sess:other", { user_id: "user-9", role: "member", created_at: now, expires_at: now + 3600000 });
   }
 
   it("sets the password, marks the token used, and kills sessions", async () => {
@@ -310,9 +323,9 @@ describe("POST /password/reset/confirm", () => {
     expect(upd).toBeTruthy();
     const markUsed = env.DB.calls.find((c) => /update\s+password_resets/i.test(c.sql));
     expect(markUsed).toBeTruthy();
-    // user-1's session gone, other user's session kept.
-    expect(env.SESSIONS_KV.store.has("sess:old-1")).toBe(false);
-    expect(env.SESSIONS_KV.store.has("sess:other")).toBe(true);
+    // user-1's session gone, other user's session kept (F9: D1 per-user delete).
+    expect(env.DB.sessionStore.has("sess:old-1")).toBe(false);
+    expect(env.DB.sessionStore.has("sess:other")).toBe(true);
     const auditCall = env.DB.calls.find((c) => /insert\s+into\s+audit_log/i.test(c.sql));
     expect(auditCall?.params).toContain("password.reset");
   });

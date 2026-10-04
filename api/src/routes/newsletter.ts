@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import type { Bindings } from "../index";
 import { sendEmail, shell, fieldRow, button, page, esc, INBOX, SITE } from "../lib/email";
 import { cleanStr, isEmail, clientIp } from "../lib/validate";
-import { checkRateLimit } from "../lib/ratelimit";
+import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 
 import { verifyTurnstile } from "../lib/turnstile";
 
@@ -16,11 +16,11 @@ type Env = Bindings & { RESEND_API_KEY?: string; TURNSTILE_SECRET_KEY?: string }
 const keyOf = (c: { env: Env }) => c.env.RESEND_API_KEY;
 
 app.post("/", async (c) => {
-  const { DB, RATE_LIMIT_KV } = c.env;
+  const { DB } = c.env;
   const resendKey = keyOf(c);
   if (!resendKey) return c.json({ ok: false }, 500);
 
-  if (!(await checkRateLimit(RATE_LIMIT_KV, "news:" + clientIp(c.req.raw), 3, 3600))) {
+  if (!(await checkRateLimitD1(DB, "news:" + clientIp(c.req.raw), 3, 3600))) {
     return c.json({ ok: false, error: "Too many requests. Please try again later." }, 429);
   }
 
@@ -109,7 +109,7 @@ app.get("/verify", async (c) => {
 
   // L3: token-guarded but rate-limited anyway (defense in depth).
   const ip = clientIp(c.req.raw);
-  if (!(await checkRateLimit(c.env.RATE_LIMIT_KV, `nl-verify:${ip}`, 30, 3600))) {
+  if (!(await checkRateLimitD1(c.env.DB, `nl-verify:${ip}`, 30, 3600))) {
     return c.json({ ok: false, error: "Too many attempts. Try again later." }, 429);
   }
 
@@ -190,7 +190,7 @@ app.get("/unsubscribe", async (c) => {
   const { DB } = c.env;
   // L3: token-guarded but rate-limited anyway (defense in depth).
   const ip = clientIp(c.req.raw);
-  if (!(await checkRateLimit(c.env.RATE_LIMIT_KV, `nl-unsub:${ip}`, 30, 3600))) {
+  if (!(await checkRateLimitD1(c.env.DB, `nl-unsub:${ip}`, 30, 3600))) {
     return c.json({ ok: false, error: "Too many attempts. Try again later." }, 429);
   }
   const email = (c.req.query("email") || "").toLowerCase();
