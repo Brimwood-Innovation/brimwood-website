@@ -21,7 +21,7 @@ sign-off items: written plans only, no code until the founder approves.
 | F12 CI upgrade | fix/f12-ci | crew | no | pending |
 | F8 workers-runtime tests | fix/f8-workers-tests | lead/crew | no | pending (after F5/F4/F9) |
 | F1 split environments | fix/f1-preview-env | lead | YES (2026-10-03) | DONE: PR #10; preview D1/KV/R2 + worker live, isolation proven |
-| F3 same-origin API + cookies | fix/f3-same-origin | lead/crew | YES (2026-10-03) | routing DONE (domain /api/* -> brimwood-api); code PR pending |
+| F3 same-origin API + cookies | fix/f3-same-origin | lead/crew | YES (2026-10-03) | DONE: PR #11; routing live on domain; 210 tests green |
 | F11 licence + repo hygiene | fix/f11-licence | crew | YES (2026-10-03) | in progress; licence = dual MIT/AGPL-3.0 |
 
 Rules: no pushes to main, one PR per fix targeting develop, PRs under ~600 lines,
@@ -120,8 +120,25 @@ written artifact.
   isolation is already proven without them.
 
 ### F3 — same-origin API + cookie hardening [SIGNED OFF 2026-10-03]
-- Status: ROUTING DONE; code hardening in progress (branch fix/f3-same-origin,
-  based on fix/f5-auth-module like PR #8; PR to develop pending).
+- Status: DONE. Branch fix/f3-same-origin, PR #11 targeting develop
+  (stacked on fix/f5-auth-module like PR #8; rebase after PR #5 merges).
+- Code (commit 7b74a58, 191 diff lines): session cookie renamed to
+  __Host-brimwood-sess, exact header
+  `__Host-brimwood-sess=<token>; Path=/; HttpOnly; Secure; SameSite=Lax`
+  via a shared setSessionCookie() in api/src/lib/auth.ts (used by
+  magic-code verify and password login; logout clears with matching attrs).
+  gh_oauth_state left as-is (short-lived signed state token, already
+  Lax+Secure+HttpOnly, not a session cookie).
+- SameSite=None fully removed from api/src (only mentions left are a code
+  comment and test assertions of absence). Deferred F4 item now complete.
+- CORS: brimwoodinnovation.com and www removed from the allowlist
+  (same-origin needs none); localhost dev origins and
+  *.brimwood-website-preview.pages.dev previews kept. Site needed no code
+  change: PUBLIC_API_BASE already defaults to "" (relative /api calls);
+  the env var remains the local-dev escape hatch.
+- Tests: 210/210 pass (5 new in session-cookie.test.ts asserting the exact
+  Set-Cookie format and the absence of SameSite=None/Domain=), tsc clean.
+  Independently re-run by lead on the PR commit.
 - Routing (production, done 2026-10-03): brimwoodinnovation.com/api/* worker
   route moved from brimwood-introduction to brimwood-api (route id
   14a23385a19040178de660fd0eca83e2, updated via API). Added
@@ -129,12 +146,9 @@ written artifact.
   Verified: https://brimwoodinnovation.com/api/courses returns 200 with live
   data; /api/introduction honeypot returns ok:true. The old
   brimwood-introduction worker is kept untouched as rollback.
-- Code (crew): cookie -> __Host-brimwood-sess with Path=/; HttpOnly; Secure;
-  SameSite=Lax; remove all SameSite=None branches (completes deferred F4
-  item); CORS tightened for same-origin; site PUBLIC_API_BASE -> same-origin;
-  exact Set-Cookie test assertions.
-- Rollback: revert the two worker routes to brimwood-introduction; revert the
-  code PR. One deploy each.
+- Rollback: revert the code commit and repoint the two worker routes to
+  brimwood-introduction. One deploy each. Note: the cookie rename signs all
+  members out once on deploy.
 
 ### F11 — licence and repo hygiene [SIGNED OFF 2026-10-03]
 - Status: IN PROGRESS (branch fix/f11-licence from develop; PR to develop
