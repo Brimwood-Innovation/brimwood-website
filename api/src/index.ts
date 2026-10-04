@@ -18,6 +18,7 @@ import forms from "./routes/forms";
 import profiles from "./routes/profiles";
 import studio from "./routes/studio";
 import { handleScheduled } from "./cron";
+import { csrfGuard } from "./lib/csrf";
 
 export type Bindings = {
   DB: D1Database;
@@ -75,6 +76,9 @@ app.use("*", async (c, next) => {
 });
 
 app.get("/health", (c) => c.json({ ok: true, service: "brimwood-api" }));
+
+/* CSRF guard on every mutating request (F4). */
+app.use(csrfGuard);
 
 app.route("/api/introduction", introduction);
 app.route("/api/newsletter", newsletter);
