@@ -190,7 +190,7 @@ export function adminSession(env: MockEnv, userId = "admin-1", email = "admin@ex
     if (/from\s+users/i.test(sql)) return { row: { id: userId, email, role: "admin", status: "active" } };
     return prev?.(sql, params);
   };
-  return { Cookie: "brimwood_sess=tok-admin" };
+  return { Cookie: "__Host-brimwood-sess=tok-admin" };
 }
 
 /** Logged-in non-admin member session. */
@@ -200,7 +200,7 @@ export function memberSession(env: MockEnv, userId = "member-1") {
     "sess:1f01ccd79fa83611b7efefef57e9f6fca2f70f5fa6f3fb943c6bf7733dccaea4",
     JSON.stringify({ userId, role: "member" })
   );
-  return { Cookie: "brimwood_sess=tok-member" };
+  return { Cookie: "__Host-brimwood-sess=tok-member" };
 }
 
 export type FetchHandler = (url: string, init?: RequestInit) => Response | Promise<Response>;

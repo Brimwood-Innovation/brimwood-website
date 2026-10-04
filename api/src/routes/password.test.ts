@@ -121,7 +121,7 @@ describe("POST /login", () => {
     expect(res.status).toBe(200);
     expect((await res.json()).ok).toBe(true);
     const setCookie = res.headers.get("set-cookie") || "";
-    expect(setCookie).toContain("brimwood_sess=");
+    expect(setCookie).toContain("__Host-brimwood-sess=");
     expect(setCookie).toContain("HttpOnly");
   });
 
