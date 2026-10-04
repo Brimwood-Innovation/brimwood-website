@@ -1,0 +1,17 @@
+NOTICE - Brimwood Innovation brand assets
+
+The open-source dual licence (MIT OR AGPL-3.0 at the recipient's
+choice, see LICENSE, LICENSE-MIT and LICENSE-AGPL-3.0) covers the
+CODE in this repository only.
+
+The following are NOT covered by the code licence. All rights are
+reserved by Brimwood Innovation:
+
+  - site/public/img/ - logos and images (including the Brimwood logo files)
+  - site/public/fonts/ - font files shipped with the site
+  - site/src/content/ - blog posts, course material, homepage, navigation,
+    settings and testimonial content
+  - site/public/cms/ - Brimwood CMS branding and editorial identity assets
+
+You may not reuse the Brimwood name, logos or brand assets without
+written permission from Brimwood Innovation.
