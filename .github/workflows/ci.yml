@@ -16,7 +16,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: |
             site/package-lock.json
@@ -27,7 +27,7 @@ jobs:
           if [ -f site/package.json ]; then
             cd site && npm ci && npm run build && npm test --if-present
           else
-            echo "site/ not scaffolded yet — skipping"
+            echo "site/ not scaffolded yet, skipping"
           fi
 
       - name: Build + test API
@@ -35,22 +35,71 @@ jobs:
           if [ -f api/package.json ]; then
             cd api && npm ci && npm run build && npm test --if-present
           else
-            echo "api/ not scaffolded yet — skipping"
+            echo "api/ not scaffolded yet, skipping"
           fi
 
-  # Lighthouse CI against the Cloudflare Pages preview URL.
-  # Wired up once the repo → Pages connection (T4) produces preview URLs.
-  # Budgets live in .lighthouserc.json (from CONSTRAINTS.md §5).
+  # Fail the build on any high or critical advisory in site/ or api/.
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Audit site dependencies
+        run: cd site && npm audit --audit-level=high
+
+      - name: Audit API dependencies
+        run: cd api && npm audit --audit-level=high
+
+  # Scan the full history for committed secrets.
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Lighthouse CI against a local preview server, so budgets ALWAYS gate.
+  # .lighthouserc.json holds the assertions (from CONSTRAINTS.md section 5);
+  # its collect.url defaults to http://localhost:4321/ unless the
+  # PREVIEW_URL repo variable is set (used for Pages preview URLs).
   lighthouse:
     runs-on: ubuntu-latest
     needs: build
-    if: ${{ vars.PREVIEW_URL != '' }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-      - run: npm install -g @lhci/cli
-      - run: lhci autorun --collect.url="$PREVIEW_URL"
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - run: cd site && npm ci && npm run build
+
+      - name: Install pinned Lighthouse CI
+        run: npm install -g @lhci/cli@0.15.1
+
+      - name: Start local preview server
+        run: |
+          cd site && npm run preview -- --port 4321 --host 127.0.0.1 > /tmp/astro-preview.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null http://127.0.0.1:4321/; then
+              echo "preview server is up"
+              break
+            fi
+            sleep 2
+          done
+          curl -sf -o /dev/null http://127.0.0.1:4321/ || (cat /tmp/astro-preview.log && exit 1)
+
+      - name: Run Lighthouse CI
+        run: lhci autorun
         env:
           PREVIEW_URL: ${{ vars.PREVIEW_URL }}
