@@ -12,9 +12,9 @@ sign-off items: written plans only, no code until the founder approves.
 | Fix | Branch | Worker | Sign-off | Status |
 |-----|--------|--------|----------|--------|
 | F2 prod schema audit (read-only) | - | lead | no | DONE: tasks/prod-schema-audit.md; 0009 confirmed applied, 0010/0011 not |
-| F5 one auth module | fix/f5-auth-module | lead | no | pending |
+| F5 one auth module | fix/f5-auth-module | lead | no | MERGED 2026-10-03 (PR #5) |
 | F4 CSRF middleware | fix/f4-csrf | lead | no | pending |
-| F9 rate limits + sessions to D1 | fix/f9-d1-limits | lead | no | pending |
+| F9 rate limits + sessions to D1 | fix/f9-d1-limits | lead | no | PR #8 retargeted to develop, rebased, 206 tests |
 | F6 self-host Decap | fix/f6-decap | crew | no | pending |
 | F7 tighten CSP | fix/f7-csp | crew | no | pending |
 | F10 contrast fixes | fix/f10-contrast | crew | no | pending |
@@ -44,7 +44,7 @@ written artifact.
   cron-ticked). Used for the F1 acceptance.
 
 ### F5 — one auth module
-- Status: DONE. Branch fix/f5-auth-module, PR #5 targeting develop.
+- Status: MERGED to develop 2026-10-03 (PR #5, commit 00e1e8f). Branch fix/f5-auth-module, PR #5 targeting develop.
 - New api/src/lib/auth.ts: createSession, readSession, destroySession,
   requireUser/requireAdmin middleware, getAdminUser/getUserId helpers.
 - Sessions keyed by SHA-256 of token. requireAdmin re-reads role from D1.
