@@ -55,6 +55,9 @@ jobs:
         run: cd api && npm audit --audit-level=high
 
   # Scan the full history for committed secrets.
+  # Uses the free open-source gitleaks binary (pinned) instead of
+  # gitleaks/gitleaks-action@v2, which requires a paid org license key
+  # (GITLEAKS_LICENSE) for organization repositories. C$0 stays intact.
   secrets:
     runs-on: ubuntu-latest
     steps:
@@ -62,9 +65,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install gitleaks (OSS, pinned)
+        run: |
+          GITLEAKS_VERSION="v8.18.4"
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION#v}_linux_x64.tar.gz" -o /tmp/gitleaks.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp
+          sudo install -m 755 /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Scan for secrets
+        run: gitleaks detect --source . --verbose --redact --exit-code 1
 
   # Lighthouse CI against a local preview server, so budgets ALWAYS gate.
   # .lighthouserc.json holds the assertions (from CONSTRAINTS.md section 5);
