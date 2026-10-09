@@ -1,0 +1,681 @@
+---
+/* Messages (audit/social/chat): members-only two-pane chat.
+ * Clean by design — five-item conversation rows, hairline dividers, one
+ * emerald unread pill, day-divided thread, quiet "Seen" receipts.
+ * All data loads client-side from /api/chat; signed-out visitors see the
+ * sign-in prompt. */
+import Base from "../layouts/Base.astro";
+---
+
+<Base
+  title="Messages — Brimwood Innovation"
+  description="Private messages for Brimwood members."
+  path="/messages"
+>
+  <section class="block" id="msg-loading">
+    <div class="kicker">Members</div>
+    <p class="sec-lede">Checking your session…</p>
+  </section>
+
+  <section class="block" id="msg-login" style="display:none;text-align:center;padding:48px 0;">
+    <div class="kicker">Members</div>
+    <h1 class="sec" style="font-size:clamp(28px,4vw,40px);margin-bottom:18px;">Sign in to read your messages.</h1>
+    <p class="sec-lede" style="margin-inline:auto;"><a href="/members">Sign in</a> to continue.</p>
+  </section>
+
+  <section class="block" id="msg-app" style="display:none;max-width:1180px;">
+    <div class="kicker">Members</div>
+    <h1 class="sec" style="font-size:clamp(28px,4vw,40px);margin-bottom:22px;">Messages.</h1>
+
+    <div class="chat-shell">
+      <!-- Left pane: conversation list -->
+      <aside class="chat-list" aria-label="Conversations">
+        <div class="chat-list-head">
+          <input id="convSearch" type="search" placeholder="Search conversations" aria-label="Search conversations" autocomplete="off" />
+          <button class="chat-new" id="newChatBtn" title="Start a new chat" aria-label="Start a new chat">+</button>
+        </div>
+        <div id="storyReplies" style="display:none;"></div>
+        <div id="convList" class="conv-list" role="list"></div>
+        <div id="convEmpty" class="chat-empty" style="display:none;">
+          <p>No conversations yet.<br />Start one with the + button.</p>
+        </div>
+      </aside>
+
+      <!-- Right pane: thread -->
+      <main class="chat-thread" aria-label="Conversation">
+        <div id="threadWelcome" class="thread-welcome">
+          <p class="sec-lede">Pick a conversation to start reading.</p>
+        </div>
+        <div id="threadView" style="display:none;">
+          <header class="thread-head" id="threadHead">
+            <div class="avatar" id="threadAvatar"></div>
+            <div class="thread-head-text">
+              <strong id="threadTitle"></strong>
+              <span id="threadSub" class="thread-sub"></span>
+            </div>
+            <button class="chat-ghost" id="infoBtn" style="display:none;">Info</button>
+          </header>
+          <div id="groupInfo" class="group-info" style="display:none;"></div>
+          <div id="threadMsgs" class="thread-msgs"></div>
+          <form id="composer" class="composer">
+            <label class="attach" title="Attach a photo or video">
+              <input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4" hidden />
+              <span aria-hidden="true">+</span>
+            </label>
+            <input id="msgInput" type="text" placeholder="Write a message…" autocomplete="off" maxlength="2000" aria-label="Write a message" />
+            <button class="btn small" type="submit" id="sendBtn">Send</button>
+          </form>
+          <p class="form-err" id="msgErr" style="display:none"></p>
+        </div>
+      </main>
+    </div>
+  </section>
+
+  <!-- New chat dialog -->
+  <div id="newChatModal" class="modal" style="display:none;" role="dialog" aria-label="Start a new chat">
+    <div class="modal-card">
+      <h3 id="ncTitle">New message</h3>
+      <div class="nc-tabs">
+        <button class="nc-tab active" data-kind="dm">Direct</button>
+        <button class="nc-tab" data-kind="group">Group</button>
+      </div>
+      <input id="peopleSearch" type="search" placeholder="Search members…" autocomplete="off" aria-label="Search members" />
+      <div id="peopleList" class="people-list"></div>
+      <div id="ncPicked" class="nc-picked" style="display:none;"></div>
+      <input id="groupTitle" type="text" placeholder="Group name (optional)" maxlength="60" style="display:none;" aria-label="Group name" />
+      <p class="form-err" id="ncErr" style="display:none"></p>
+      <div class="modal-actions">
+        <button class="chat-ghost" id="ncCancel">Cancel</button>
+        <button class="btn small" id="ncStart">Start</button>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .chat-shell {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 0;
+      border: 1px solid var(--brimwood-mint, #ddf5e9);
+      border-radius: 18px;
+      overflow: hidden;
+      background: #fff;
+      min-height: 620px;
+      max-height: 78vh;
+    }
+    .chat-list {
+      border-right: 1px solid var(--brimwood-mint, #ddf5e9);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      background: var(--brimwood-paper, #f6f8f7);
+    }
+    .chat-list-head { display: flex; gap: 10px; padding: 16px 16px 12px; }
+    .chat-list-head input {
+      flex: 1; border: 1px solid var(--brimwood-mint, #ddf5e9); border-radius: 999px;
+      padding: 10px 16px; font: inherit; font-size: 14px; background: #fff;
+    }
+    .chat-list-head input:focus { outline: 2px solid var(--emerald); outline-offset: 1px; }
+    .chat-new {
+      width: 42px; height: 42px; border-radius: 50%; border: none; cursor: pointer;
+      background: var(--emerald-deep); color: #fff; font-size: 22px; line-height: 1;
+    }
+    .chat-new:hover { background: var(--forest); }
+    .conv-list { overflow-y: auto; flex: 1; }
+    .conv {
+      display: flex; gap: 12px; align-items: center; width: 100%;
+      padding: 14px 16px; border: none; background: none; cursor: pointer; text-align: left;
+      border-bottom: 1px solid var(--brimwood-mint, #ddf5e9); font: inherit;
+    }
+    .conv:hover { background: #fff; }
+    .conv.active { background: #fff; box-shadow: inset 3px 0 0 var(--emerald); }
+    .conv-main { flex: 1; min-width: 0; }
+    .conv-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .conv-name { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .conv-time { font-size: 12px; color: var(--brimwood-stone, #5b6862); flex-shrink: 0; }
+    .conv-time.unread { color: var(--emerald-deep); font-weight: 700; }
+    .conv-bottom { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 2px; }
+    .conv-preview { font-size: 13.5px; color: var(--brimwood-stone, #5b6862); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .unread-pill {
+      background: var(--emerald); color: #fff; font-size: 12px; font-weight: 700;
+      min-width: 22px; height: 22px; border-radius: 999px; display: inline-flex;
+      align-items: center; justify-content: center; padding: 0 6px; flex-shrink: 0;
+    }
+    .avatar {
+      width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 17px; overflow: hidden;
+    }
+    .avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .avatar.sm { width: 32px; height: 32px; font-size: 13px; }
+    .chat-empty { padding: 40px 20px; text-align: center; color: var(--brimwood-stone, #5b6862); }
+    .story-card {
+      display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px;
+      border-bottom: 1px solid var(--brimwood-mint, #ddf5e9); background: #fff;
+    }
+    .story-card p { font-size: 13.5px; margin: 2px 0 0; }
+    .story-tag { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--emerald-deep); }
+    .chat-thread { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+    .thread-welcome { margin: auto; text-align: center; }
+    #threadView { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+    .thread-head {
+      display: flex; gap: 12px; align-items: center; padding: 14px 20px;
+      border-bottom: 1px solid var(--brimwood-mint, #ddf5e9); background: #fff;
+    }
+    .thread-head-text { flex: 1; min-width: 0; }
+    .thread-head-text strong { display: block; font-size: 16px; }
+    .thread-sub { font-size: 13px; color: var(--brimwood-stone, #5b6862); }
+    .chat-ghost {
+      border: 1px solid var(--brimwood-mint, #ddf5e9); background: #fff; border-radius: 999px;
+      padding: 8px 16px; font: inherit; font-size: 13px; cursor: pointer; color: var(--emerald-deep);
+    }
+    .chat-ghost:hover { border-color: var(--emerald); }
+    .group-info { padding: 16px 20px; border-bottom: 1px solid var(--brimwood-mint, #ddf5e9); background: var(--brimwood-paper, #f6f8f7); }
+    .group-info h4 { margin: 0 0 10px; font-size: 14px; }
+    .member-row { display: flex; gap: 10px; align-items: center; padding: 6px 0; font-size: 14px; }
+    .member-row .spacer { flex: 1; }
+    .admin-badge {
+      font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+      color: var(--emerald-deep); background: var(--brimwood-mint, #ddf5e9);
+      border-radius: 999px; padding: 3px 10px;
+    }
+    .member-x { border: none; background: none; color: var(--brimwood-stone, #5b6862); cursor: pointer; font-size: 15px; }
+    .member-x:hover { color: #b3261e; }
+    .thread-msgs { flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 2px; }
+    .day-divider {
+      text-align: center; margin: 14px 0 10px;
+    }
+    .day-divider span {
+      font-size: 12px; font-weight: 600; color: var(--brimwood-stone, #5b6862);
+      background: var(--brimwood-paper, #f6f8f7); border-radius: 999px; padding: 5px 14px;
+    }
+    .msg-row { display: flex; margin: 1px 0; }
+    .msg-row.mine { justify-content: flex-end; }
+    .msg-row.run-start { margin-top: 10px; }
+    .bubble {
+      max-width: min(65%, 480px); padding: 10px 14px; border-radius: 14px;
+      background: var(--brimwood-paper, #f6f8f7); font-size: 15px; line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+    .msg-row.mine .bubble { background: var(--emerald-deep); color: #fff; border-bottom-right-radius: 4px; }
+    .msg-row.theirs .bubble { border-bottom-left-radius: 4px; }
+    .msg-row.run-start.mine .bubble { border-top-right-radius: 4px; }
+    .msg-row.run-start.theirs .bubble { border-top-left-radius: 4px; }
+    .bubble .sender { display: block; font-size: 12px; font-weight: 700; color: var(--emerald-deep); margin-bottom: 2px; }
+    .bubble img, .bubble video { max-width: 100%; border-radius: 8px; display: block; margin-bottom: 6px; }
+    .msg-meta { font-size: 11px; color: var(--brimwood-stone, #5b6862); margin-top: 4px; text-align: right; }
+    .msg-row.mine .msg-meta { color: rgba(255,255,255,.75); }
+    .seen-line { text-align: right; font-size: 12px; color: var(--brimwood-stone, #5b6862); margin: 2px 0 6px; }
+    .composer {
+      display: flex; gap: 10px; align-items: center; padding: 14px 20px;
+      border-top: 1px solid var(--brimwood-mint, #ddf5e9); background: #fff;
+    }
+    .composer input[type="text"] {
+      flex: 1; border: 1px solid var(--brimwood-mint, #ddf5e9); border-radius: 999px;
+      padding: 11px 18px; font: inherit; font-size: 15px;
+    }
+    .composer input[type="text"]:focus { outline: 2px solid var(--emerald); outline-offset: 1px; }
+    .attach {
+      width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0; cursor: pointer;
+      border: 1px solid var(--brimwood-mint, #ddf5e9); display: inline-flex;
+      align-items: center; justify-content: center; font-size: 20px; color: var(--emerald-deep);
+    }
+    .attach:hover { border-color: var(--emerald); }
+    .modal {
+      position: fixed; inset: 0; background: rgba(18,26,22,.45); z-index: 60;
+      display: flex; align-items: center; justify-content: center; padding: 20px;
+    }
+    .modal-card {
+      background: #fff; border-radius: 18px; padding: 24px; width: 100%; max-width: 440px;
+      max-height: 80vh; overflow-y: auto;
+    }
+    .modal-card h3 { margin: 0 0 14px; }
+    .nc-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+    .nc-tab { border: 1px solid var(--brimwood-mint, #ddf5e9); background: #fff; border-radius: 999px; padding: 8px 18px; font: inherit; font-size: 14px; cursor: pointer; }
+    .nc-tab.active { background: var(--emerald-deep); border-color: var(--emerald-deep); color: #fff; }
+    .modal-card input[type="search"], .modal-card input[type="text"] {
+      width: 100%; border: 1px solid var(--brimwood-mint, #ddf5e9); border-radius: 12px;
+      padding: 10px 14px; font: inherit; font-size: 14px; margin-bottom: 10px; box-sizing: border-box;
+    }
+    .people-list { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+    .person {
+      display: flex; gap: 10px; align-items: center; padding: 8px; border: none;
+      background: none; cursor: pointer; font: inherit; font-size: 14px; border-radius: 10px; text-align: left; width: 100%;
+    }
+    .person:hover { background: var(--brimwood-paper, #f6f8f7); }
+    .person .tick { margin-left: auto; color: var(--emerald-deep); font-weight: 700; }
+    .nc-picked { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+    .picked-chip {
+      background: var(--brimwood-mint, #ddf5e9); color: var(--emerald-deep);
+      border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 600;
+    }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+    .form-err { color: #b3261e; font-size: 13px; margin: 8px 0 0; }
+    @media (max-width: 860px) {
+      .chat-shell { grid-template-columns: 1fr; max-height: none; }
+      .chat-list { border-right: none; border-bottom: 1px solid var(--brimwood-mint, #ddf5e9); max-height: 42vh; }
+      .chat-thread { min-height: 60vh; }
+    }
+  </style>
+
+  <script>
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
+    const withCreds = { credentials: "include" };
+    const esc = (s) => String(s ?? "").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const $ = (id) => document.getElementById(id);
+    const show = (id) => ($(id).style.display = "");
+    const hide = (id) => ($(id).style.display = "none");
+
+    let me = null;
+    let conversations = [];
+    let current = null; // {id, kind, title, participants, role}
+    let readReceipts = {};
+    let pollTimer = null;
+
+    /* --- formatting --- */
+    function relTime(iso) {
+      const t = new Date(iso).getTime();
+      const diff = Date.now() - t;
+      if (diff < 60e3) return "now";
+      if (diff < 3600e3) return Math.floor(diff / 60e3) + "m";
+      const d = new Date(t), now = new Date();
+      const day = (x) => x.getFullYear() + "-" + x.getMonth() + "-" + x.getDate();
+      if (day(d) === day(now)) return Math.floor(diff / 3600e3) + "h";
+      const y = new Date(now.getTime() - 864e5);
+      if (day(d) === day(y)) return "Yesterday";
+      if (diff < 7 * 864e5) return d.toLocaleDateString(undefined, { weekday: "short" });
+      return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+    }
+    function dayLabel(iso) {
+      const d = new Date(iso), now = new Date();
+      const day = (x) => x.getFullYear() + "-" + x.getMonth() + "-" + x.getDate();
+      if (day(d) === day(now)) return "Today";
+      if (day(d) === day(new Date(now.getTime() - 864e5))) return "Yesterday";
+      return d.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+    }
+    function clock(iso) {
+      return new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    }
+    const TINTS = [
+      ["#DDF5E9", "#075E40"], ["#E8F4F8", "#1B5E7B"], ["#F3EAFB", "#5B3E8C"],
+      ["#FDEEDC", "#8A5A1B"], ["#F6E3E6", "#8C2F3E"], ["#E5EFEA", "#0C9463"],
+    ];
+    function tint(id) {
+      let h = 0;
+      for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+      return TINTS[h % TINTS.length];
+    }
+    function avatar(p, cls) {
+      const [bg, fg] = tint(p.id);
+      const inner = p.avatar_url
+        ? `<img src="${esc(p.avatar_url)}" alt="" loading="lazy" />`
+        : esc((p.display_name || "?").trim().charAt(0).toUpperCase());
+      return `<span class="avatar${cls ? " " + cls : ""}" style="background:${bg};color:${fg}" aria-hidden="true">${inner}</span>`;
+    }
+
+    /* --- conversation list --- */
+    async function loadConversations(q) {
+      const r = await fetch(API_BASE + "/api/chat/conversations" + (q ? "?q=" + encodeURIComponent(q) : ""), { ...withCreds });
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw 0;
+      conversations = d.conversations || [];
+      renderList();
+    }
+    function renderList() {
+      const list = $("convList");
+      if (!conversations.length) { hide("convList"); show("convEmpty"); return; }
+      hide("convEmpty"); show("convList");
+      list.innerHTML = conversations.map((c) => {
+        const others = (c.participants || []).filter((p) => p.id !== me.id);
+        const av = c.kind === "dm" ? avatar(others[0] || { id: c.id, display_name: c.title }) : avatar({ id: c.id, display_name: c.title });
+        const last = c.last_message;
+        return (
+          `<button class="conv${current && current.id === c.id ? " active" : ""}" data-id="${esc(c.id)}" role="listitem">` +
+          av +
+          `<span class="conv-main"><span class="conv-top">` +
+          `<span class="conv-name">${esc(c.title)}</span>` +
+          (last ? `<span class="conv-time${c.unread ? " unread" : ""}">${esc(relTime(last.created_at))}</span>` : "") +
+          `</span><span class="conv-bottom">` +
+          `<span class="conv-preview">${last ? esc(last.preview) : "No messages yet."}</span>` +
+          (c.unread ? `<span class="unread-pill">${c.unread > 99 ? "99+" : c.unread}</span>` : "") +
+          `</span></span></button>`
+        );
+      }).join("");
+      list.querySelectorAll(".conv").forEach((el) => {
+        el.addEventListener("click", () => openConversation(el.dataset.id));
+      });
+    }
+
+    /* --- story replies --- */
+    async function loadStoryReplies() {
+      try {
+        const r = await fetch(API_BASE + "/api/chat/story-replies", { ...withCreds });
+        const d = await r.json();
+        if (!d.ok || d.feature !== "available" || !d.replies.length) return;
+        const box = $("storyReplies");
+        box.style.display = "";
+        box.innerHTML =
+          `<div style="padding:12px 16px 4px;"><span class="story-tag">Story replies</span></div>` +
+          d.replies.map((sr) =>
+            `<div class="story-card">${avatar(sr.from, "sm")}<div><strong style="font-size:14px;">${esc(sr.from.display_name)}</strong>` +
+            `<span class="thread-sub"> · ${esc(relTime(sr.created_at))}</span>` +
+            `<p>${esc(sr.body)}</p></div></div>`
+          ).join("");
+      } catch { /* stories not ready — the section stays hidden */ }
+    }
+
+    /* --- thread --- */
+    async function openConversation(id) {
+      const c = conversations.find((x) => x.id === id);
+      if (!c) return;
+      current = c;
+      renderList();
+      hide("threadWelcome"); show("threadView");
+      hide("groupInfo");
+      $("threadTitle").textContent = c.title;
+      const others = (c.participants || []).filter((p) => p.id !== me.id);
+      $("threadSub").textContent = c.kind === "dm"
+        ? "@" + (others[0]?.username || "member")
+        : c.member_count + (c.member_count === 1 ? " member" : " members");
+      $("threadAvatar").outerHTML = avatar(c.kind === "dm" ? (others[0] || { id: c.id, display_name: c.title }) : { id: c.id, display_name: c.title }).replace('class="avatar"', 'id="threadAvatar" class="avatar"');
+      $("infoBtn").style.display = c.kind === "group" ? "" : "none";
+      await loadMessages();
+      markRead();
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(() => { if (current) loadMessages(true); }, 15000);
+    }
+    async function loadMessages(quiet) {
+      if (!current) return;
+      const r = await fetch(API_BASE + `/api/chat/conversations/${encodeURIComponent(current.id)}/messages?limit=50`, { ...withCreds });
+      const d = await r.json();
+      if (!r.ok || !d.ok) return;
+      current.role = d.role;
+      readReceipts = d.read_receipts || {};
+      renderMessages(d.messages || []);
+      if (!quiet) markRead();
+    }
+    function renderMessages(msgs) {
+      const box = $("threadMsgs");
+      let html = "", lastDay = "", lastSender = null;
+      msgs.forEach((m, i) => {
+        const day = dayLabel(m.created_at);
+        if (day !== lastDay) { html += `<div class="day-divider"><span>${esc(day)}</span></div>`; lastDay = day; lastSender = null; }
+        const runStart = m.sender.id !== lastSender;
+        lastSender = m.sender.id;
+        const nameLine = current.kind === "group" && !m.mine && runStart
+          ? `<span class="sender">${esc(m.sender.display_name)}</span>` : "";
+        const media = m.media_url
+          ? (m.is_video
+              ? `<video src="${esc(m.media_url)}" controls preload="metadata"></video>`
+              : `<img src="${esc(m.media_url)}" alt="Shared photo" loading="lazy" />`)
+          : "";
+        html +=
+          `<div class="msg-row ${m.mine ? "mine" : "theirs"}${runStart ? " run-start" : ""}">` +
+          `<div class="bubble">${nameLine}${media}${m.body ? esc(m.body) : ""}` +
+          `<div class="msg-meta">${esc(clock(m.created_at))}</div></div></div>`;
+        // Quiet read receipt under the reader's newest message.
+        const isLast = i === msgs.length - 1;
+        if (isLast && m.mine) {
+          const seen = seenBy(m.created_at);
+          if (seen) html += `<div class="seen-line">${esc(seen)}</div>`;
+        }
+      });
+      box.innerHTML = html || `<p class="sec-lede" style="margin:auto;">No messages yet — say hello.</p>`;
+      box.scrollTop = box.scrollHeight;
+    }
+    function seenBy(createdAt) {
+      const t = new Date(createdAt).getTime();
+      const readers = (current.participants || []).filter(
+        (p) => p.id !== me.id && readReceipts[p.id] && new Date(readReceipts[p.id]).getTime() >= t
+      );
+      if (!readers.length) return null;
+      if (current.kind === "dm") return "Seen";
+      return readers.length === 1 ? `Seen by ${readers[0].display_name}` : `Seen by ${readers.length}`;
+    }
+    async function markRead() {
+      if (!current) return;
+      try {
+        await fetch(API_BASE + `/api/chat/conversations/${encodeURIComponent(current.id)}/read`, {
+          method: "POST", ...withCreds,
+        });
+        const c = conversations.find((x) => x.id === current.id);
+        if (c) { c.unread = 0; renderList(); }
+      } catch { /* best effort */ }
+    }
+
+    /* --- sending --- */
+    async function sendMessage(e) {
+      e.preventDefault();
+      if (!current) return;
+      const body = $("msgInput").value.trim();
+      const file = $("fileInput").files[0];
+      if (!body && !file) return;
+      hide("msgErr");
+      $("sendBtn").disabled = true;
+      try {
+        let res;
+        if (file) {
+          const form = new FormData();
+          form.set("body", body);
+          form.set("file", file);
+          res = await fetch(API_BASE + `/api/chat/conversations/${encodeURIComponent(current.id)}/messages`, {
+            method: "POST", body: form, ...withCreds,
+          });
+        } else {
+          res = await fetch(API_BASE + `/api/chat/conversations/${encodeURIComponent(current.id)}/messages`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ body }),
+            ...withCreds,
+          });
+        }
+        const d = await res.json();
+        if (!res.ok || !d.ok) throw new Error(d.error || "Could not send.");
+        $("msgInput").value = "";
+        $("fileInput").value = "";
+        await loadMessages(true);
+        // Refresh the preview row.
+        loadConversations($("convSearch").value.trim()).catch(() => {});
+      } catch (err) {
+        const el = $("msgErr");
+        el.textContent = err.message;
+        el.style.display = "";
+      } finally {
+        $("sendBtn").disabled = false;
+      }
+    }
+
+    /* --- group info / members --- */
+    function renderGroupInfo() {
+      const box = $("groupInfo");
+      const isAdmin = current.role === "admin";
+      const inGroup = new Set((current.participants || []).map((p) => p.id));
+      box.innerHTML =
+        `<h4>${current.member_count} member${current.member_count === 1 ? "" : "s"}</h4>` +
+        (isAdmin
+          ? `<input id="addMemberSearch" type="search" placeholder="Add a member…" autocomplete="off" aria-label="Add a member" ` +
+            `style="width:100%;border:1px solid var(--brimwood-mint,#ddf5e9);border-radius:12px;padding:9px 14px;font:inherit;font-size:14px;margin-bottom:8px;box-sizing:border-box;" />` +
+            `<div id="addMemberList"></div>`
+          : "") +
+        (current.participants || []).map((p) => {
+          return (
+            `<div class="member-row">${avatar(p, "sm")}<span>${esc(p.display_name)}</span>` +
+            (p.id === me.id ? `<span class="thread-sub">you</span>` : "") +
+            (p.role === "admin" ? `<span class="admin-badge">Admin</span>` : "") +
+            `<span class="spacer"></span>` +
+            (isAdmin && p.id !== me.id
+              ? `<button class="member-x" data-id="${esc(p.id)}" title="Remove ${esc(p.display_name)}" aria-label="Remove ${esc(p.display_name)}">×</button>`
+              : "") +
+            `</div>`
+          );
+        }).join("");
+      box.querySelectorAll(".member-x").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          if (!confirm("Remove this member from the group?")) return;
+          const r = await fetch(API_BASE + `/api/chat/conversations/${encodeURIComponent(current.id)}/members`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ action: "remove", user_id: btn.dataset.id }),
+            ...withCreds,
+          });
+          const d = await r.json();
+          if (r.ok && d.ok) {
+            await loadConversations($("convSearch").value.trim());
+            openConversation(current.id);
+          }
+        });
+      });
+      if (isAdmin) {
+        let adeb;
+        const input = $("addMemberSearch");
+        const list = $("addMemberList");
+        input.addEventListener("input", () => {
+          clearTimeout(adeb);
+          adeb = setTimeout(async () => {
+            const q = input.value.trim();
+            if (q.length < 2) { list.innerHTML = ""; return; }
+            const r = await fetch(API_BASE + "/api/chat/people?q=" + encodeURIComponent(q), { ...withCreds });
+            const d = await r.json();
+            const cands = (d.people || []).filter((p) => !inGroup.has(p.id));
+            list.innerHTML = cands.map((p) =>
+              `<button class="person" data-id="${esc(p.id)}">${avatar(p, "sm")}<span>${esc(p.display_name)}</span><span class="tick">+</span></button>`
+            ).join("");
+            list.querySelectorAll(".person").forEach((el) => {
+              el.addEventListener("click", async () => {
+                const rr = await fetch(API_BASE + `/api/chat/conversations/${encodeURIComponent(current.id)}/members`, {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ action: "add", user_id: el.dataset.id }),
+                  ...withCreds,
+                });
+                const dd = await rr.json();
+                if (rr.ok && dd.ok) {
+                  await loadConversations($("convSearch").value.trim());
+                  openConversation(current.id);
+                }
+              });
+            });
+          }, 250);
+        });
+      }
+    }
+
+    /* --- new chat modal --- */
+    let ncKind = "dm";
+    let picked = [];
+    function openModal() {
+      picked = [];
+      $("peopleSearch").value = "";
+      $("peopleList").innerHTML = "";
+      $("groupTitle").value = "";
+      hide("ncErr"); hide("ncPicked");
+      $("groupTitle").style.display = "none";
+      $("newChatModal").style.display = "";
+      $("peopleSearch").focus();
+    }
+    function closeModal() { $("newChatModal").style.display = "none"; }
+    async function searchPeople(q) {
+      if (q.length < 2) { $("peopleList").innerHTML = ""; return; }
+      const r = await fetch(API_BASE + "/api/chat/people?q=" + encodeURIComponent(q), { ...withCreds });
+      const d = await r.json();
+      if (!d.ok) return;
+      const list = (d.people || []).filter((p) => !picked.find((x) => x.id === p.id));
+      $("peopleList").innerHTML = list.map((p) =>
+        `<button class="person" data-id="${esc(p.id)}">${avatar(p, "sm")}<span>${esc(p.display_name)}</span>` +
+        (p.username ? `<span class="thread-sub">@${esc(p.username)}</span>` : "") +
+        (ncKind === "group" ? `<span class="tick">+</span>` : "") + `</button>`
+      ).join("") || `<p class="thread-sub">No members found.</p>`;
+      $("peopleList").querySelectorAll(".person").forEach((el) => {
+        el.addEventListener("click", () => {
+          const p = list.find((x) => x.id === el.dataset.id);
+          if (ncKind === "dm") { startConversation("dm", [p.id]); }
+          else { picked.push(p); renderPicked(); searchPeople($("peopleSearch").value.trim()); }
+        });
+      });
+    }
+    function renderPicked() {
+      const box = $("ncPicked");
+      if (!picked.length) { hide("ncPicked"); return; }
+      show("ncPicked");
+      box.innerHTML = picked.map((p) => `<span class="picked-chip">${esc(p.display_name)}</span>`).join("");
+    }
+    async function startConversation(kind, ids) {
+      hide("ncErr");
+      try {
+        const r = await fetch(API_BASE + "/api/chat/conversations", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(kind === "dm"
+            ? { kind, user_id: ids[0] }
+            : { kind, user_ids: ids, title: $("groupTitle").value.trim() || undefined }),
+          ...withCreds,
+        });
+        const d = await r.json();
+        if (!r.ok || !d.ok) throw new Error(d.error || "Could not start the chat.");
+        closeModal();
+        await loadConversations("");
+        openConversation(d.conversation.id);
+      } catch (err) {
+        const el = $("ncErr");
+        el.textContent = err.message;
+        el.style.display = "";
+      }
+    }
+
+    /* --- boot --- */
+    (async () => {
+      try {
+        const r = await fetch(API_BASE + "/api/auth/me", { headers: { accept: "application/json" }, ...withCreds });
+        const d = await r.json();
+        if (!r.ok || !d.ok) throw 0;
+        me = d.user;
+        hide("msg-loading"); hide("msg-login"); show("msg-app");
+        await Promise.all([loadConversations(""), loadStoryReplies()]);
+
+        let deb;
+        $("convSearch").addEventListener("input", (e) => {
+          clearTimeout(deb);
+          deb = setTimeout(() => loadConversations(e.target.value.trim()).catch(() => {}), 250);
+        });
+        $("composer").addEventListener("submit", sendMessage);
+        $("newChatBtn").addEventListener("click", openModal);
+        $("ncCancel").addEventListener("click", closeModal);
+        $("newChatModal").addEventListener("click", (e) => { if (e.target.id === "newChatModal") closeModal(); });
+        document.querySelectorAll(".nc-tab").forEach((t) => {
+          t.addEventListener("click", () => {
+            document.querySelectorAll(".nc-tab").forEach((x) => x.classList.remove("active"));
+            t.classList.add("active");
+            ncKind = t.dataset.kind;
+            picked = []; renderPicked();
+            $("groupTitle").style.display = ncKind === "group" ? "" : "none";
+            $("ncTitle").textContent = ncKind === "dm" ? "New message" : "New group";
+            searchPeople($("peopleSearch").value.trim());
+          });
+        });
+        let pdeb;
+        $("peopleSearch").addEventListener("input", (e) => {
+          clearTimeout(pdeb);
+          pdeb = setTimeout(() => searchPeople(e.target.value.trim()), 250);
+        });
+        $("ncStart").addEventListener("click", () => {
+          if (ncKind === "group") {
+            if (picked.length < 2) {
+              const el = $("ncErr");
+              el.textContent = "Pick at least two members for a group.";
+              el.style.display = "";
+              return;
+            }
+            startConversation("group", picked.map((p) => p.id));
+          }
+        });
+        $("infoBtn").addEventListener("click", () => {
+          const box = $("groupInfo");
+          if (box.style.display === "none") { renderGroupInfo(); box.style.display = ""; }
+          else box.style.display = "none";
+        });
+      } catch {
+        hide("msg-loading"); show("msg-login"); hide("msg-app");
+      }
+    })();
+  </script>
+</Base>
