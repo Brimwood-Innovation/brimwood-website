@@ -1,0 +1,22 @@
+---
+/* Per-field visibility selector (profiles area): Public / Members / Only me,
+ * plus "Default" which resolves to the API default for the field
+ * (dob/gender → only me, everything else → public). */
+interface Props {
+  field: string;
+  /** The field's API default, shown in the Default option label. */
+  def?: "public" | "members" | "only-me";
+}
+const { field, def = "public" } = Astro.props;
+const defLabel = def === "public" ? "Public" : def === "members" ? "Members" : "Only me";
+---
+
+<div class="vis">
+  <label for={"vis-" + field}>Who sees this</label>
+  <select id={"vis-" + field} data-vis={field}>
+    <option value="default">Default ({defLabel})</option>
+    <option value="public">Public</option>
+    <option value="members">Members</option>
+    <option value="only-me">Only me</option>
+  </select>
+</div>

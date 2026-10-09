@@ -1,6 +1,6 @@
 /* Unit tests: src/lib/validate.ts — input boundary helpers. */
 import { describe, it, expect } from "vitest";
-import { cleanStr, isEmail, clientIp } from "./validate";
+import { cleanStr, isEmail, isRecord, clientIp } from "./validate";
 
 describe("cleanStr", () => {
   it("trims whitespace", () => {
@@ -26,6 +26,18 @@ describe("isEmail", () => {
   it("rejects malformed addresses", () => {
     for (const bad of ["", "plain", "a@b", "@b.co", "a b@c.co", "a@b c.co", "a@@b.co"]) {
       expect(isEmail(bad), bad).toBe(false);
+    }
+  });
+});
+
+describe("isRecord", () => {
+  it("accepts plain objects", () => {
+    expect(isRecord({})).toBe(true);
+    expect(isRecord({ a: 1 })).toBe(true);
+  });
+  it("rejects null, arrays, and primitives", () => {
+    for (const v of [null, undefined, [], [1], "x", 42, true]) {
+      expect(isRecord(v), String(v)).toBe(false);
     }
   });
 });

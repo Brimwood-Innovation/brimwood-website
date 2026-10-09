@@ -85,7 +85,8 @@
   function checkSEO(entry) {
     const issues = [];
     const title = entry.getIn(["data", "title"]) || "";
-    const excerpt = entry.getIn(["data", "excerpt"]) || "";
+    // Content model uses `description` for blog; accept legacy `excerpt` too.
+    const excerpt = entry.getIn(["data", "description"]) || entry.getIn(["data", "excerpt"]) || "";
     const body = entry.getIn(["data", "body"]) || "";
     if (title.length > 60) issues.push("Title over 60 characters — will truncate in search results.");
     if (title.length < 10) issues.push("Title too short for SEO.");

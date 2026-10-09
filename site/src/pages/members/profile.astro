@@ -1,8 +1,12 @@
 ---
-/* Member profile editor (Phase D2): username handle, display name, bio,
- * avatar, location, website, socials, work history, education, hobbies,
- * and the public opt-in. Brand rule: anonymous by default. */
+/* Member profile editor (rich profiles, social-UX overhaul): identity,
+ * avatar, personal fields (dob, gender — private by default), location,
+ * website, socials, hobbies, work history, education, achievements,
+ * milestones, and per-field visibility (public / members / only me).
+ * Brand rule: anonymous by default; a preview panel shows what others see. */
 import Base from "../../layouts/Base.astro";
+import Avatar from "../../components/Avatar.astro";
+import VisSelect from "../../components/VisSelect.astro";
 ---
 
 <Base title="Your profile — Brimwood Innovation" description="Edit your member profile.">
@@ -15,21 +19,27 @@ import Base from "../../layouts/Base.astro";
       <p class="sec-lede" style="margin-inline:auto;"><a href="/members">Sign in</a> first.</p>
     </div>
 
-    <div id="prof-home" style="display:none;max-width:640px;">
+    <div id="prof-home" style="display:none;max-width:720px;">
       <div class="kicker">Members</div>
       <h1 class="sec" style="font-size:clamp(34px,5.4vw,56px);margin-bottom:18px;">Your profile</h1>
       <p class="sec-lede">You appear as <strong id="publicName"></strong> on public pages. Your email and real name are never shown publicly.</p>
 
       <div style="margin:32px 0;">
-        <img id="avatarImg" alt="Your avatar" style="width:96px;height:96px;border-radius:50%;object-fit:cover;display:none;" />
-        <p style="margin-top:12px;">
-          <label for="avatarFile" class="btn btn-ghost small" style="cursor:pointer;">Upload avatar</label>
-          <input id="avatarFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none;" />
-        </p>
-        <p class="admin-muted" id="avatarMsg" style="font-size:13px;"></p>
+        <div style="display:flex;align-items:center;gap:20px;">
+          <div id="avatarSlot"><Avatar src={null} name="Member" size="lg" id="avatarImg" /></div>
+          <div>
+            <p style="margin:0 0 8px;">
+              <label for="avatarFile" class="btn btn-ghost small" style="cursor:pointer;">Upload avatar</label>
+              <input id="avatarFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none;" />
+            </p>
+            <p class="admin-muted" id="avatarMsg" style="font-size:13px;margin:0;">PNG, JPEG, WebP or GIF, max 5 MB.</p>
+          </div>
+        </div>
       </div>
 
       <form id="profForm">
+        <h3 class="sec" style="font-size:22px;">Identity</h3>
+
         <label for="fUsername">Username</label>
         <div style="display:flex;gap:8px;align-items:center;">
           <span class="admin-muted">@</span>
@@ -37,42 +47,129 @@ import Base from "../../layouts/Base.astro";
         </div>
         <p class="admin-muted" style="font-size:13px;" id="usernameHint">3–30 chars, lowercase letters, numbers, underscores. Your shareable page: <span id="usernameUrl"></span></p>
 
-        <label for="fDisplay" style="margin-top:16px;display:block;">Display name</label>
-        <input id="fDisplay" type="text" minlength="2" maxlength="40" placeholder="J." style="width:100%;" />
-
-        <label for="fBio" style="margin-top:16px;display:block;">Bio</label>
-        <textarea id="fBio" rows="3" maxlength="500" placeholder="A line or two about what you're building." style="width:100%;"></textarea>
-        <p class="admin-muted" style="font-size:13px;"><span id="bioCount">0</span>/500</p>
-
-        <label for="fLocation" style="margin-top:16px;display:block;">Location</label>
-        <input id="fLocation" type="text" maxlength="100" placeholder="Toronto, ON" style="width:100%;" />
-
-        <label for="fWebsite" style="margin-top:16px;display:block;">Website</label>
-        <input id="fWebsite" type="url" maxlength="300" placeholder="https://…" style="width:100%;" />
-
-        <label for="fHobbies" style="margin-top:16px;display:block;">Hobbies</label>
-        <input id="fHobbies" type="text" maxlength="500" placeholder="What you do for fun." style="width:100%;" />
-
-        <h3 class="sec" style="font-size:22px;margin-top:32px;">Social links</h3>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-          <div><label for="sGithub" style="font-size:13px;">GitHub</label><input id="sGithub" type="url" placeholder="https://github.com/…" style="width:100%;" /></div>
-          <div><label for="sLinkedin" style="font-size:13px;">LinkedIn</label><input id="sLinkedin" type="url" placeholder="https://linkedin.com/in/…" style="width:100%;" /></div>
-          <div><label for="sX" style="font-size:13px;">X</label><input id="sX" type="url" placeholder="https://x.com/…" style="width:100%;" /></div>
-          <div><label for="sInstagram" style="font-size:13px;">Instagram</label><input id="sInstagram" type="url" placeholder="https://instagram.com/…" style="width:100%;" /></div>
+        <div class="frow">
+          <div style="flex:1;">
+            <label for="fDisplay">Display name</label>
+            <input id="fDisplay" type="text" minlength="2" maxlength="40" placeholder="J." style="width:100%;" />
+          </div>
+          <div><VisSelect field="display_name" def="public" /></div>
         </div>
 
-        <h3 class="sec" style="font-size:22px;margin-top:32px;">Work history</h3>
-        <div id="workList"></div>
-        <p><button type="button" class="btn btn-ghost small" id="addWork">+ Add role</button></p>
+        <div class="frow">
+          <div style="flex:1;">
+            <label for="fBio">Bio</label>
+            <textarea id="fBio" rows="3" maxlength="500" placeholder="A line or two about what you're building." style="width:100%;"></textarea>
+            <p class="admin-muted" style="font-size:13px;"><span id="bioCount">0</span>/500</p>
+          </div>
+          <div><VisSelect field="bio" def="public" /></div>
+        </div>
 
-        <h3 class="sec" style="font-size:22px;margin-top:32px;">Education</h3>
-        <div id="eduList"></div>
-        <p><button type="button" class="btn btn-ghost small" id="addEdu">+ Add education</button></p>
+        <h3 class="sec" style="font-size:22px;margin-top:32px;">Personal</h3>
+        <p class="admin-muted" style="font-size:13px;">Date of birth and gender are <strong>private by default</strong> — only you can see them unless you choose otherwise.</p>
+
+        <div class="frow">
+          <div style="flex:1;">
+            <label for="fDob">Date of birth</label>
+            <input id="fDob" type="date" style="width:100%;" />
+          </div>
+          <div><VisSelect field="dob" def="only-me" /></div>
+        </div>
+
+        <div class="frow">
+          <div style="flex:1;">
+            <label for="fGender">Gender</label>
+            <input id="fGender" type="text" maxlength="60" list="genderHints" placeholder="How you describe yourself (optional)" style="width:100%;" />
+            <datalist id="genderHints">
+              <option value="she/her"></option>
+              <option value="he/him"></option>
+              <option value="they/them"></option>
+              <option value="Prefer not to say"></option>
+            </datalist>
+          </div>
+          <div><VisSelect field="gender" def="only-me" /></div>
+        </div>
+
+        <h3 class="sec" style="font-size:22px;margin-top:32px;">About</h3>
+
+        <div class="frow">
+          <div style="flex:1;">
+            <label for="fLocation">Location</label>
+            <input id="fLocation" type="text" maxlength="100" placeholder="Toronto, ON" style="width:100%;" />
+          </div>
+          <div><VisSelect field="location" def="public" /></div>
+        </div>
+
+        <div class="frow">
+          <div style="flex:1;">
+            <label for="fWebsite">Website</label>
+            <input id="fWebsite" type="url" maxlength="300" placeholder="https://…" style="width:100%;" />
+          </div>
+          <div><VisSelect field="website" def="public" /></div>
+        </div>
+
+        <div class="frow">
+          <div style="flex:1;">
+            <label for="fHobbies">Hobbies</label>
+            <input id="fHobbies" type="text" maxlength="500" placeholder="Cycling, sourdough, film photography" style="width:100%;" />
+            <p class="admin-muted" style="font-size:13px;">Separate with commas — they show as chips.</p>
+          </div>
+          <div><VisSelect field="hobbies" def="public" /></div>
+        </div>
+
+        <div class="frow">
+          <div style="flex:1;">
+            <h4 style="margin:0 0 8px;font-size:15px;">Social links</h4>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div><label for="sGithub" style="font-size:13px;">GitHub</label><input id="sGithub" type="url" placeholder="https://github.com/…" style="width:100%;" /></div>
+              <div><label for="sLinkedin" style="font-size:13px;">LinkedIn</label><input id="sLinkedin" type="url" placeholder="https://linkedin.com/in/…" style="width:100%;" /></div>
+              <div><label for="sX" style="font-size:13px;">X</label><input id="sX" type="url" placeholder="https://x.com/…" style="width:100%;" /></div>
+              <div><label for="sInstagram" style="font-size:13px;">Instagram</label><input id="sInstagram" type="url" placeholder="https://instagram.com/…" style="width:100%;" /></div>
+            </div>
+          </div>
+          <div><VisSelect field="social_links" def="public" /></div>
+        </div>
+
+        <div class="frow">
+          <div style="flex:1;">
+            <h4 style="margin:0 0 8px;font-size:15px;">Work history</h4>
+            <div id="workList"></div>
+            <p><button type="button" class="btn btn-ghost small" id="addWork">+ Add role</button></p>
+          </div>
+          <div><VisSelect field="work_history" def="public" /></div>
+        </div>
+
+        <div class="frow">
+          <div style="flex:1;">
+            <h4 style="margin:0 0 8px;font-size:15px;">Education</h4>
+            <div id="eduList"></div>
+            <p><button type="button" class="btn btn-ghost small" id="addEdu">+ Add education</button></p>
+          </div>
+          <div><VisSelect field="education" def="public" /></div>
+        </div>
+
+        <div class="frow">
+          <div style="flex:1;">
+            <h4 style="margin:0 0 8px;font-size:15px;">Achievements</h4>
+            <div id="achList"></div>
+            <p><button type="button" class="btn btn-ghost small" id="addAch">+ Add achievement</button></p>
+          </div>
+          <div><VisSelect field="achievements" def="public" /></div>
+        </div>
+
+        <div class="frow">
+          <div style="flex:1;">
+            <h4 style="margin:0 0 8px;font-size:15px;">Milestones</h4>
+            <div id="mileList"></div>
+            <p><button type="button" class="btn btn-ghost small" id="addMile">+ Add milestone</button></p>
+            <p class="admin-muted" style="font-size:13px;">Life events worth marking — first demo night, first launch, and so on.</p>
+          </div>
+          <div><VisSelect field="life_events" def="public" /></div>
+        </div>
 
         <label style="margin-top:32px;display:flex;gap:10px;align-items:flex-start;cursor:pointer;">
           <input id="fPublic" type="checkbox" style="margin-top:4px;" />
           <span><strong>Make my profile public.</strong><br />
-          <span class="admin-muted" style="font-size:13px;">Anyone can see your display name, bio, avatar, and portfolio at your public page. Off by default — you stay anonymous.</span></span>
+          <span class="admin-muted" style="font-size:13px;">Anyone can see the fields you marked Public at your public page. Off by default — you stay anonymous.</span></span>
         </label>
 
         <p style="margin-top:24px;">
@@ -84,83 +181,172 @@ import Base from "../../layouts/Base.astro";
       <p id="publicLinkWrap" style="display:none;margin-top:16px;">
         <a id="publicLink" href="#">View your public profile →</a>
       </p>
+
+      <div style="margin-top:40px;border-top:1px solid #e5e9e7;padding-top:24px;">
+        <h3 class="sec" style="font-size:22px;">See what others see</h3>
+        <p class="admin-muted" style="font-size:13px;">A preview built from your current edits — nothing is saved until you press Save.</p>
+        <p><button type="button" class="btn btn-ghost small" id="previewBtn">Refresh preview</button></p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;" id="previewGrid">
+          <div style="border:1px solid #e5e9e7;border-radius:12px;padding:16px;">
+            <div class="kicker">Signed-in members</div>
+            <div id="previewMembers" class="admin-muted" style="font-size:14px;">Press “Refresh preview”.</div>
+          </div>
+          <div style="border:1px solid #e5e9e7;border-radius:12px;padding:16px;">
+            <div class="kicker">Public visitors</div>
+            <div id="previewPublic" class="admin-muted" style="font-size:14px;">Press “Refresh preview”.</div>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
+
+  <style>
+    .frow { display:flex; gap:16px; align-items:flex-start; margin-top:16px; }
+    .frow label { display:block; margin-bottom:6px; }
+    .vis { min-width:130px; }
+    .vis label { font-size:12px; color:#5B6862; display:block; margin-bottom:6px; }
+    .vis select { width:100%; font-size:13px; }
+    @media (max-width:640px){ .frow{ flex-direction:column; } .vis{ min-width:0; width:100%; } }
+  </style>
 
   <script>
     const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
     const $ = (id) => document.getElementById(id);
-    const esc = (s) => String(s || "").replace(/</g, "&lt;");
+    const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     const api = (p, opts = {}) =>
       fetch(API_BASE + p, { credentials: "include", headers: { accept: "application/json", ...(opts.headers || {}) }, ...opts });
 
     let myId = null;
+    let avatarName = "Member";
 
+    /* ---------- dynamic entry rows ---------- */
     function entryRow(kind, data) {
       data = data || {};
       const div = document.createElement("div");
       div.className = "entry-row";
-      div.style.cssText = "display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-bottom:8px;";
-      const aLabel = kind === "work" ? "Title" : "School";
-      const bLabel = kind === "work" ? "Company" : "Degree";
-      div.innerHTML =
-        '<input data-k="a" placeholder="' + aLabel + '" maxlength="100" value="' + esc(data.title || data.school || "") + '">' +
-        '<input data-k="b" placeholder="' + bLabel + '" maxlength="100" value="' + esc(data.company || data.degree || "") + '">' +
-        '<input data-k="period" placeholder="2022–now" maxlength="60" value="' + esc(data.period || "") + '">' +
-        '<button type="button" class="btn btn-ghost small entry-del" style="grid-column:1/-1;justify-self:start;">Remove</button>';
+      if (kind === "work") {
+        div.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;margin-bottom:8px;";
+        div.innerHTML =
+          '<input data-k="title" placeholder="Title" maxlength="100" value="' + esc(data.title || "") + '">' +
+          '<input data-k="company" placeholder="Company" maxlength="100" value="' + esc(data.company || "") + '">' +
+          '<input data-k="period" placeholder="2022–now" maxlength="60" value="' + esc(data.period || "") + '">' +
+          '<button type="button" class="btn btn-ghost small entry-del">✕</button>';
+      } else if (kind === "edu") {
+        div.style.cssText = "display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-bottom:8px;";
+        const kindSel = '<select data-k="kind" style="font-size:13px;">' +
+          '<option value="college"' + (data.kind !== "school" ? " selected" : "") + '>College</option>' +
+          '<option value="school"' + (data.kind === "school" ? " selected" : "") + '>School</option></select>';
+        div.innerHTML =
+          '<input data-k="school" placeholder="School" maxlength="100" value="' + esc(data.school || "") + '">' +
+          kindSel +
+          '<input data-k="years" placeholder="2020–2024" maxlength="60" value="' + esc(data.years || data.period || "") + '">' +
+          '<input data-k="degree" placeholder="Degree (optional)" maxlength="100" value="' + esc(data.degree || "") + '" style="grid-column:1/3;">' +
+          '<button type="button" class="btn btn-ghost small entry-del">Remove</button>';
+      } else {
+        // milestone: achievements + life events
+        div.style.cssText = "display:grid;grid-template-columns:2fr 1fr;gap:8px;margin-bottom:8px;";
+        div.innerHTML =
+          '<input data-k="title" placeholder="Title" maxlength="100" value="' + esc(data.title || "") + '">' +
+          '<input data-k="date" type="date" value="' + esc(data.date || "") + '">' +
+          '<input data-k="description" placeholder="A line about it (optional)" maxlength="300" value="' + esc(data.description || "") + '" style="grid-column:1/-1;">' +
+          '<button type="button" class="btn btn-ghost small entry-del" style="grid-column:1/-1;justify-self:start;">Remove</button>';
+      }
       div.querySelector(".entry-del").addEventListener("click", () => div.remove());
       return div;
     }
     function collectEntries(listId, kind) {
       const out = [];
       document.querySelectorAll("#" + listId + " .entry-row").forEach((row) => {
-        const a = row.querySelector('[data-k="a"]').value.trim();
-        const b = row.querySelector('[data-k="b"]').value.trim();
-        const period = row.querySelector('[data-k="period"]').value.trim();
-        if (!a && !b) return;
-        out.push(kind === "work" ? { title: a, company: b, period } : { school: a, degree: b, period });
+        const get = (k) => { const el = row.querySelector('[data-k="' + k + '"]'); return el ? el.value.trim() : ""; };
+        if (kind === "work") {
+          const title = get("title"), company = get("company"), period = get("period");
+          if (title || company) out.push({ title, company, period });
+        } else if (kind === "edu") {
+          const school = get("school"), kindv = get("kind") || "college", years = get("years"), degree = get("degree");
+          if (school || degree) out.push({ school, kind: kindv, years, degree });
+        } else {
+          const title = get("title"), date = get("date"), description = get("description");
+          if (title || description) out.push({ title, date, description });
+        }
       });
       return out;
     }
 
     $("addWork").addEventListener("click", () => $("workList").appendChild(entryRow("work")));
     $("addEdu").addEventListener("click", () => $("eduList").appendChild(entryRow("edu")));
+    $("addAch").addEventListener("click", () => $("achList").appendChild(entryRow("mile")));
+    $("addMile").addEventListener("click", () => $("mileList").appendChild(entryRow("mile")));
 
-    function parseJson(s, fallback) {
-      try { return s ? JSON.parse(s) : fallback; } catch (e) { return fallback; }
+    /* ---------- avatar preview ---------- */
+    function paintAvatar(url) {
+      const slot = $("avatarSlot");
+      const old = $("avatarImg");
+      if (url) {
+        const img = document.createElement("img");
+        img.id = "avatarImg";
+        img.src = url;
+        img.alt = avatarName + "'s avatar";
+        img.style.cssText = "width:96px;height:96px;border-radius:50%;object-fit:cover;display:block;flex:none;";
+        if (old) old.replaceWith(img); else slot.appendChild(img);
+      } else if (old && old.tagName === "IMG") {
+        // Fall back to initials: rebuild the fallback circle.
+        const name = avatarName.trim() || "Member";
+        const parts = name.split(/\s+/).filter(Boolean);
+        const ini = ((parts[0] || "M")[0] + ((parts[1] || "")[0] || "")).toUpperCase();
+        const span = document.createElement("span");
+        span.id = "avatarImg";
+        span.setAttribute("role", "img");
+        span.setAttribute("aria-label", name + "'s avatar");
+        span.textContent = ini;
+        span.style.cssText = "width:96px;height:96px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex:none;background:#0C9463;color:#F6F8F7;font-weight:700;font-size:36px;";
+        old.replaceWith(span);
+      }
+    }
+
+    /* ---------- load ---------- */
+    function setVis(field, value) {
+      const sel = document.querySelector('select[data-vis="' + field + '"]');
+      if (sel) sel.value = value || "default";
     }
 
     async function load() {
       try {
-        const r = await api("/api/users/me");
+        const r = await api("/api/profiles/me");
         const d = await r.json();
         if (!r.ok || !d.ok) throw 0;
         const u = d.user;
         myId = u.id;
+        avatarName = u.display_name || "Member";
         $("prof-loading").style.display = "none";
         $("prof-home").style.display = "block";
         $("fUsername").value = u.username || "";
-        $("fDisplay").value = u.display_name || "";
-        $("fBio").value = u.bio || "";
+        $("fDisplay").value = u.display_name_raw || "";
+        $("fBio").value = u.bio_raw || "";
+        $("fDob").value = u.dob || "";
+        $("fGender").value = u.gender || "";
         $("fLocation").value = u.location || "";
         $("fWebsite").value = u.website || "";
-        $("fHobbies").value = u.hobbies || "";
+        $("fHobbies").value = (u.hobbies || []).join(", ");
         $("fPublic").checked = u.show_profile === 1;
-        $("publicName").textContent = u.display_name_public || "Member";
-        const social = parseJson(u.social_links, {});
+        $("publicName").textContent = u.display_name || "Member";
+        const social = u.social_links || {};
         $("sGithub").value = social.github || "";
         $("sLinkedin").value = social.linkedin || "";
         $("sX").value = social.x || social.twitter || "";
         $("sInstagram").value = social.instagram || "";
-        parseJson(u.work_history, []).forEach((e) => $("workList").appendChild(entryRow("work", e)));
-        parseJson(u.education, []).forEach((e) => $("eduList").appendChild(entryRow("edu", e)));
+        (u.work_history || []).forEach((e) => $("workList").appendChild(entryRow("work", e)));
+        (u.education || []).forEach((e) => $("eduList").appendChild(entryRow("edu", e)));
+        (u.achievements || []).forEach((e) => $("achList").appendChild(entryRow("mile", e)));
+        (u.life_events || []).forEach((e) => $("mileList").appendChild(entryRow("mile", e)));
+        const vis = u.visibility || {};
+        Object.keys(vis).forEach((f) => setVis(f, vis[f]));
+        paintAvatar(u.avatar_url || null);
         updateBioCount();
         updateUsernameHint();
-        if (u.avatar_url) {
-          $("avatarImg").src = u.avatar_url;
-          $("avatarImg").style.display = "block";
-        }
         if (u.show_profile === 1) showPublicLink(u);
+        renderPreview();
+        // Remember the loaded username so we only PATCH it when changed.
+        $("fUsername").dataset.current = $("fUsername").value.trim().toLowerCase();
       } catch (e) {
         $("prof-loading").style.display = "none";
         $("prof-login").style.display = "block";
@@ -181,45 +367,155 @@ import Base from "../../layouts/Base.astro";
     }
     $("fUsername").addEventListener("input", updateUsernameHint);
 
+    /* ---------- collect + preview ---------- */
+    const VIS_DEFAULTS = { dob: "only-me", gender: "only-me" };
+    function visOf(field) {
+      const sel = document.querySelector('select[data-vis="' + field + '"]');
+      const v = sel ? sel.value : "default";
+      return v === "default" ? (VIS_DEFAULTS[field] || "public") : v;
+    }
+    function visMap() {
+      const out = {};
+      document.querySelectorAll("select[data-vis]").forEach((sel) => {
+        if (sel.value !== "default") out[sel.getAttribute("data-vis")] = sel.value;
+      });
+      return out;
+    }
+
+    function collect() {
+      const social = {};
+      const sg = $("sGithub").value.trim(); if (sg) social.github = sg;
+      const sl = $("sLinkedin").value.trim(); if (sl) social.linkedin = sl;
+      const sx = $("sX").value.trim(); if (sx) social.x = sx;
+      const si = $("sInstagram").value.trim(); if (si) social.instagram = si;
+      return {
+        display_name: $("fDisplay").value.trim(),
+        bio: $("fBio").value.trim(),
+        dob: $("fDob").value,
+        gender: $("fGender").value.trim(),
+        location: $("fLocation").value.trim(),
+        website: $("fWebsite").value.trim(),
+        hobbies: $("fHobbies").value.split(",").map((h) => h.trim()).filter(Boolean),
+        social_links: social,
+        work_history: collectEntries("workList", "work"),
+        education: collectEntries("eduList", "edu"),
+        achievements: collectEntries("achList", "mile"),
+        life_events: collectEntries("mileList", "mile"),
+        show_profile: $("fPublic").checked,
+      };
+    }
+
+    function sectionHtml(title, inner) {
+      return inner ? '<p style="margin:10px 0 4px;"><strong>' + esc(title) + '</strong></p>' + inner : "";
+    }
+    function previewFor(audience) {
+      // audience: "members" | "public"
+      const v = collect();
+      const can = (field) => {
+        const level = visOf(field);
+        return audience === "members" ? level !== "only-me" : level === "public";
+      };
+      let html = '<p style="margin:0 0 8px;"><strong>' + esc(v.display_name || "Member") + '</strong></p>';
+      if (can("bio") && v.bio) html += "<p>" + esc(v.bio) + "</p>";
+      let about = "";
+      if (can("location") && v.location) about += "<p>📍 " + esc(v.location) + "</p>";
+      if (can("gender") && v.gender) about += "<p>🧭 " + esc(v.gender) + "</p>";
+      if (can("website") && v.website) about += "<p>🔗 " + esc(v.website) + "</p>";
+      html += sectionHtml("About", about);
+      if (can("hobbies") && v.hobbies.length) {
+        html += sectionHtml("Hobbies", "<p>" + v.hobbies.map((h) =>
+          '<span style="display:inline-block;background:#DDF5E9;color:#075E40;border-radius:999px;padding:2px 10px;margin:0 6px 6px 0;font-size:13px;">' + esc(h) + "</span>"
+        ).join("") + "</p>");
+      }
+      if (can("achievements") && v.achievements.length) {
+        html += sectionHtml("Achievements", v.achievements.map((a) =>
+          "<p>🏅 <strong>" + esc(a.title) + "</strong>" + (a.date ? ' <span class="admin-muted">· ' + esc(a.date) + "</span>" : "") + "</p>"
+        ).join(""));
+      }
+      if (can("work_history") && v.work_history.length) {
+        html += sectionHtml("Work", v.work_history.map((w) =>
+          "<p><strong>" + esc(w.title) + "</strong>" + (w.company ? " · " + esc(w.company) : "") + "</p>"
+        ).join(""));
+      }
+      if (can("education") && v.education.length) {
+        html += sectionHtml("Education", v.education.map((e) =>
+          "<p><strong>" + esc(e.school) + "</strong> · " + (e.kind === "school" ? "School" : "College") +
+          (e.years ? ' <span class="admin-muted">(' + esc(e.years) + ")</span>" : "") + "</p>"
+        ).join(""));
+      }
+      if (can("life_events") && v.life_events.length) {
+        html += sectionHtml("Milestones", v.life_events.map((m) =>
+          "<p>✦ <strong>" + esc(m.title) + "</strong>" + (m.date ? ' <span class="admin-muted">· ' + esc(m.date) + "</span>" : "") + "</p>"
+        ).join(""));
+      }
+      if (can("dob") && v.dob) html += "<p class=\"admin-muted\">Born " + esc(v.dob) + "</p>";
+      if (!v.show_profile && audience === "public") {
+        html = '<p class="admin-muted">Your profile is not public — visitors see nothing.</p>';
+      }
+      return html;
+    }
+    function renderPreview() {
+      try {
+        $("previewMembers").innerHTML = previewFor("members");
+        $("previewPublic").innerHTML = previewFor("public");
+      } catch (e) { /* preview is best-effort */ }
+    }
+    $("previewBtn").addEventListener("click", renderPreview);
+
+    /* ---------- save ---------- */
     $("profForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const btn = $("saveBtn"), msg = $("saveMsg");
       btn.disabled = true;
       msg.textContent = "Saving…";
       try {
-        const social = {};
-        const sg = $("sGithub").value.trim(); if (sg) social.github = sg;
-        const sl = $("sLinkedin").value.trim(); if (sl) social.linkedin = sl;
-        const sx = $("sX").value.trim(); if (sx) social.x = sx;
-        const si = $("sInstagram").value.trim(); if (si) social.instagram = si;
-        const r = await api("/api/users/me", {
+        const v = collect();
+        const newUsername = $("fUsername").value.trim().toLowerCase();
+        const oldUsername = $("fUsername").dataset.current || "";
+        if (newUsername !== oldUsername) {
+          const r = await api("/api/users/me", {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ username: newUsername }),
+          });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok || !d.ok) throw new Error(d.error || "Username save failed.");
+          $("fUsername").dataset.current = newUsername;
+        }
+        const r = await api("/api/profiles/me", {
           method: "PATCH",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            username: $("fUsername").value.trim().toLowerCase(),
-            display_name: $("fDisplay").value.trim(),
-            bio: $("fBio").value.trim(),
-            location: $("fLocation").value.trim(),
-            website: $("fWebsite").value.trim(),
-            hobbies: $("fHobbies").value.trim(),
-            social_links: social,
-            work_history: collectEntries("workList", "work"),
-            education: collectEntries("eduList", "edu"),
-            show_profile: $("fPublic").checked ? 1 : 0,
+            display_name: v.display_name,
+            bio: v.bio,
+            dob: v.dob,
+            gender: v.gender,
+            location: v.location,
+            website: v.website,
+            hobbies: v.hobbies,
+            social_links: v.social_links,
+            work_history: v.work_history,
+            education: v.education,
+            achievements: v.achievements,
+            life_events: v.life_events,
+            profile_visibility: visMap(),
+            show_profile: v.show_profile ? 1 : 0,
           }),
         });
         const d = await r.json().catch(() => ({}));
         if (!r.ok || !d.ok) throw new Error(d.error || "Save failed.");
         msg.textContent = "Saved.";
-        $("publicName").textContent = $("fDisplay").value.trim() || "Member";
-        if ($("fPublic").checked && myId) {
-          showPublicLink({ id: myId, username: $("fUsername").value.trim().toLowerCase() || null });
+        avatarName = v.display_name || "Member";
+        $("publicName").textContent = v.display_name || "Member";
+        if (v.show_profile && myId) {
+          showPublicLink({ id: myId, username: newUsername || null });
         } else {
           $("publicLinkWrap").style.display = "none";
         }
         updateUsernameHint();
+        renderPreview();
       } catch (ex) {
-        msg.textContent = esc(ex.message);
+        msg.textContent = ex.message || "Something went wrong.";
       } finally {
         btn.disabled = false;
       }
@@ -233,14 +529,13 @@ import Base from "../../layouts/Base.astro";
       try {
         const fd = new FormData();
         fd.append("file", f);
-        const r = await api("/api/users/me/avatar", { method: "POST", body: fd });
+        const r = await api("/api/profiles/me/avatar", { method: "POST", body: fd });
         const d = await r.json().catch(() => ({}));
         if (!r.ok || !d.ok) throw new Error(d.error || "Upload failed.");
-        $("avatarImg").src = d.avatar_url;
-        $("avatarImg").style.display = "block";
+        paintAvatar(d.avatar_url);
         msg.textContent = "Avatar updated.";
       } catch (ex) {
-        msg.textContent = esc(ex.message);
+        msg.textContent = ex.message || "Something went wrong.";
       }
     });
 

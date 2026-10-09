@@ -1,0 +1,486 @@
+---
+/* Member hub feed (Phase social: feed agent).
+ * Composer (text + photo/video/reel attach + poll builder), chronological
+ * member feed, reels rail, poll cards with live counts and voter visibility,
+ * media grid + inline video player, and the four calm reactions.
+ * Brand Kit v1.0; members-only; anonymous by default (initials, never email).
+ */
+import Base from "../../layouts/Base.astro";
+---
+
+<Base
+  title="Feed — Brimwood Innovation"
+  description="The member feed. Chronological, calm, and members-only."
+  path="/hub/feed"
+>
+  <section class="block">
+    <div id="feed-loading"><p class="sec-lede">Loading…</p></div>
+
+    <div id="feed-login" style="display:none;text-align:center;padding:48px 0;">
+      <div class="kicker">Members</div>
+      <h2 class="sec">Sign in to see the feed.</h2>
+      <p class="sec-lede" style="margin-inline:auto;">
+        The feed is members-only. <a href="/members">Sign in</a> to join the conversation.
+      </p>
+    </div>
+
+    <div id="feed-home" style="display:none;max-width:640px;margin:0 auto;">
+      <div class="kicker">Hub feed</div>
+      <h1 class="sec" style="font-size:clamp(30px,4.6vw,44px);margin-bottom:18px;">The room.</h1>
+
+      <!-- Reels rail: vertical clips ≤90s, surfaced above the feed -->
+      <div id="reels-rail" style="display:none;margin-bottom:20px;">
+        <div style="font-weight:700;font-size:13px;letter-spacing:0.12em;text-transform:uppercase;color:var(--stone);margin-bottom:10px;">
+          Reels · 90 seconds or less
+        </div>
+        <div id="reels-list" style="display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;"></div>
+      </div>
+
+      <!-- Composer -->
+      <div class="card" id="composer" style="margin-bottom:18px;">
+        <div style="display:flex;gap:10px;">
+          <span id="composer-avatar" class="feed-avatar">·</span>
+          <textarea
+            id="post-body"
+            placeholder="Share what you're building…"
+            style="flex:1;min-height:64px;border:0;resize:vertical;font:inherit;font-size:15px;background:transparent;"
+          ></textarea>
+        </div>
+        <div id="attach-preview" style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 0;"></div>
+        <!-- Poll builder -->
+        <div id="poll-builder" style="display:none;margin-top:10px;border-top:1px solid rgba(18,26,22,0.08);padding-top:10px;">
+          <input
+            id="poll-question"
+            placeholder="Ask a question…"
+            maxlength="140"
+            style="width:100%;font:inherit;font-size:14px;padding:8px 10px;border:1px solid rgba(18,26,22,0.14);border-radius:8px;margin-bottom:8px;"
+          />
+          <div id="poll-options" style="display:grid;gap:6px;margin-bottom:8px;"></div>
+          <button type="button" id="poll-add-option" class="btn btn-ghost btn-sm" style="margin-bottom:8px;">+ Add option</button>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13.5px;color:var(--stone);">
+            <label>Runs
+              <select id="poll-duration" style="font:inherit;padding:6px 8px;border-radius:8px;border:1px solid rgba(18,26,22,0.14);">
+                <option value="1h">1 hour</option>
+                <option value="1d" selected>1 day</option>
+                <option value="3d">3 days</option>
+                <option value="7d">7 days</option>
+              </select>
+            </label>
+            <label style="display:flex;gap:6px;align-items:center;">
+              <input type="checkbox" id="poll-show-voters" /> Show who voted
+            </label>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;margin-top:12px;">
+          <button type="button" id="btn-photo" class="btn btn-ghost btn-sm" title="Add a photo">🖼 Photo</button>
+          <button type="button" id="btn-video" class="btn btn-ghost btn-sm" title="Add a video or reel (≤90s is a reel)">🎬 Video / reel</button>
+          <button type="button" id="btn-poll" class="btn btn-ghost btn-sm" title="Add a poll">📊 Poll</button>
+          <span style="flex:1"></span>
+          <span id="composer-hint" style="font-size:12.5px;color:var(--stone);"></span>
+          <button type="button" id="btn-post" class="btn btn-primary btn-sm">Post</button>
+        </div>
+        <input type="file" id="file-photo" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
+        <input type="file" id="file-video" accept="video/mp4" multiple hidden />
+      </div>
+
+      <!-- Feed list (chronological) -->
+      <div id="feed-list" style="display:grid;gap:14px;"></div>
+      <div style="text-align:center;margin:22px 0;">
+        <button type="button" id="btn-more" class="btn btn-secondary" style="display:none;">Load older</button>
+      </div>
+    </div>
+  </section>
+
+  <style>
+    .feed-post { background: #fff; border: 1px solid rgba(18,26,22,0.08); border-radius: 16px; padding: 18px; }
+    .feed-post .meta { font-size: 12.5px; color: var(--stone); }
+    .feed-body { font-size: 15px; line-height: 1.6; margin: 8px 0 0; white-space: pre-wrap; word-wrap: break-word; }
+    .media-grid { display: grid; gap: 8px; margin-top: 10px; }
+    .media-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+    .media-grid img, .media-grid video { width: 100%; border-radius: 10px; display: block; background: #000; }
+    .media-grid video { max-height: 420px; }
+    .reel-badge {
+      position: absolute; top: 8px; left: 8px; background: var(--forest); color: #fff;
+      font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+    }
+    .media-wrap { position: relative; }
+    .poll-card { margin-top: 12px; border: 1px solid rgba(18,26,22,0.1); border-radius: 12px; padding: 14px; background: var(--paper); }
+    .poll-card h4 { margin: 0 0 4px; font-size: 15px; }
+    .poll-card .closes { font-size: 12.5px; color: var(--stone); margin-bottom: 10px; }
+    .poll-opt { display: block; width: 100%; text-align: left; font: inherit; font-size: 14px; padding: 10px 12px; margin-bottom: 8px;
+      border: 1px solid rgba(18,26,22,0.14); border-radius: 10px; background: #fff; cursor: pointer; }
+    .poll-opt:hover { border-color: var(--emerald-deep); }
+    .poll-bar { position: relative; padding: 10px 12px; margin-bottom: 8px; border-radius: 10px; background: #fff;
+      border: 1px solid rgba(18,26,22,0.1); font-size: 14px; overflow: hidden; }
+    .poll-bar .fill { position: absolute; inset: 0; background: var(--mint); width: 0; transition: width 240ms var(--brimwood-ease, ease); }
+    .poll-bar.mine .fill { background: rgba(12,148,99,0.25); }
+    .poll-bar .lbl { position: relative; display: flex; justify-content: space-between; gap: 8px; }
+    .reactbar { display: flex; gap: 4px; margin-top: 12px; border-top: 1px solid rgba(18,26,22,0.07); padding-top: 10px; flex-wrap: wrap; }
+    .reactbar button { border: 0; background: transparent; font: inherit; font-size: 13.5px; color: var(--stone);
+      padding: 8px 10px; border-radius: 8px; cursor: pointer; min-height: 44px; }
+    .reactbar button:hover { background: var(--paper); }
+    .reactbar button.on { color: var(--emerald-deep); font-weight: 700; }
+    .voter-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 6px; font-size: 12.5px; color: var(--stone); }
+    .reel-card { position: relative; flex: none; width: 120px; height: 200px; border-radius: 12px; overflow: hidden; background: #000; cursor: pointer; }
+    .reel-card video { width: 100%; height: 100%; object-fit: cover; }
+    .reel-card .cap { position: absolute; bottom: 0; left: 0; right: 0; padding: 20px 8px 8px; font-size: 11.5px; color: #fff;
+      background: linear-gradient(transparent, rgba(0,0,0,0.7)); }
+  </style>
+
+  <script is:inline src="/js/avatar.js"></script>
+  <script is:inline src="/js/mentions.js"></script>
+  <script is:inline src="/js/share-to-dm.js"></script>
+  <script>
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s || "").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const api = (p, opts = {}) =>
+      fetch(API_BASE + p, { credentials: "include", headers: { accept: "application/json", ...(opts.headers || {}) }, ...opts });
+
+    const REACTS = [
+      { kind: "like", icon: "👍", label: "Like" },
+      { kind: "celebrate", icon: "🎉", label: "Celebrate" },
+      { kind: "insightful", icon: "💡", label: "Insightful" },
+      { kind: "support", icon: "🤝", label: "Support" },
+    ];
+
+    let attachments = []; // { key, url, kind, width, height, duration_s }
+    let cursor = null;
+    let posting = false;
+
+    /* Shared renderer (public/js/avatar.js) — matches Avatar.astro exactly. */
+    function avatarHtml(a, size) {
+      return brimwoodAvatar({ src: a.avatar_url, name: a.display, size: size || 40 });
+    }
+
+    function relTime(iso) {
+      const s = Math.max(1, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+      if (s < 60) return s + "s";
+      if (s < 3600) return Math.floor(s / 60) + "m";
+      if (s < 86400) return Math.floor(s / 3600) + "h";
+      return Math.floor(s / 86400) + "d";
+    }
+
+    function closesLabel(poll) {
+      if (poll.closed) return "Poll closed";
+      const ms = new Date(poll.closes_at).getTime() - Date.now();
+      const h = Math.floor(ms / 3600000), d = Math.floor(h / 24);
+      if (d > 0) return `Closes in ${d}d ${h % 24}h`;
+      if (h > 0) return `Closes in ${h}h`;
+      return `Closes in ${Math.max(1, Math.floor(ms / 60000))}m`;
+    }
+
+    function pollCardHtml(poll) {
+      const canVote = !poll.closed && !poll.my_vote;
+      const opts = poll.options.map((o) => {
+        const pct = poll.total_votes ? Math.round((o.votes / poll.total_votes) * 100) : 0;
+        if (canVote) {
+          return `<button type="button" class="poll-opt" data-poll="${poll.id}" data-opt="${o.id}">${esc(o.label)}</button>`;
+        }
+        return `<div class="poll-bar${poll.my_vote === o.id ? " mine" : ""}">` +
+          `<div class="fill" style="width:${pct}%"></div>` +
+          `<div class="lbl"><span>${esc(o.label)}</span><span>${pct}% · ${o.votes}</span></div></div>`;
+      }).join("");
+      const voters = poll.show_voters && poll.total_votes > 0
+        ? `<button type="button" class="btn btn-ghost btn-sm" data-voters="${poll.id}" style="margin-top:4px;">Who voted</button><div class="voter-list" id="voters-${poll.id}"></div>`
+        : "";
+      return `<div class="poll-card" id="poll-${poll.id}">
+        <h4>📊 ${esc(poll.question)}</h4>
+        <div class="closes">${esc(closesLabel(poll))} · ${poll.total_votes} vote${poll.total_votes === 1 ? "" : "s"}</div>
+        ${opts}${voters}
+      </div>`;
+    }
+
+    function mediaGridHtml(media) {
+      if (!media.length) return "";
+      const items = media.map((m) => {
+        if (m.kind === "photo") return `<div class="media-wrap"><img src="${esc(m.url)}" alt="Post photo" loading="lazy" /></div>`;
+        const badge = m.kind === "reel" ? `<span class="reel-badge">Reel</span>` : "";
+        return `<div class="media-wrap"><video src="${esc(m.url)}" controls preload="metadata" playsinline></video>${badge}</div>`;
+      }).join("");
+      return `<div class="media-grid${media.length > 1 ? " cols-2" : ""}">${items}</div>`;
+    }
+
+    function postHtml(p) {
+      const reacts = REACTS.map((r) => {
+        const n = (p.reactions && p.reactions.counts && p.reactions.counts[r.kind]) || 0;
+        const on = p.reactions && p.reactions.my_reaction === r.kind ? " on" : "";
+        return `<button type="button" class="react${on}" data-post="${p.id}" data-kind="${r.kind}">${r.icon} ${esc(r.label)}${n ? " " + n : ""}</button>`;
+      }).join("");
+      return `<article class="feed-post" id="post-${p.id}">
+        <div style="display:flex;gap:10px;align-items:center;">
+          <a href="${esc(p.author.profile_url || "/members")}" style="display:inline-flex;flex:none;text-decoration:none;" aria-label="${esc(p.author.display)}'s profile">${avatarHtml(p.author)}</a>
+          <div><a href="${esc(p.author.profile_url || "/members")}" style="font-size:14px;font-weight:700;color:inherit;text-decoration:none;">${esc(p.author.display)}</a><br /><span class="meta">${relTime(p.created_at)} · Members</span></div>
+          <button type="button" class="btn btn-ghost btn-sm" data-share="${p.id}" data-share-author="${esc(p.author.display)}" style="margin-left:auto;" aria-label="Share post">↗</button>
+        </div>
+        ${p.body ? `<p class="feed-body">${Brimwood.renderMentions(p.body)}</p>` : ""}
+        ${mediaGridHtml(p.media)}
+        ${p.poll ? pollCardHtml(p.poll) : ""}
+        <div class="reactbar">${reacts}</div>
+      </article>`;
+    }
+
+    function renderReels(posts) {
+      const reels = [];
+      posts.forEach((p) => (p.media || []).forEach((m) => {
+        if (m.kind === "reel") reels.push({ m, author: p.author });
+      }));
+      if (!reels.length) return;
+      $("reels-rail").style.display = "block";
+      const el = $("reels-list");
+      reels.forEach(({ m, author }) => {
+        if (el.querySelector(`[data-reel="${m.url}"]`)) return;
+        const card = document.createElement("div");
+        card.className = "reel-card";
+        card.dataset.reel = m.url;
+        card.innerHTML = `<video src="${esc(m.url)}" preload="metadata" muted playsinline></video><div class="cap">${esc(author.display)}</div>`;
+        card.addEventListener("mouseenter", () => card.querySelector("video").play().catch(() => {}));
+        card.addEventListener("mouseleave", () => card.querySelector("video").pause());
+        el.appendChild(card);
+      });
+    }
+
+    async function loadFeed(more) {
+      const url = "/api/feed?limit=15" + (more && cursor ? `&cursor=${encodeURIComponent(cursor)}` : "");
+      const r = await api(url);
+      if (!r.ok) throw 0;
+      const d = await r.json();
+      if (!more) $("feed-list").innerHTML = "";
+      $("feed-list").insertAdjacentHTML("beforeend", (d.posts || []).map(postHtml).join(""));
+      renderReels(d.posts || []);
+      cursor = d.next_cursor;
+      $("btn-more").style.display = cursor ? "" : "none";
+    }
+
+    /* --- Composer: uploads first, then posts with refs --- */
+
+    function videoDuration(file) {
+      return new Promise((resolve) => {
+        const url = URL.createObjectURL(file);
+        const v = document.createElement("video");
+        v.preload = "metadata";
+        v.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(v.duration || 0); };
+        v.onerror = () => { URL.revokeObjectURL(url); resolve(0); };
+        v.src = url;
+      });
+    }
+
+    async function handleFiles(files, isVideo) {
+      for (const f of files) {
+        if (attachments.length >= 4) { $("composer-hint").textContent = "Up to 4 photos or videos per post."; break; }
+        let durationS = "";
+        if (isVideo) durationS = String(await videoDuration(f));
+        const form = new FormData();
+        form.append("file", f);
+        if (durationS) form.append("duration_s", durationS);
+        $("composer-hint").textContent = "Uploading…";
+        try {
+          const r = await api("/api/media/upload", { method: "POST", body: form });
+          const d = await r.json();
+          if (!r.ok || !d.ok) throw new Error(d.error || "Upload failed.");
+          attachments.push({ key: d.key, url: d.url, kind: d.kind, width: null, height: null, duration_s: d.duration_s });
+          $("composer-hint").textContent = d.kind === "reel" ? "Added as a reel (≤ 90s)." : "";
+        } catch (e) {
+          $("composer-hint").textContent = e.message || "Upload failed.";
+        }
+        renderAttachments();
+      }
+    }
+
+    function renderAttachments() {
+      const el = $("attach-preview");
+      el.innerHTML = attachments.map((a, i) =>
+        `<div style="position:relative;width:84px;height:84px;border-radius:10px;overflow:hidden;background:#000;">` +
+        (a.kind === "photo"
+          ? `<img src="${esc(a.url)}" style="width:100%;height:100%;object-fit:cover;" />`
+          : `<video src="${esc(a.url)}" style="width:100%;height:100%;object-fit:cover;" muted></video>
+             <span class="reel-badge" style="font-size:10px;">${a.kind === "reel" ? "Reel" : "Video"}</span>`) +
+        `<button type="button" data-rm="${i}" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.6);color:#fff;border:0;border-radius:50%;width:22px;height:22px;cursor:pointer;">×</button></div>`
+      ).join("");
+      el.querySelectorAll("[data-rm]").forEach((b) =>
+        b.addEventListener("click", () => { attachments.splice(Number(b.dataset.rm), 1); renderAttachments(); })
+      );
+    }
+
+    function pollOptionsHtml() {
+      const wrap = $("poll-options");
+      const current = [...wrap.querySelectorAll("input")].map((i) => i.value);
+      const n = Math.min(4, Math.max(2, current.length || 2));
+      wrap.innerHTML = "";
+      for (let i = 0; i < n; i++) {
+        const inp = document.createElement("input");
+        inp.placeholder = `Option ${i + 1}`;
+        inp.maxLength = 60;
+        inp.value = current[i] || "";
+        inp.style.cssText = "font:inherit;font-size:14px;padding:8px 10px;border:1px solid rgba(18,26,22,0.14);border-radius:8px;";
+        wrap.appendChild(inp);
+      }
+      $("poll-add-option").style.display = n >= 4 ? "none" : "";
+    }
+
+    async function submitPost() {
+      if (posting) return;
+      const body = $("post-body").value.trim();
+      const pollOn = $("poll-builder").style.display !== "none";
+      let poll = null;
+      if (pollOn) {
+        const question = $("poll-question").value.trim();
+        const options = [...$("poll-options").querySelectorAll("input")].map((i) => i.value.trim()).filter(Boolean);
+        poll = {
+          question,
+          options,
+          duration: $("poll-duration").value,
+          show_voters: $("poll-show-voters").checked ? 1 : 0,
+        };
+      }
+      if (!body && !attachments.length && !pollOn) { $("composer-hint").textContent = "Write something, add media, or add a poll."; return; }
+      posting = true;
+      $("btn-post").disabled = true;
+      $("composer-hint").textContent = "Posting…";
+      try {
+        const r = await api("/api/posts", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            body,
+            media: attachments.map((a) => ({ key: a.key, width: a.width, height: a.height, duration_s: a.duration_s })),
+            ...(pollOn ? { poll } : {}),
+          }),
+        });
+        const d = await r.json();
+        if (!r.ok || !d.ok) throw new Error(d.error || "Could not post.");
+        $("post-body").value = "";
+        $("poll-question").value = "";
+        $("poll-builder").style.display = "none";
+        $("btn-poll").textContent = "📊 Poll";
+        attachments = [];
+        renderAttachments();
+        $("composer-hint").textContent = "";
+        cursor = null;
+        await loadFeed(false);
+      } catch (e) {
+        $("composer-hint").textContent = e.message || "Could not post.";
+      } finally {
+        posting = false;
+        $("btn-post").disabled = false;
+      }
+    }
+
+    /* --- Delegated events: voting, voters, reactions --- */
+
+    document.addEventListener("click", async (e) => {
+      const optBtn = e.target.closest(".poll-opt");
+      if (optBtn) {
+        optBtn.disabled = true;
+        try {
+          const r = await api(`/api/polls/${optBtn.dataset.poll}/vote`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ option_id: optBtn.dataset.opt }),
+          });
+          const d = await r.json();
+          if (!r.ok || !d.ok) throw new Error(d.error || "Vote failed.");
+          const res = await (await api(`/api/polls/${optBtn.dataset.poll}/results`)).json();
+          const card = $("poll-" + optBtn.dataset.poll);
+          if (card) {
+            const tmp = document.createElement("div");
+            tmp.innerHTML = pollCardHtml(res);
+            card.replaceWith(tmp.firstElementChild);
+          }
+        } catch (err) {
+          optBtn.disabled = false;
+        }
+        return;
+      }
+
+      const votersBtn = e.target.closest("[data-voters]");
+      if (votersBtn) {
+        const list = $("voters-" + votersBtn.dataset.voters);
+        if (list.dataset.loaded) { list.style.display = list.style.display === "none" ? "" : "none"; return; }
+        list.textContent = "Loading…";
+        try {
+          const d = await (await api(`/api/polls/${votersBtn.dataset.voters}/results`)).json();
+          const byOpt = {};
+          (d.voters || []).forEach((v) => { (byOpt[v.option_id] ||= []).push(v.voter); });
+          list.innerHTML = d.options.map((o) =>
+            `<div class="voter-row"><b>${esc(o.label)}:</b> ` +
+            ((byOpt[o.id] || []).map((v) => `<a href="${esc(v.profile_url || "/members")}" title="${esc(v.display)}" style="display:inline-flex;text-decoration:none;">${brimwoodAvatar({ src: v.avatar_url, name: v.display, size: 24 })}</a>`).join("") || "—") +
+            `</div>`
+          ).join("");
+          list.dataset.loaded = "1";
+        } catch { list.textContent = "Could not load voters."; }
+        return;
+      }
+
+      const reactBtn = e.target.closest(".react");
+      if (reactBtn) {
+        const postId = reactBtn.dataset.post, kind = reactBtn.dataset.kind;
+        try {
+          const r = await api(`/api/posts/${postId}/react`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ kind }),
+          });
+          const d = await r.json();
+          if (!r.ok || !d.ok) throw 0;
+          // Re-read the feed for exact counts — calm and honest, never guessed.
+          cursor = null;
+          await loadFeed(false);
+        } catch { /* keep calm, counts stay as they were */ }
+        return;
+      }
+      const shareBtn = e.target.closest("[data-share]");
+      if (shareBtn) {
+        const pid = shareBtn.dataset.share;
+        if (window.Brimwood && window.Brimwood.shareToDM) {
+          window.Brimwood.shareToDM({
+            title: `Post by ${shareBtn.dataset.shareAuthor || "a member"}`,
+            url: `https://brimwoodinnovation.com/hub/post/?id=${encodeURIComponent(pid)}`,
+            targetType: "post",
+            targetId: pid,
+          });
+        } else {
+          try { await navigator.clipboard.writeText(`https://brimwoodinnovation.com/hub/post/${encodeURIComponent(pid)}`); } catch {}
+        }
+        return;
+      }
+    });
+
+    /* --- Wire up the composer --- */
+
+    $("btn-photo").addEventListener("click", () => $("file-photo").click());
+    $("btn-video").addEventListener("click", () => $("file-video").click());
+    $("file-photo").addEventListener("change", (e) => { handleFiles(e.target.files, false); e.target.value = ""; });
+    $("file-video").addEventListener("change", (e) => { handleFiles(e.target.files, true); e.target.value = ""; });
+    $("btn-poll").addEventListener("click", () => {
+      const b = $("poll-builder");
+      const on = b.style.display !== "none";
+      b.style.display = on ? "none" : "block";
+      $("btn-poll").textContent = on ? "📊 Poll" : "✕ Remove poll";
+      if (!on) pollOptionsHtml();
+    });
+    $("poll-add-option").addEventListener("click", pollOptionsHtml);
+    $("btn-post").addEventListener("click", submitPost);
+    $("btn-more").addEventListener("click", () => loadFeed(true));
+
+    (async () => {
+      try {
+        await loadFeed(false);
+        try {
+          const me = await (await api("/api/profiles/me")).json();
+          if (me && me.ok && me.profile) {
+            $("composer-avatar").outerHTML =
+              '<span id="composer-avatar" style="display:inline-flex;flex:none;">' +
+              brimwoodAvatar({ src: me.profile.avatar_url, name: me.profile.display_name, size: 40 }) +
+              "</span>";
+          }
+        } catch {}
+        $("feed-loading").style.display = "none";
+        $("feed-home").style.display = "block";
+      } catch {
+        $("feed-loading").style.display = "none";
+        $("feed-login").style.display = "block";
+      }
+    })();
+  </script>
+</Base>

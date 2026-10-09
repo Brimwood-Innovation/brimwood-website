@@ -12,6 +12,7 @@ import { getAdminUser } from "../lib/auth";
 import type { Bindings } from "../index";
 import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 import { clientIp } from "../lib/validate";
+import { checkContent } from "../lib/editorial";
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -184,6 +185,13 @@ app.post("/commit", async (c) => {
     return c.json({ ok: false, error: "Content too large (max 500 KB)" }, 400);
   }
   if (!ghToken(c)) return c.json({ ok: false, error: "GitHub content token not configured" }, 500);
+  /* Editorial guardrails (server-side, same rules as Decap editorial.js):
+   * Canadian spelling, banned hype/income phrases, member anonymity, SEO,
+   * testimonial attribution. Studio must not bypass them. */
+  const editorialIssues = checkContent(path, content);
+  if (editorialIssues.length > 0) {
+    return c.json({ ok: false, error: "Editorial checks failed", issues: editorialIssues }, 422);
+  }
 
   try {
     // Fetch current SHA for updates (409-conflict-safe). 404 = new file.

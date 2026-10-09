@@ -1,4 +1,11 @@
 User-agent: *
 Allow: /
 
+# App and CMS routes are not public content.
+Disallow: /cms/
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /members/
+Disallow: /api/
+
 Sitemap: https://brimwoodinnovation.com/sitemap.xml
