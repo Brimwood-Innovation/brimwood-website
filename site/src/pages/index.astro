@@ -36,12 +36,13 @@ const heroLines = heroHeadline.split(/\.\s*/).filter(Boolean);
     <a class="btn" href={ctaLink}>{ctaText}</a>
     <div class="countdown">
       <div class="cd-lbl">Expected to launch</div>
-      <div class="cd-digits">
+      <div class="cd-digits" aria-hidden="true">
         <span><b id="cdD">00</b><i>days</i></span>
         <span><b id="cdH">00</b><i>hrs</i></span>
         <span><b id="cdM">00</b><i>min</i></span>
         <span><b id="cdS">00</b><i>sec</i></span>
       </div>
+      <p class="visually-hidden">Demo night: Friday, October 30, 2026, 7:00 p.m. local time.</p>
     </div>
   </div>
 
@@ -93,9 +94,9 @@ const heroLines = heroHeadline.split(/\.\s*/).filter(Boolean);
         <input type="text" name="website" id="fSite" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true" />
         <div class="cf-turnstile" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx" style="margin:16px 0;"></div>
         <button class="btn" type="submit">{ctaText}</button>
-        <p class="form-err" id="formErr" style="display:none">Something went wrong on our end. Please email <a href="mailto:info@brimwoodinnovation.com" style="color:#fff;text-decoration:underline">info@brimwoodinnovation.com</a> directly and we will take it from there.</p>
+        <p class="form-err" id="formErr" role="status" style="display:none">Something went wrong on our end. Please email <a href="mailto:info@brimwoodinnovation.com" style="color:#fff;text-decoration:underline">info@brimwoodinnovation.com</a> directly and we will take it from there.</p>
       </form>
-      <div class="thanks" id="thanksMsg">Thank you. Your introduction request is on its way &mdash; we read every one personally and will be in touch.</div>
+      <div class="thanks" id="thanksMsg" role="status">Thank you. Your introduction request is on its way &mdash; we read every one personally and will be in touch.</div>
     </div>
   </section>
   )}
@@ -110,7 +111,7 @@ const p2 = n => String(n).padStart(2, '0');
 function tick(){
   let diff = demoAt - new Date();
   if (diff < 0) diff = 0;
-  cdD.textContent = p2(Math.round(diff / 864e5));
+  cdD.textContent = p2(Math.floor(diff / 864e5));
   cdH.textContent = p2(Math.floor(diff / 36e5) % 24);
   cdM.textContent = p2(Math.floor(diff / 6e4) % 60);
   cdS.textContent = p2(Math.floor(diff / 1e3) % 60);
@@ -123,6 +124,7 @@ document.getElementById('introForm').addEventListener('submit', async function(e
   e.preventDefault();
   const v = id => document.getElementById(id).value.trim();
   const btn = this.querySelector('button[type=submit]');
+  const btnLabel = btn.textContent; // restore exactly what the CMS rendered
   const err = document.getElementById('formErr');
   err.style.display = 'none';
   btn.disabled = true;
@@ -149,7 +151,7 @@ document.getElementById('introForm').addEventListener('submit', async function(e
     document.getElementById('thanksMsg').style.display = 'block';
   } catch (ex) {
     btn.disabled = false;
-    btn.textContent = 'Request an introduction';
+    btn.textContent = btnLabel;
     err.style.display = 'block';
   }
 });

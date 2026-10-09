@@ -31,11 +31,12 @@ Thumbs.db
 *.swp
 .idea/
 
-# Duplicate root-level brand assets — byte-identical copies live in build/ (T1)
-apple-touch-icon.png
-favicon-16.png
-favicon-32.png
-favicon.svg
-logo-colour.svg
-logo-email.png
+# Duplicate root-level brand assets (retired with the old coming-soon build/ in F11).
+# The Astro site serves these from site/public/ — they must be committed.
+# apple-touch-icon.png
+# favicon-16.png
+# favicon-32.png
+# favicon.svg
+# logo-colour.svg
+# logo-email.png
 logo-reversed.svg
