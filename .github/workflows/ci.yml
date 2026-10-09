@@ -99,7 +99,14 @@ jobs:
           done
           curl -sf -o /dev/null http://127.0.0.1:4321/ || (cat /tmp/astro-preview.log && exit 1)
 
+      # The rc file's collect.url uses a ${PREVIEW_URL:-...} placeholder that
+      # LHCI does NOT expand (it passed the literal string → INVALID_URL on
+      # every run). Resolve the URL here and override via --collect.url.
+      # Budgets in .lighthouserc.json are untouched.
       - name: Run Lighthouse CI
-        run: lhci autorun
+        run: |
+          URL="${PREVIEW_URL:-http://127.0.0.1:4321/}"
+          echo "Lighthouse target: $URL"
+          lhci autorun --collect.url="$URL"
         env:
           PREVIEW_URL: ${{ vars.PREVIEW_URL }}

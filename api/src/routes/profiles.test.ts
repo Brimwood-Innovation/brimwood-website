@@ -291,4 +291,43 @@ describe("admin gates", () => {
     );
     expect(res.status).toBe(403);
   });
+  it("demoting an admin destroys their sessions immediately", async () => {
+    const env = mockEnv();
+    const h = adminSession(env, "admin-1");
+    // The demoted target has a live session.
+    const now = Date.now();
+    env.DB.sessionStore.set("sess:targetsession", {
+      user_id: "target-1",
+      role: "admin",
+      created_at: now,
+      expires_at: now + 86400000,
+    });
+    const res = await app.request(
+      "/admin/users/target-1",
+      { method: "PATCH", headers: { ...h, "content-type": "application/json" }, body: JSON.stringify({ role: "member" }) },
+      env as any
+    );
+    expect(res.status).toBe(200);
+    // Target's sessions are gone; the acting admin's session is untouched.
+    expect(env.DB.sessionStore.has("sess:targetsession")).toBe(false);
+    expect(env.DB.sessionStore.size).toBe(1);
+  });
+  it("suspending a user destroys their sessions immediately", async () => {
+    const env = mockEnv();
+    const h = adminSession(env, "admin-1");
+    const now = Date.now();
+    env.DB.sessionStore.set("sess:targetsession", {
+      user_id: "target-1",
+      role: "member",
+      created_at: now,
+      expires_at: now + 86400000,
+    });
+    const res = await app.request(
+      "/admin/users/target-1",
+      { method: "PATCH", headers: { ...h, "content-type": "application/json" }, body: JSON.stringify({ status: "suspended" }) },
+      env as any
+    );
+    expect(res.status).toBe(200);
+    expect(env.DB.sessionStore.has("sess:targetsession")).toBe(false);
+  });
 });

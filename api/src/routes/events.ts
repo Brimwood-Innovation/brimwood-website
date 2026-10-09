@@ -4,11 +4,10 @@
  * Wire in index.ts as: app.route("/api", events)
  */
 import { Hono } from "hono";
-import { getCookie } from "hono/cookie";
 import type { Bindings } from "../index";
 import { getAdminUser } from "../lib/auth";
 import { sendEmail, shell, esc, SITE } from "../lib/email";
-import { cleanStr, isEmail, clientIp } from "../lib/validate";
+import { cleanStr, isEmail, isRecord, clientIp } from "../lib/validate";
 import { verifyTurnstile } from "../lib/turnstile";
 import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 
@@ -37,8 +36,6 @@ async function audit(c: any, admin: { id: string; email: string }, action: strin
     .catch(() => {});
 }
 
-const NOW = "strftime('%Y-%m-%dT%H:%M:%fZ','now')";
-
 function slugify(s: string): string {
   return s
     .toLowerCase()
@@ -57,9 +54,11 @@ app.get("/events", async (c) => {
             (SELECT COALESCE(SUM(r.guests), 0) FROM event_rsvps r
               WHERE r.event_id = e.id AND r.status = 'confirmed') AS rsvp_count
      FROM events e
-     WHERE e.status = 'published' AND e.starts_at >= ${NOW}
+     WHERE e.status = 'published' AND e.starts_at >= ?
      ORDER BY e.starts_at ASC LIMIT 50`
-  ).all();
+  )
+    .bind(new Date().toISOString())
+    .all();
   return c.json({ ok: true, events: rows.results });
 });
 
@@ -87,18 +86,21 @@ app.get("/events/:slug", async (c) => {
 
 /** RSVP to an event. One RSVP per email; re-submitting updates it. */
 app.post("/events/:slug/rsvp", async (c) => {
-  const { DB, RATE_LIMIT_KV } = c.env;
+  const { DB } = c.env;
   const env = c.env as Env;
 
   if (!(await checkRateLimitD1(DB, "rsvp:" + clientIp(c.req.raw), 5, 3600))) {
     return c.json({ ok: false, error: "Too many requests. Please try again later." }, 429);
   }
 
-  let data: Record<string, unknown>;
+  let data: unknown;
   try {
     data = await c.req.json();
   } catch {
-    return c.json({ ok: false }, 400);
+    return c.json({ ok: false, error: "Invalid request." }, 400);
+  }
+  if (!isRecord(data)) {
+    return c.json({ ok: false, error: "Invalid request." }, 400);
   }
   if (cleanStr(data.website, 200)) {
     return c.json({ ok: true }); // honeypot: bot — pretend success
@@ -144,6 +146,14 @@ app.post("/events/:slug/rsvp", async (c) => {
     return c.json({ ok: false, error: "Sorry — this event is at capacity." }, 400);
   }
 
+  // Remember any existing RSVP so the post-write check below can restore it.
+  const prior = await DB.prepare(
+    "SELECT id, name, guests, status FROM event_rsvps WHERE event_id = ? AND email = ?"
+  )
+    .bind(ev.id, email)
+    .first<{ id: string; name: string; guests: number; status: string }>()
+    .catch(() => null);
+
   await DB.prepare(
     `INSERT INTO event_rsvps (id, event_id, name, email, guests, status)
      VALUES (?, ?, ?, ?, ?, 'confirmed')
@@ -152,6 +162,33 @@ app.post("/events/:slug/rsvp", async (c) => {
   )
     .bind(crypto.randomUUID(), ev.id, name, email, guests)
     .run();
+
+  // Post-write capacity verify: closes the check-then-insert race where two
+  // concurrent RSVPs both pass the check above. On oversell, restore the
+  // prior RSVP (or delete the new row) and reject.
+  if (ev.capacity) {
+    const total = await DB.prepare(
+      `SELECT COALESCE(SUM(guests), 0) AS n FROM event_rsvps
+       WHERE event_id = ? AND status = 'confirmed'`
+    )
+      .bind(ev.id)
+      .first<{ n: number }>()
+      .catch(() => null);
+    if (total && total.n > ev.capacity) {
+      if (prior) {
+        await DB.prepare("UPDATE event_rsvps SET name = ?, guests = ?, status = ? WHERE id = ?")
+          .bind(prior.name, prior.guests, prior.status, prior.id)
+          .run()
+          .catch(() => {});
+      } else {
+        await DB.prepare("DELETE FROM event_rsvps WHERE event_id = ? AND email = ?")
+          .bind(ev.id, email)
+          .run()
+          .catch(() => {});
+      }
+      return c.json({ ok: false, error: "Sorry — this event is at capacity." }, 400);
+    }
+  }
 
   // Confirmation email (best effort — RSVP is stored regardless).
   const resendKey = env.RESEND_API_KEY;
@@ -217,7 +254,9 @@ app.post("/admin/events", async (c) => {
   const no = needAdmin(c, admin);
   if (no) return no;
   const { DB } = c.env;
-  const data = await c.req.json().catch(() => ({}));
+  const raw = await c.req.json().catch(() => null);
+  if (!isRecord(raw)) return c.json({ ok: false, error: "Invalid request." }, 400);
+  const data = raw;
 
   const title = cleanStr(data.title, 200);
   if (!title) return c.json({ ok: false, error: "Title is required." }, 400);
@@ -244,7 +283,7 @@ app.post("/admin/events", async (c) => {
         title,
         cleanStr(data.description_md, 10000) || null,
         new Date(starts_at).toISOString(),
-        data.ends_at && !isNaN(Date.parse(data.ends_at)) ? new Date(data.ends_at).toISOString() : null,
+        data.ends_at && !isNaN(Date.parse(String(data.ends_at))) ? new Date(String(data.ends_at)).toISOString() : null,
         cleanStr(data.location, 200) || null,
         capacity,
         status
@@ -267,7 +306,9 @@ app.patch("/admin/events/:id", async (c) => {
   if (no) return no;
   const { DB } = c.env;
   const id = cleanStr(c.req.param("id"), 50);
-  const data = await c.req.json().catch(() => ({}));
+  const raw = await c.req.json().catch(() => null);
+  if (!isRecord(raw)) return c.json({ ok: false, error: "Invalid request." }, 400);
+  const data = raw;
 
   const fields: string[] = [];
   const vals: unknown[] = [];
@@ -287,10 +328,10 @@ app.patch("/admin/events/:id", async (c) => {
   }
   if (data.description_md !== undefined) set("description_md", cleanStr(data.description_md, 10000) || null);
   if (data.starts_at !== undefined) {
-    if (!data.starts_at || isNaN(Date.parse(data.starts_at))) {
+    if (!data.starts_at || isNaN(Date.parse(String(data.starts_at)))) {
       return c.json({ ok: false, error: "Invalid start date/time." }, 400);
     }
-    set("starts_at", new Date(data.starts_at).toISOString());
+    set("starts_at", new Date(String(data.starts_at)).toISOString());
   }
   if (data.ends_at !== undefined) {
     set("ends_at", data.ends_at && !isNaN(Date.parse(String(data.ends_at))) ? new Date(String(data.ends_at)).toISOString() : null);
@@ -343,6 +384,19 @@ app.get("/admin/events/:id/rsvps", async (c) => {
     .bind(id)
     .first<{ n: number }>();
   return c.json({ ok: true, rsvps: rows.results, total_guests: total?.n || 0 });
+});
+
+/** Delete an event (RSVPs cascade). */
+app.delete("/admin/events/:id", async (c) => {
+  const admin = await getAdminUser(c);
+  const no = needAdmin(c, admin);
+  if (no) return no;
+  const { DB } = c.env;
+  const id = cleanStr(c.req.param("id"), 50);
+  const res = await DB.prepare("DELETE FROM events WHERE id = ?").bind(id).run();
+  if (!res.meta.changes) return c.json({ ok: false, error: "Event not found." }, 404);
+  await audit(c, admin!, "event.delete", id);
+  return c.json({ ok: true });
 });
 
 export default app;
