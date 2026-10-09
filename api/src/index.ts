@@ -54,18 +54,34 @@ app.use("*", async (c, next) => {
   c.header("x-frame-options", "DENY");
   c.header("referrer-policy", "strict-origin-when-cross-origin");
   c.header("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=()");
+  /* Hardening: HSTS on API responses too — the worker is called directly at
+   * its workers.dev origin, which site _headers never covers. */
+  c.header("strict-transport-security", "max-age=31536000; includeSubDomains");
 });
 
 app.use("*", async (c, next) => {
   const origin = c.req.header("origin");
   // Exact allowlist plus any branch deploy of the project's own preview site
   // (e.g. https://fix-f3-same-origin.brimwood-website-preview.pages.dev).
-  const allowed =
-    origin &&
+  const isAllowlisted =
+    !!origin &&
     (ALLOWED_ORIGINS.includes(origin) ||
-      /^https:\/\/[a-z0-9-]+\.brimwood-website-preview\.pages\.dev$/.test(origin))
-      ? origin
-      : "";
+      /^https:\/\/[a-z0-9-]+\.brimwood-website-preview\.pages\.dev$/.test(origin));
+  // Hardening: http:// origins (local dev servers) are only ever reflected
+  // when this worker is NOT serving production traffic. On the production API
+  // hostname they are never trusted, so a process listening on localhost on a
+  // victim's machine cannot make credentialed cross-origin reads of the API.
+  // If the API later gains a custom-domain route, add its hostname here.
+  const PROD_API_HOSTS = ["brimwood-api.adamsayani.workers.dev"];
+  let apiHost = "";
+  try {
+    apiHost = new URL(c.req.url).hostname;
+  } catch {
+    apiHost = "";
+  }
+  const httpOk = !PROD_API_HOSTS.includes(apiHost);
+  const isHttp = !!origin && origin.startsWith("http://");
+  const allowed = isAllowlisted && (!isHttp || httpOk) ? (origin as string) : "";
   if (c.req.method === "OPTIONS") {
     return new Response(null, {
       status: 204,

@@ -183,15 +183,9 @@ app.post("/redeem-invite", async (c) => {
     pwSetAt = new Date().toISOString();
   }
 
-  // Check for existing user.
-  const existing = await DB.prepare("SELECT id FROM users WHERE email = ?")
-    .bind(email)
-    .first<{ id: string }>();
-  if (existing) {
-    return c.json({ ok: false, error: "This email is already registered. Please sign in." }, 400);
-  }
-
-  // Validate the invite code.
+  // Validate the invite code FIRST (hardening: the code gate stands before any
+  // email-dependent branch, so this endpoint cannot be used to probe whether
+  // an email is registered — the magic-code endpoint already behaves this way).
   const invite = await DB.prepare(
     `SELECT id, code, max_uses, uses, expires_at FROM invite_codes WHERE code = ?`
   )
@@ -203,23 +197,48 @@ app.post("/redeem-invite", async (c) => {
   if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
     return c.json({ ok: false, error: "This invite code has expired." }, 400);
   }
-  if (invite.uses >= invite.max_uses) {
-    return c.json({ ok: false, error: "This invite code has already been used." }, 400);
+
+  // Existing-user check comes after code validation, with a message that does
+  // not confirm registration.
+  const existing = await DB.prepare("SELECT id FROM users WHERE email = ?")
+    .bind(email)
+    .first<{ id: string }>();
+  if (existing) {
+    return c.json({ ok: false, error: "This invite can't be used with that email — try signing in." }, 400);
+  }
+
+  // Consume one use of the invite code ATOMICALLY (hardening: closes the
+  // double-spend race where two concurrent redeems both passed the
+  // check-then-act `uses < max_uses` test). The conditional UPDATE is a single
+  // statement, so concurrent requests serialize on it: exactly max_uses win.
+  const consumed = await DB.prepare(
+    "UPDATE invite_codes SET uses = uses + 1 WHERE id = ? AND uses < max_uses"
+  )
+    .bind(invite.id)
+    .run();
+  if ((consumed.meta.changes ?? 0) === 0) {
+    return c.json({ ok: false, error: "This invite code has already been used." }, 409);
   }
 
   // Create the user (password columns exist after migration 0009).
   const userId = crypto.randomUUID();
-  await DB.prepare(
-    `INSERT INTO users (id, email, name, role, status, password_hash, password_salt, password_set_at)
-     VALUES (?, ?, ?, 'member', 'active', ?, ?, ?)`
-  )
-    .bind(userId, email, name, pwHash, pwSalt, pwSetAt)
-    .run();
-
-  // Consume one use of the invite code.
-  await DB.prepare("UPDATE invite_codes SET uses = uses + 1 WHERE id = ?")
-    .bind(invite.id)
-    .run();
+  try {
+    await DB.prepare(
+      `INSERT INTO users (id, email, name, role, status, password_hash, password_salt, password_set_at)
+       VALUES (?, ?, ?, 'member', 'active', ?, ?, ?)`
+    )
+      .bind(userId, email, name, pwHash, pwSalt, pwSetAt)
+      .run();
+  } catch (e) {
+    // Compensation: the use was consumed but no user was created (e.g. a
+    // concurrent registration won the email). Give the use back so the invite
+    // is not burned by our failure.
+    await DB.prepare("UPDATE invite_codes SET uses = uses - 1 WHERE id = ?")
+      .bind(invite.id)
+      .run()
+      .catch(() => {});
+    throw e;
+  }
 
   // Audit log.
   await DB.prepare(
