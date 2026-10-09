@@ -46,6 +46,7 @@ function slugify(s: string): string {
 /** Manual constant-time string compare — see lib/safe-equal.ts. */
 import { safeEqual } from "../lib/safe-equal";
 import { getAdminUser } from "../lib/auth";
+import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 
 async function authorized(
   c: any
@@ -73,6 +74,10 @@ app.post("/courses", async (c) => {
   if (!auth.ok) return c.json({ ok: false, error: "Not authorized" }, 403);
 
   const { DB } = c.env;
+  /* Rate-limit like every other mutation endpoint (60/hr per actor). */
+  if (!(await checkRateLimitD1(DB, "sync:" + auth.actor, 60, 3600))) {
+    return c.json({ ok: false, error: "Too many requests" }, 429);
+  }
   let data: any;
   try {
     data = await c.req.json();
