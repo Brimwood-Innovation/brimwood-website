@@ -1,8 +1,11 @@
 ---
 /* Public member profile by username handle (Phase D2): /@username.
  * Prerendered at build time for proper OG tags (shareable).
- * Only show_profile=1 AND status='active' are generated. */
+ * Only show_profile=1 AND status='active' are generated. Fields are filtered
+ * server-side by the API's per-field visibility; the page renders sections
+ * (About, Hobbies, Achievements, Education, Milestones) for whatever arrives. */
 import Base from "../layouts/Base.astro";
+import ProfileView from "../components/ProfileView.astro";
 
 export async function getStaticPaths() {
   const apiBase = import.meta.env.PUBLIC_API_BASE || "";
@@ -38,46 +41,6 @@ const ogImage = profile.avatar_url
 ---
 
 <Base title={ogTitle} description={ogDesc} path={`/@${username}`} image={ogImage}>
-  <section class="block" style="text-align:center;max-width:640px;margin-inline:auto;" id="profileSection" data-profile-key={username} data-api-base={apiBase}>
-    {profile.avatar_url && (
-      <img id="uAvatar" src={profile.avatar_url} alt={`${profile.display_name}'s avatar`} style="width:120px;height:120px;border-radius:50%;object-fit:cover;margin:0 auto 20px;" />
-    )}
-    <div class="kicker">Member</div>
-    <h1 class="sec" id="uName" style="font-size:clamp(30px,5vw,48px);">{profile.display_name}</h1>
-    {profile.username && <p class="admin-muted">@{profile.username}</p>}
-    {profile.member_since && <p class="sec-lede" id="uSince" style="margin-inline:auto;">Member since {profile.member_since}</p>}
-    {profile.bio && <p id="uBio" style="margin-top:20px;line-height:1.7;text-align:left;">{profile.bio}</p>}
-
-    {(profile.location || profile.website || profile.hobbies || Object.keys(profile.social_links || {}).length > 0) && (
-      <div style="margin-top:24px;text-align:left;">
-        {profile.location && <p>📍 {profile.location}</p>}
-        {profile.website && <p>🔗 <a href={profile.website} rel="noopener" target="_blank">{profile.website.replace(/^https?:\/\//, "")}</a></p>}
-        {profile.hobbies && <p>✨ {profile.hobbies}</p>}
-        {Object.keys(profile.social_links || {}).length > 0 && (
-          <p>{Object.entries(profile.social_links).map(([k, v]) => (
-            <a href={v as string} target="_blank" rel="noopener" class="btn btn-ghost small" style="margin:0 8px 8px 0;">{k} →</a>
-          ))}</p>
-        )}
-      </div>
-    )}
-
-    {profile.work_history?.length > 0 && (
-      <div style="margin-top:32px;text-align:left;">
-        <div class="kicker">Work</div>
-        {profile.work_history.map((w: any) => (
-          <p><strong>{w.title}</strong>{w.company && <> · {w.company}</>}{w.period && <span class="admin-muted"> ({w.period})</span>}</p>
-        ))}
-      </div>
-    )}
-    {profile.education?.length > 0 && (
-      <div style="margin-top:32px;text-align:left;">
-        <div class="kicker">Education</div>
-        {profile.education.map((e: any) => (
-          <p><strong>{e.school}</strong>{e.degree && <> · {e.degree}</>}{e.period && <span class="admin-muted"> ({e.period})</span>}</p>
-        ))}
-      </div>
-    )}
-  </section>
-
-  <script is:inline src="/js/profile-refresh.js"></script>
+  <ProfileView profile={profile} profileKey={username} apiBase={apiBase} />
+  <script is:inline src="/js/profile-actions.js"></script>
 </Base>
