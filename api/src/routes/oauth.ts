@@ -23,6 +23,7 @@
  */
 import { Hono } from "hono";
 import { getSignedCookie, setSignedCookie, deleteCookie } from "hono/cookie";
+import { safeEqual } from "../lib/safe-equal";
 import type { Bindings } from "../index";
 
 const app = new Hono<{ Bindings: Bindings & { GITHUB_CLIENT_ID?: string; GITHUB_CLIENT_SECRET?: string } }>();
@@ -44,6 +45,22 @@ function randomState(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/* PKCE (RFC 7636, S256): the verifier lives only in the signed state
+ * cookie; the challenge goes to GitHub. Even if the authorization code
+ * leaked, it cannot be exchanged without the verifier. */
+function randomVerifier(): string {
+  const bytes = new Uint8Array(64);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function s256Challenge(verifier: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  let bin = "";
+  new Uint8Array(digest).forEach((b) => (bin += String.fromCharCode(b)));
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 /** Extract a validated CMS origin from the Referer header, or null. */
@@ -74,11 +91,13 @@ app.get("/auth", async (c) => {
   if (!clientId) return c.json({ ok: false, error: "OAuth not configured" }, 500);
 
   const state = randomState();
+  const verifier = randomVerifier();
+  const challenge = await s256Challenge(verifier);
   // Remember which origin opened the popup so the token postMessage in
   // /callback targets exactly that origin. Falls back to SITE_URL.
   const fallback = (c.env.SITE_URL || "https://brimwood-website-preview.pages.dev").replace(/\/$/, "");
   const origin = cmsOriginFromReferer(c) || fallback;
-  const cookieValue = JSON.stringify({ state, origin });
+  const cookieValue = JSON.stringify({ state, origin, verifier });
   // Signed cookie so the callback can verify the state wasn't tampered with.
   // SESSION_SECRET is the signing key. Fail closed if unset — never fall back
   // to a hardcoded key (M3).
@@ -96,6 +115,8 @@ app.get("/auth", async (c) => {
     client_id: clientId,
     scope: "public_repo", // repo is public; least privilege
     state,
+    code_challenge: challenge,
+    code_challenge_method: "S256",
     redirect_uri: "https://brimwood-api.adamsayani.workers.dev/api/oauth/callback",
   });
   const githubUrl = GITHUB_AUTH + "?" + params.toString();
@@ -151,7 +172,7 @@ app.get("/auth", async (c) => {
 app.get("/callback", async (c) => {
   const { GITHUB_CLIENT_ID: clientId, GITHUB_CLIENT_SECRET: clientSecret } = c.env;
   if (!clientId || !clientSecret) {
-    return new Response("OAuth not configured", { status: 500 });
+    return c.text("OAuth not configured", 500);
   }
 
   const code = c.req.query("code");
@@ -159,22 +180,29 @@ app.get("/callback", async (c) => {
   // Fail closed if the signing key is unset (M3) — never verify with a default.
   const signingKey = c.env.SESSION_SECRET;
   if (!signingKey) {
-    return new Response("OAuth not configured", { status: 500 });
+    return c.text("OAuth not configured", 500);
   }
   const storedRaw = await getSignedCookie(c, signingKey, STATE_COOKIE);
 
-  // Clear the state cookie regardless of outcome (single use).
+  // Clear the state cookie regardless of outcome (single use). NOTE: the
+  // responses below MUST go through c.text()/c.html() — returning a raw
+  // Response would discard this staged Set-Cookie header (same trap as the
+  // setSignedCookie note in /auth above).
   deleteCookie(c, STATE_COOKIE, { path: "/api/oauth" });
 
-  if (!code) return new Response("Missing code", { status: 400 });
-  let stored: { state?: string; origin?: string | null } = {};
+  if (!code) return c.text("Missing code", 400);
+  let stored: { state?: string; origin?: string | null; verifier?: string } = {};
   try {
     stored = storedRaw ? JSON.parse(storedRaw) : {};
   } catch {
     stored = {};
   }
-  if (!returnedState || !stored.state || returnedState !== stored.state) {
-    return new Response("Invalid state — possible CSRF. Please try signing in again.", { status: 403 });
+  // Constant-time state compare (house rule: never === on secrets).
+  if (!returnedState || !stored.state || !safeEqual(returnedState, stored.state)) {
+    return c.text("Invalid state — possible CSRF. Please try signing in again.", 403);
+  }
+  if (!stored.verifier) {
+    return c.text("Invalid state — please try signing in again.", 403);
   }
 
   const tokenRes = await fetch(GITHUB_TOKEN, {
@@ -187,11 +215,12 @@ app.get("/callback", async (c) => {
       client_id: clientId,
       client_secret: clientSecret,
       code,
+      code_verifier: stored.verifier,
     }),
   });
   const tokenData = (await tokenRes.json()) as { access_token?: string; error?: string };
   if (!tokenData.access_token) {
-    return new Response("Token exchange failed: " + (tokenData.error || "unknown"), { status: 400 });
+    return c.text("Token exchange failed: " + (tokenData.error || "unknown"), 400);
   }
 
   // Decap expects a postMessage with the token. Target the exact origin that

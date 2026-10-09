@@ -14,7 +14,8 @@ import { sendEmail, shell, button, esc, SITE } from "../lib/email";
 import { cleanStr, isEmail, clientIp, sha256Hex } from "../lib/validate";
 import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 import { hashPassword, verifyPassword, validatePassword } from "../lib/password";
-import { setSessionCookie, createSession, readSession, destroyUserSessions } from "../lib/auth";
+import { setSessionCookie, createSession, readSession, destroyUserSessions, destroyOtherUserSessions, hashToken, COOKIE } from "../lib/auth";
+import { getCookie } from "hono/cookie";
 
 type Env = Bindings & {
   RESEND_API_KEY?: string;
@@ -25,6 +26,23 @@ const app = new Hono<{ Bindings: Env }>();
 const RESET_TTL_MIN = 30;
 
 const GENERIC_FAIL = "Invalid email or password.";
+
+/* Timing-equalization padding for the login failure paths. A real password
+ * verification burns ~600k PBKDF2 iterations; without padding, unknown-email
+ * / suspended / no-password failures return much faster than wrong-password
+ * failures, letting an attacker distinguish registered emails by timing.
+ * The dummy values below are NOT secrets — they exist only to burn the same
+ * CPU cost as a real verification. */
+const DUMMY_SALT_HEX = [...crypto.getRandomValues(new Uint8Array(32))]
+  .map((b) => b.toString(16).padStart(2, "0"))
+  .join("");
+const DUMMY_HASH_HEX = "f".repeat(64);
+
+/** Burn one PBKDF2 verification's worth of CPU. Call on every login failure
+ * path that skips the real verifyPassword, before returning GENERIC_FAIL. */
+async function burnDummyVerify(): Promise<void> {
+  await verifyPassword("dummy-password-for-timing", DUMMY_SALT_HEX, DUMMY_HASH_HEX);
+}
 
 /** Resolve the current session from the cookie, or null. */
 async function sessionUser(c: any) {
@@ -73,6 +91,7 @@ app.post("/login", async (c) => {
   const email = cleanStr(data.email, 200).toLowerCase();
   const password = typeof data.password === "string" ? data.password : "";
   if (!isEmail(email) || !password) {
+    await burnDummyVerify();
     return c.json({ ok: false, error: GENERIC_FAIL }, 401);
   }
 
@@ -93,8 +112,11 @@ app.post("/login", async (c) => {
       password_hash: string | null;
       password_salt: string | null;
     }>();
-  // Unknown email, suspended account, or no password set → identical response.
+  // Unknown email, suspended account, or no password set → identical
+  // response AND identical timing: burn a dummy PBKDF2 verify so response
+  // times don't reveal whether the email is registered.
   if (!user || user.status !== "active" || !user.password_hash || !user.password_salt) {
+    await burnDummyVerify();
     return c.json({ ok: false, error: GENERIC_FAIL }, 401);
   }
 
@@ -184,6 +206,14 @@ app.post("/password/change", async (c) => {
   )
     .bind(hash, salt, now, now, user.id)
     .run();
+  // A password change kicks every OTHER session: the changer stays signed
+  // in, but anything else using the old credential is invalidated.
+  const currentToken = getCookie(c, COOKIE);
+  if (currentToken) {
+    await destroyOtherUserSessions(c.env, user.id, await hashToken(currentToken));
+  } else {
+    await destroyUserSessions(c.env, user.id);
+  }
   await audit(DB, user.id, "password.change", "Password changed");
   return c.json({ ok: true });
 });
@@ -202,6 +232,14 @@ app.post("/password/reset/request", async (c) => {
   if (!data) return c.json({ ok: false }, 400);
   const email = cleanStr(data.email, 200).toLowerCase();
 
+  // Per-email throttle (inbox-bombing defence): respond ok either way so the
+  // throttle itself doesn't reveal anything.
+  if (isEmail(email)) {
+    if (!(await checkRateLimitD1(DB, "pwreset:email:" + email, 3, 3600))) {
+      return c.json({ ok: true });
+    }
+  }
+
   // Always respond ok — never reveal whether the email exists.
   if (isEmail(email) && resendKey) {
     const user = await DB.prepare(
@@ -210,6 +248,13 @@ app.post("/password/reset/request", async (c) => {
       .bind(email)
       .first<{ id: string; name: string }>();
     if (user) {
+      // Invalidate previously issued, still-unused tokens: only one live
+      // reset link per user at a time.
+      await DB.prepare(
+        "DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL"
+      )
+        .bind(user.id)
+        .run();
       const rawToken = toHexToken();
       const tokenHash = await sha256Hex("pwreset:" + rawToken);
       const expiresAt = new Date(Date.now() + RESET_TTL_MIN * 60 * 1000).toISOString();

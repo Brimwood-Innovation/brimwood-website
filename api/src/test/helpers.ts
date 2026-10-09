@@ -81,6 +81,11 @@ export function mockD1(handler: SqlHandler | null = null): MockD1 {
               // Built-in sessions DELETE (F9): destroySession / destroyUserSessions / prune.
               if (/^\s*delete\s+from\s+sessions/i.test(sql)) {
                 if (/where\s+key\s*=\s*\?/i.test(sql)) db.sessionStore.delete(params[0] as string);
+                else if (/where\s+user_id\s*=\s*\?\s+and\s+key\s*!=\s*\?/i.test(sql)) {
+                  // destroyOtherUserSessions: keep the current session.
+                  for (const [k, v] of db.sessionStore)
+                    if (v.user_id === params[0] && k !== params[1]) db.sessionStore.delete(k);
+                }
                 else if (/where\s+user_id\s*=\s*\?/i.test(sql)) {
                   for (const [k, v] of db.sessionStore) if (v.user_id === params[0]) db.sessionStore.delete(k);
                 } else if (/where\s+expires_at\s*</i.test(sql)) {
@@ -122,6 +127,27 @@ export function mockD1(handler: SqlHandler | null = null): MockD1 {
               if (/from\s+sessions/i.test(sql)) {
                 const s = db.sessionStore.get(params[0] as string);
                 if (s && s.expires_at > Date.now()) {
+                  if (/join\s+users/i.test(sql)) {
+                    // readSession JOINs users: enforce status='active' and
+                    // return the live role. Resolved through the programmable
+                    // handler like a real D1 users lookup.
+                    const u = db.handler
+                      ? (db.handler("SELECT id, role, status FROM users WHERE id = ?", [
+                          s.user_id,
+                        ]) as { row?: any } | void)
+                      : undefined;
+                    const row = u?.row;
+                    if (!row) return null as T;
+                    // Test doubles without a status column are treated as
+                    // active (real D1 has status NOT NULL); an explicit
+                    // non-'active' status blocks the session.
+                    if (row.status !== undefined && row.status !== "active") return null as T;
+                    return {
+                      user_id: s.user_id,
+                      role: row.role ?? s.role,
+                      created_at: s.created_at,
+                    } as T;
+                  }
                   return { user_id: s.user_id, role: s.role, created_at: s.created_at } as T;
                 }
                 return null as T;
@@ -244,6 +270,16 @@ export function memberSession(env: MockEnv, userId = "member-1") {
   const key = "sess:1f01ccd79fa83611b7efefef57e9f6fca2f70f5fa6f3fb943c6bf7733dccaea4";
   const now = Date.now();
   env.DB.sessionStore.set(key, { user_id: userId, role: "member", created_at: now, expires_at: now + 30 * 24 * 3600 * 1000 });
+  // Default users row: readSession JOINs users, so the mock must resolve an
+  // active user. Earlier (more specific) handlers take precedence; this is
+  // only the fallback.
+  const prev = env.DB.handler;
+  env.DB.handler = (sql, params) => {
+    const r = prev?.(sql, params) as { row?: unknown } | void;
+    if (r && (r as { row?: unknown }).row !== undefined) return r;
+    if (/from\s+users/i.test(sql)) return { row: { id: userId, role: "member", status: "active" } };
+    return r;
+  };
   return { Cookie: "__Host-brimwood-sess=tok-member" };
 }
 

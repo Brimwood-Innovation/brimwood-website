@@ -7,16 +7,18 @@
  *                                         full lessons require a session
  */
 import { Hono } from "hono";
-import { readSession } from "../lib/auth";
+import { readSession, isAdminUser } from "../lib/auth";
 import type { Bindings } from "../index";
 
 const app = new Hono<{ Bindings: Bindings }>();
 
 
-/** Return the session's user, or null. */
-async function sessionUser(c: any): Promise<{ id: string; role: string } | null> {
+/** Return the session's user id, or null. Role is intentionally NOT cached
+ * here — authorization checks re-read it from D1 via isAdminUser so a
+ * demoted admin loses access on the next request. */
+async function sessionUserId(c: any): Promise<string | null> {
   const s = await readSession(c);
-  return s && s.userId ? { id: s.userId, role: s.role } : null;
+  return s && s.userId ? s.userId : null;
 }
 
 /** List published courses. Public. */
@@ -79,14 +81,15 @@ app.get("/lessons/:id", async (c) => {
   if (!lesson) return c.json({ ok: false, error: "Not found" }, 404);
 
   if (!lesson.is_preview) {
-    const user = await sessionUser(c);
-    if (!user) return c.json({ ok: false, error: "Members only" }, 401);
-    // Members-only course: must be enrolled (or admin).
-    if (user.role !== "admin") {
+    const userId = await sessionUserId(c);
+    if (!userId) return c.json({ ok: false, error: "Members only" }, 401);
+    // Members-only course: must be enrolled (or admin). The admin check
+    // re-reads the role from D1 — never trust the cached session role.
+    if (!(await isAdminUser(c, userId))) {
       const enr = await DB.prepare(
         "SELECT id FROM enrollments WHERE user_id = ? AND course_id = ?"
       )
-        .bind(user.id, lesson.course_id)
+        .bind(userId, lesson.course_id)
         .first();
       if (!enr) return c.json({ ok: false, error: "Enrolment required" }, 403);
     }

@@ -27,6 +27,40 @@ function codeKey(email: string) {
   return sha256Hex("authcode:" + email.toLowerCase());
 }
 
+/** Cryptographically secure 6-digit code via rejection sampling (no modulo
+ * bias: 2^32 is not a multiple of 900000, so `rand % 900000` would favour
+ * some codes slightly). */
+function randomSixDigit(): string {
+  const range = 900000;
+  const limit = Math.floor(0x100000000 / range) * range;
+  let rand: number;
+  do {
+    rand = crypto.getRandomValues(new Uint32Array(1))[0];
+  } while (rand >= limit);
+  return String(100000 + (rand % range));
+}
+
+/** Store a magic-code record: code hash + attempt counter + strict expiry.
+ * expiresAt (ms epoch) is enforced on verify; the KV TTL is only a backstop
+ * so a failed-attempt re-put can never extend the code's life. */
+async function storeCode(
+  kv: KVNamespace,
+  email: string,
+  code: string
+): Promise<void> {
+  const key = "authcode:" + (await codeKey(email));
+  await kv.put(
+    key,
+    JSON.stringify({
+      email,
+      codeHash: await sha256Hex("code:" + code),
+      attempts: 0,
+      expiresAt: Date.now() + CODE_TTL * 1000,
+    }),
+    { expirationTtl: CODE_TTL }
+  );
+}
+
 app.post("/request-code", async (c) => {
   const { DB, SESSIONS_KV } = c.env;
   const resendKey = c.env.RESEND_API_KEY;
@@ -46,6 +80,11 @@ app.post("/request-code", async (c) => {
   const email = cleanStr(data.email, 200).toLowerCase();
   if (!isEmail(email)) return c.json({ ok: true }); // never reveal validity
 
+  // Per-email throttle (inbox-bombing defence): pretend success either way.
+  if (!(await checkRateLimitD1(DB, "authreq:email:" + email, 5, 3600))) {
+    return c.json({ ok: true });
+  }
+
   const user = await DB.prepare(
     "SELECT id, name FROM users WHERE email = ? AND status = 'active'"
   )
@@ -56,18 +95,8 @@ app.post("/request-code", async (c) => {
   if (!user) return c.json({ ok: true });
 
   // Cryptographically secure 6-digit code.
-  const rand = crypto.getRandomValues(new Uint32Array(1))[0];
-  const code = String(100000 + (rand % 900000));
-  const key = await codeKey(email);
-  await SESSIONS_KV.put(
-    "authcode:" + key,
-    JSON.stringify({
-      email,
-      codeHash: await sha256Hex("code:" + code),
-      attempts: 0,
-    }),
-    { expirationTtl: CODE_TTL }
-  );
+  const code = randomSixDigit();
+  await storeCode(SESSIONS_KV, email, code);
 
   await sendEmail(resendKey, {
     to: email,
@@ -113,7 +142,18 @@ app.post("/verify-code", async (c) => {
   const raw = await SESSIONS_KV.get(kvKey);
   if (!raw) return c.json({ ok: false, error: "Code expired. Request a new one." }, 401);
 
-  const rec = JSON.parse(raw) as { email: string; codeHash: string; attempts: number };
+  const rec = JSON.parse(raw) as {
+    email: string;
+    codeHash: string;
+    attempts: number;
+    expiresAt?: number;
+  };
+  // Strict expiry from the record itself: failed attempts re-put the record,
+  // and must never extend the code's life via a fresh KV TTL.
+  if (typeof rec.expiresAt === "number" && Date.now() > rec.expiresAt) {
+    await SESSIONS_KV.delete(kvKey);
+    return c.json({ ok: false, error: "Code expired. Request a new one." }, 401);
+  }
   if (rec.attempts >= MAX_ATTEMPTS) {
     await SESSIONS_KV.delete(kvKey);
     return c.json({ ok: false, error: "Too many attempts. Request a new code." }, 401);
@@ -121,7 +161,12 @@ app.post("/verify-code", async (c) => {
   const ok = safeEqual(await sha256Hex("code:" + code), rec.codeHash);
   if (!ok) {
     rec.attempts += 1;
-    await SESSIONS_KV.put(kvKey, JSON.stringify(rec), { expirationTtl: CODE_TTL });
+    // Preserve the original expiry — do not refresh the KV TTL.
+    const ttl = Math.max(
+      1,
+      Math.ceil(((rec.expiresAt ?? Date.now() + CODE_TTL * 1000) - Date.now()) / 1000)
+    );
+    await SESSIONS_KV.put(kvKey, JSON.stringify(rec), { expirationTtl: ttl });
     return c.json({ ok: false, error: "Invalid code." }, 401);
   }
 
@@ -203,7 +248,18 @@ app.post("/redeem-invite", async (c) => {
   if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
     return c.json({ ok: false, error: "This invite code has expired." }, 400);
   }
-  if (invite.uses >= invite.max_uses) {
+
+  // Atomically consume one use BEFORE creating the user. The UPDATE only
+  // applies when uses < max_uses, and D1 executes it as a single statement,
+  // so concurrent redemptions of a single-use code cannot both succeed
+  // (the old check-then-increment had a race here). The changes count is
+  // the authority — not the SELECT above, which may be stale.
+  const consumed = await DB.prepare(
+    "UPDATE invite_codes SET uses = uses + 1 WHERE id = ? AND uses < max_uses"
+  )
+    .bind(invite.id)
+    .run();
+  if ((consumed.meta.changes ?? 0) === 0) {
     return c.json({ ok: false, error: "This invite code has already been used." }, 400);
   }
 
@@ -214,11 +270,6 @@ app.post("/redeem-invite", async (c) => {
      VALUES (?, ?, ?, 'member', 'active', ?, ?, ?)`
   )
     .bind(userId, email, name, pwHash, pwSalt, pwSetAt)
-    .run();
-
-  // Consume one use of the invite code.
-  await DB.prepare("UPDATE invite_codes SET uses = uses + 1 WHERE id = ?")
-    .bind(invite.id)
     .run();
 
   // Audit log.
@@ -232,19 +283,8 @@ app.post("/redeem-invite", async (c) => {
   // Send a magic sign-in code so they can sign in immediately.
   const resendKey = (c.env as Env).RESEND_API_KEY;
   if (resendKey) {
-    const rand = new Uint32Array(1);
-    crypto.getRandomValues(rand);
-    const magicCode = String(100000 + (rand[0] % 900000));
-    const key = await codeKey(email);
-    await c.env.SESSIONS_KV.put(
-      "authcode:" + key,
-      JSON.stringify({
-        email,
-        codeHash: await sha256Hex("code:" + magicCode),
-        attempts: 0,
-      }),
-      { expirationTtl: CODE_TTL }
-    );
+    const magicCode = randomSixDigit();
+    await storeCode(c.env.SESSIONS_KV, email, magicCode);
     const html = shell(
       "Your Brimwood sign-in code",
       "Welcome to Brimwood.",
