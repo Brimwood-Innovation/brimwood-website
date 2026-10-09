@@ -113,6 +113,9 @@ export async function sendEmail(
       "content-type": "application/json",
     },
     body: JSON.stringify(payload),
+    // Bound the outbound call: a hung Resend request must not hold a worker
+    // invocation (or a cron run) open indefinitely.
+    signal: AbortSignal.timeout(15000),
   });
   if (!r.ok) {
     const detail = await r.text().catch(() => "");

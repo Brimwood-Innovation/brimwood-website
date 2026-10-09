@@ -273,11 +273,12 @@ describe("POST /api/newsletter", () => {
 
 describe("GET /api/newsletter/verify", () => {
   const hoursAgo = (h: number) => new Date(Date.now() - h * 3600 * 1000).toISOString();
-  function verifyEnv(createdAt: string) {
+  const hoursFromNow = (h: number) => new Date(Date.now() + h * 3600 * 1000).toISOString();
+  function verifyEnv(expiresAt: string) {
     const env = mockEnv();
     env.DB.handler = (sql) => {
       if (/from\s+newsletter_subscribers/i.test(sql)) {
-        return { row: { email: "a@b.co", name: "Ada", created_at: createdAt } };
+        return { row: { email: "a@b.co", name: "Ada", confirm_token_expires_at: expiresAt } };
       }
     };
     return env;
@@ -286,7 +287,7 @@ describe("GET /api/newsletter/verify", () => {
     newsApp.request("/verify?token=" + token, {}, env as any);
 
   it("activates a fresh token and sends welcome + owner mail", async () => {
-    const env = verifyEnv(hoursAgo(1));
+    const env = verifyEnv(hoursFromNow(47));
     const sent: { to: string; subject: string }[] = [];
     const r = mailStub(sent);
     try {
@@ -305,7 +306,7 @@ describe("GET /api/newsletter/verify", () => {
   });
 
   it("rejects tokens older than 48 hours", async () => {
-    const env = verifyEnv(hoursAgo(49));
+    const env = verifyEnv(hoursAgo(1));
     const sent: { to: string; subject: string }[] = [];
     const r = mailStub(sent);
     try {
@@ -320,7 +321,7 @@ describe("GET /api/newsletter/verify", () => {
   });
 
   it("email outage after activation still shows the success page (logged)", async () => {
-    const env = verifyEnv(hoursAgo(1));
+    const env = verifyEnv(hoursFromNow(47));
     const r = mailFailStub();
     try {
       const res = await get(env);
@@ -478,7 +479,9 @@ describe("GET /api/newsletter/verify (confirm-token expiry)", () => {
 });
 
 describe("POST /api/newsletter (Resend outage)", () => {
-  it("still returns ok:true and logs the confirm email as failed", async () => {
+  // Pre-subscription the confirm email IS the flow: a false ok would leave the
+  // user in limbo, so fail loudly and let them retry immediately.
+  it("fails loudly (500) and logs the confirm email as failed", async () => {
     const env = mockEnv();
     const r1 = await turnstileStub(true);
     const r2 = mailFailStub();
@@ -489,8 +492,11 @@ describe("POST /api/newsletter (Resend outage)", () => {
         { "cf-turnstile-response": "tok", email: "a@b.co" },
         env
       );
-      expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ ok: true });
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({
+        ok: false,
+        error: "We could not send the confirmation email. Please try again.",
+      });
       const logs = env.DB.inserts.get("email_log")!;
       expect(logs.some((l) => l.kind === "newsletter-confirm" && l.status === "failed")).toBe(true);
     } finally {

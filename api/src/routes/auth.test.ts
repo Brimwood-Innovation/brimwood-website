@@ -256,6 +256,13 @@ describe("POST /redeem-invite", () => {
 });
 
 /* --- from audit/security-ci: request-code Resend outage behaviour --- */
+function withUser(env: ReturnType<typeof mockEnv>) {
+  const prev = env.DB.handler;
+  env.DB.handler = (sql: string, params: unknown[]) => {
+    if (/from\s+users/i.test(sql)) return { row: { id: "u-1", name: "Ada" } };
+    return prev?.(sql, params);
+  };
+}
 describe("POST /api/auth/request-code", () => {
   it("sends the code and logs it as sent", async () => {
     const env = mockEnv();
