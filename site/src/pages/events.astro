@@ -20,6 +20,7 @@ import Base from "../layouts/Base.astro";
 
   <section class="block">
     <div id="eventsList"><p class="sec-lede">Loading…</p></div>
+    <noscript><p class="sec-lede">Events need JavaScript to load. Email <a href="mailto:info@brimwoodinnovation.com">info@brimwoodinnovation.com</a> and we will send you the upcoming dates.</p></noscript>
   </section>
 
   <script>
@@ -34,7 +35,7 @@ import Base from "../layouts/Base.astro";
           el.innerHTML = '<p class="sec-lede">No upcoming events yet — check back soon.</p>';
           return;
         }
-        const esc = (s) => String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         const fmt = (iso) => new Date(iso).toLocaleDateString('en-CA', {
           weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit'
         });

@@ -36,8 +36,8 @@ export async function getStaticPaths() {
     <div id="formWrap" style="display:none;">
       <h1 class="sec" id="formTitle" style="font-size:clamp(28px,4vw,44px);margin-bottom:12px;"></h1>
       <p class="sec-lede" id="formDesc" style="display:none;margin-bottom:32px;"></p>
-      <form id="dynForm" style="text-align:left;"></form>
-      <p id="formErr" style="display:none;color:#b3261e;margin-top:16px;"></p>
+      <form id="dynForm" style="text-align:left;" aria-describedby="formErr"></form>
+      <p id="formErr" role="status" style="display:none;color:#b3261e;margin-top:16px;"></p>
     </div>
 
     <div id="formDone" style="display:none;text-align:center;padding:48px 0;">

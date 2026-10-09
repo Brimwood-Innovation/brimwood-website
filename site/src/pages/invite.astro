@@ -28,10 +28,10 @@ import Base from "../layouts/Base.astro";
       <input id="iCode" type="text" name="code" placeholder="XXXX-XXXX" required autocomplete="off"
         style="width:100%;padding:12px 16px;border:1px solid rgba(18,26,22,.15);border-radius:12px;font-size:16px;margin-bottom:24px;text-transform:uppercase;" />
       <button class="btn" type="submit" id="inviteBtn" style="width:100%;">Redeem invite</button>
-      <p id="inviteErr" style="display:none;color:#b3261e;margin-top:16px;"></p>
+      <p id="inviteErr" role="status" style="display:none;color:#b3261e;margin-top:16px;"></p>
     </form>
 
-    <div id="inviteDone" style="display:none;margin-top:32px;">
+    <div id="inviteDone" role="status" style="display:none;margin-top:32px;">
       <div class="kicker" style="color:var(--emerald-deep);">Check your inbox</div>
       <p class="sec-lede" style="margin-inline:auto;">
         Your invite worked. We sent a sign-in code to your email —

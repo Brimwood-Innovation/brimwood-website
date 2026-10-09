@@ -31,14 +31,13 @@ Thumbs.db
 *.swp
 .idea/
 
-# Duplicate root-level brand assets — byte-identical copies live in build/ (T1).
-# Exception: logo-email.png IS committed (2026-10-08 email audit) — it is the
-# lightweight PNG render of the kit's reversed logo served at
-# https://brimwoodinnovation.com/logo-email.png for email headers
-# (email clients cannot display SVG).
+# Duplicate root-level brand assets (retired with the old coming-soon build/ in F11).
+# The Astro site serves these from site/public/ (all committed there) —
+# the stale root copies stay ignored.
 apple-touch-icon.png
 favicon-16.png
 favicon-32.png
 favicon.svg
 logo-colour.svg
+
 logo-reversed.svg

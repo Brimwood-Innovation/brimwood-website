@@ -7,7 +7,11 @@
   var slug = wrap.dataset.slug || "";
   var API_BASE = wrap.dataset.apiBase || "";
 
-  var esc = function (s) { return String(s || "").replace(/</g, "&lt;").replace(/>/g, "&gt;"); };
+  var esc = function (s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  };
   var fmt = function (iso) {
     return new Date(iso).toLocaleString("en-CA", {
       weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit"
@@ -24,6 +28,11 @@
       if (!r.ok || !d.ok) throw new Error("not found");
       var e = d.event;
       document.title = e.title + " — Events — Brimwood Innovation";
+      // Keep the head meta in sync for crawlers and link previews.
+      var metaDesc = document.querySelector('meta[name="description"]');
+      if (metaDesc && e.description_md) {
+        metaDesc.setAttribute("content", String(e.description_md).slice(0, 160));
+      }
       document.getElementById("eventLoading").style.display = "none";
       body.style.display = "block";
       var full = e.capacity && e.rsvp_count >= e.capacity;
