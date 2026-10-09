@@ -17,6 +17,9 @@ import stories from "./routes/stories";
 import events from "./routes/events";
 import forms from "./routes/forms";
 import profiles from "./routes/profiles";
+import chat from "./routes/chat";
+import feed from "./routes/feed";
+import notifications from "./routes/notifications";
 import studio from "./routes/studio";
 import { handleScheduled } from "./cron";
 import { csrfGuard } from "./lib/csrf";
@@ -110,6 +113,9 @@ app.route("/api", events);
 app.route("/api/forms", forms);
 app.route("/api/studio", studio);
 app.route("/api", profiles);
+app.route("/api/chat", chat);
+app.route("/api", feed);
+app.route("/api", notifications);
 
 app.notFound((c) => c.json({ ok: false, error: "Not found" }, 404));
 app.onError((err, c) => {
