@@ -256,7 +256,7 @@ app.post("/redeem-invite", async (c) => {
       to: email,
       subject: "Welcome to Brimwood — your sign-in code",
       html,
-      text: "Welcome to Brimwood, " + name + ".\n\nYour sign-in code is: " + magicCode + "\n\nIt expires in 10 minutes.",
+      text: "Welcome to Brimwood" + (name ? ", " + name : "") + ".\n\nYour sign-in code is: " + magicCode + "\n\nIt expires in 10 minutes.",
     }).catch(() => {});
   }
 
