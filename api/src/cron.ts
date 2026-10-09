@@ -10,6 +10,33 @@
 import { sendEmail, shell, esc } from "./lib/email";
 import { INBOX } from "./lib/email";
 
+/** Digest body for one subscriber — unsubUrl is fully built by the caller. */
+export function digestBody(
+  postItems: string,
+  lessonItems: string,
+  unsubUrl: string,
+  items: { posts: { title: string; url: string }[]; lessons: { title: string; url: string }[] }
+): { html: string; text: string } {
+  const html = shell(
+    "This week at Brimwood",
+    "New posts and lessons.",
+    (postItems ? "<h2 style='font-size:18px;color:#121A16;'>New posts</h2>" + postItems : "") +
+      (lessonItems ? "<h2 style='font-size:18px;color:#121A16;margin-top:24px;'>New lessons</h2>" + lessonItems : "") +
+      '<p style="font-size:13px;color:#5B6862;margin-top:24px;"><a href="' + esc(unsubUrl) + '" style="color:#5B6862;">Unsubscribe</a></p>'
+  );
+  const lines: string[] = ["This week at Brimwood"];
+  if (items.posts.length) {
+    lines.push("", "New posts:");
+    for (const p of items.posts) lines.push(" - " + p.title + "\n   " + p.url);
+  }
+  if (items.lessons.length) {
+    lines.push("", "New lessons:");
+    for (const l of items.lessons) lines.push(" - " + l.title + "\n   " + l.url);
+  }
+  lines.push("", "Unsubscribe: " + unsubUrl);
+  return { html, text: lines.join("\n") };
+}
+
 export async function handleScheduled(event: ScheduledEvent, env: any) {
   const { DB, RESEND_API_KEY } = env;
   const cron = event.cron;
@@ -60,31 +87,30 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
     ).all();
 
     const site = env.SITE_URL || "https://brimwoodinnovation.com";
-    const postItems = (posts.results as any[])
+    const postRows = posts.results as any[];
+    const lessonRows = lessons.results as any[];
+    const postItems = postRows
       .map(
         (p) =>
           `<p style="margin:0 0 12px;"><a href="${site}/blog/${esc(p.slug)}" style="color:#0C9463;font-weight:600;">${esc(p.title)}</a><br><span style="color:#5B6862;font-size:14px;">${esc(p.excerpt)}</span></p>`
       )
       .join("");
-    const lessonItems = (lessons.results as any[])
+    const lessonItems = lessonRows
       .map(
         (l) =>
           `<p style="margin:0 0 12px;"><a href="${site}/academy/${esc(l.course_slug)}" style="color:#0C9463;font-weight:600;">${esc(l.title)}</a></p>`
       )
       .join("");
+    const postList = postRows.map((p) => ({ title: p.title, url: `${site}/blog/${p.slug}` }));
+    const lessonList = lessonRows.map((l) => ({
+      title: l.title,
+      url: `${site}/academy/${l.course_slug}#${l.slug}`,
+    }));
 
     if (!postItems && !lessonItems) {
       console.log("digest: nothing new this week, skipping");
       return;
     }
-
-    const html = shell(
-      "This week at Brimwood",
-      "New posts and lessons.",
-      (postItems ? "<h2 style='font-size:18px;color:#121A16;'>New posts</h2>" + postItems : "") +
-        (lessonItems ? "<h2 style='font-size:18px;color:#121A16;margin-top:24px;'>New lessons</h2>" + lessonItems : "") +
-        `<p style="font-size:13px;color:#5B6862;margin-top:24px;"><a href="${site}/api/newsletter/unsubscribe?email={{email}}&token={{token}}" style="color:#5B6862;">Unsubscribe</a></p>`
-    );
 
     // Active subscribers only.
     const subs = await DB.prepare(
@@ -95,19 +121,19 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
     for (const s of (subs.results as any[])) {
       const unsubUrl =
         `${site}/api/newsletter/unsubscribe?email=${encodeURIComponent(s.email)}&token=${encodeURIComponent(s.unsub_token)}`;
-      const personalHtml = html
-        .replace("{{email}}", encodeURIComponent(s.email))
-        .replace("{{token}}", encodeURIComponent(s.unsub_token))
-        .replace(
-          `${site}/api/newsletter/unsubscribe?email={{email}}&token={{token}}`,
-          unsubUrl
-        );
+      const { html, text } = digestBody(postItems, lessonItems, unsubUrl, {
+        posts: postList,
+        lessons: lessonList,
+      });
       try {
         await sendEmail(RESEND_API_KEY, {
           to: s.email,
           subject: "This week at Brimwood",
-          html: personalHtml,
-          text: "This week at Brimwood — new posts and lessons. Unsubscribe: " + unsubUrl,
+          html,
+          text,
+          // Bulk mail header (RFC 2369). One-click POST (RFC 8058) needs a
+          // POST unsubscribe endpoint — flagged for the api-core agent.
+          headers: { "List-Unsubscribe": "<" + unsubUrl + ">" },
         });
         sent++;
       } catch (e) {
@@ -205,7 +231,7 @@ async function runHealthCheck(DB: D1Database, resendKey: string | undefined, env
   try {
     await sendEmail(resendKey, {
       to: INBOX,
-      subject: "⚠ Brimwood health alert — " + failures.length + " check(s) failing",
+      subject: "Brimwood health alert — " + failures.length + " check(s) failing",
       html,
       text: "Brimwood health alert\n\nFailures:\n" + failures.join("\n"),
     });
