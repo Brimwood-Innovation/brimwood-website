@@ -66,10 +66,14 @@ function nowIso(): string {
 
 /** Public-safe member shape for feed authors/voters. Never email or real name. */
 function publicAuthor(row: any, c: any) {
+  const key = row.avatar_r2_key || row.avatar_key;
+  const username = row.username || row.author_username || null;
   return {
     id: row.id,
     display: row.display_name || initialsFor(row.name || ""),
-    avatar_url: row.avatar_key ? mediaUrl(c, row.avatar_key) : null,
+    username,
+    profile_url: username ? `/@${username}` : `/u/${row.id}`,
+    avatar_url: key ? mediaUrl(c, key) : null,
   };
 }
 
@@ -276,7 +280,176 @@ app.post("/posts", async (c) => {
   }
   await DB.batch(stmts);
 
+  // @mention notifications (best-effort; never break posting).
+  if (body) {
+    try {
+      const { parseMentions, resolveMentionedUsers, emitNotification } = await import("./notifications");
+      const mentioned = await resolveMentionedUsers(DB, parseMentions(body));
+      for (const u of mentioned) {
+        if (u.id === userId) continue;
+        await emitNotification(DB, {
+          userId: u.id,
+          kind: "mention",
+          actorId: userId,
+          targetType: "post",
+          targetId: postId,
+          preview: body.slice(0, 200),
+        });
+      }
+    } catch {
+      /* notifications must never break posting */
+    }
+  }
+
   return c.json({ ok: true, post_id: postId, poll_id: pollId, created_at: createdAt });
+});
+
+/* Batch-enrich raw post rows (media, polls, votes, reactions) and shape
+ * the public post objects. Shared by the feed list and the permalink. */
+async function enrichPosts(c: any, userId: string, page: any[]): Promise<any[]> {
+  const { DB } = c.env;
+    const postIds = page.map((p: any) => p.id);
+
+    // Batch-fetch media, polls, options, counts, and the viewer's votes.
+    let mediaRows: any[] = [];
+    let pollRows: any[] = [];
+    let optionRows: any[] = [];
+    let countRows: any[] = [];
+    let myVoteRows: any[] = [];
+    if (postIds.length > 0) {
+      const inList = postIds.map(() => "?").join(",");
+      mediaRows = (
+        await DB.prepare(
+          `SELECT post_id, r2_key, kind, width, height, duration_s, position
+           FROM post_media WHERE post_id IN (${inList}) ORDER BY post_id, position`
+        )
+          .bind(...postIds)
+          .all()
+      ).results;
+      pollRows = (
+        await DB.prepare(
+          `SELECT id, post_id, question, closes_at, show_voters FROM polls WHERE post_id IN (${inList})`
+        )
+          .bind(...postIds)
+          .all()
+      ).results;
+      const pollIds = pollRows.map((p: any) => p.id);
+      if (pollIds.length > 0) {
+        const pIn = pollIds.map(() => "?").join(",");
+        optionRows = (
+          await DB.prepare(
+            `SELECT id, poll_id, label, position FROM poll_options WHERE poll_id IN (${pIn}) ORDER BY poll_id, position`
+          )
+            .bind(...pollIds)
+            .all()
+        ).results;
+        countRows = (
+          await DB.prepare(
+            `SELECT option_id, COUNT(*) AS votes FROM poll_votes WHERE poll_id IN (${pIn}) GROUP BY option_id`
+          )
+            .bind(...pollIds)
+            .all()
+        ).results;
+        myVoteRows = (
+          await DB.prepare(
+            `SELECT poll_id, option_id FROM poll_votes WHERE poll_id IN (${pIn}) AND voter_id = ?`
+          )
+            .bind(...pollIds, userId)
+            .all()
+        ).results;
+      }
+    }
+
+    const counts: Record<string, number> = {};
+    for (const r of countRows) counts[r.option_id] = r.votes;
+    const myVotes: Record<string, string> = {};
+    for (const r of myVoteRows) myVotes[r.poll_id] = r.option_id;
+
+    // Reactions: counts per post per kind, plus the viewer's own reaction.
+    const reactCounts: Record<string, Record<string, number>> = {};
+    const myReacts: Record<string, string> = {};
+    if (postIds.length > 0) {
+      const inList = postIds.map(() => "?").join(",");
+      const rc = await DB.prepare(
+        `SELECT post_id, kind, COUNT(*) AS n FROM post_reactions
+         WHERE post_id IN (${inList}) GROUP BY post_id, kind`
+      )
+        .bind(...postIds)
+        .all();
+      for (const r of rc.results as any[]) {
+        (reactCounts[r.post_id] ||= {})[r.kind] = Number(r.n);
+      }
+      const mr = await DB.prepare(
+        `SELECT post_id, kind FROM post_reactions WHERE post_id IN (${inList}) AND member_id = ?`
+      )
+        .bind(...postIds, userId)
+        .all();
+      for (const r of mr.results as any[]) myReacts[r.post_id] = r.kind;
+    }
+
+    const pollsByPost: Record<string, any> = {};
+    for (const p of pollRows) {
+      const opts = optionRows
+        .filter((o) => o.poll_id === p.id)
+        .map((o) => ({ id: o.id, label: o.label, votes: counts[o.id] || 0 }));
+      const total = opts.reduce((s: number, o: any) => s + o.votes, 0);
+      pollsByPost[p.post_id] = {
+        id: p.id,
+        question: p.question,
+        closes_at: p.closes_at,
+        closed: closedOf(p.closes_at),
+        show_voters: p.show_voters === 1,
+        total_votes: total,
+        options: opts,
+        my_vote: myVotes[p.id] || null,
+      };
+    }
+
+    const posts = page.map((p: any) => ({
+      id: p.id,
+      body: p.body,
+      created_at: p.created_at,
+      author: publicAuthor(
+        { id: p.author_id, name: p.author_name, display_name: p.display_name, author_username: p.author_username, avatar_key: p.avatar_key, avatar_r2_key: p.avatar_r2_key },
+        c
+      ),
+      media: mediaRows
+        .filter((m) => m.post_id === p.id)
+        .map((m) => ({
+          url: mediaUrl(c, m.r2_key),
+          kind: m.kind,
+          width: m.width,
+          height: m.height,
+          duration_s: m.duration_s,
+        })),
+      poll: pollsByPost[p.id] || null,
+      reactions: {
+        counts: REACTIONS.reduce((o, k) => ({ ...o, [k]: (reactCounts[p.id] || {})[k] || 0 }), {}),
+        my_reaction: myReacts[p.id] || null,
+      },
+    }));
+  return posts;
+}
+
+/* --- Member: single post permalink (for notification deep links / shares) --- */
+
+app.get("/posts/:id", async (c) => {
+  const userId = await needUser(c);
+  if (!userId) return c.json({ ok: false, error: "Sign in required." }, 401);
+  const { DB } = c.env;
+  const id = (c.req.param("id") || "").slice(0, 40);
+  const row: any = await DB.prepare(
+    `SELECT p.id, p.body, p.created_at,
+            u.id AS author_id, u.name AS author_name, u.display_name, u.username AS author_username,
+            u.avatar_key, u.avatar_r2_key
+     FROM posts p JOIN users u ON u.id = p.author_id
+     WHERE p.id = ?`
+  )
+    .bind(id)
+    .first();
+  if (!row) return c.json({ ok: false, error: "Not found." }, 404);
+  const posts = await enrichPosts(c, userId, [row]);
+  return c.json({ ok: true, post: posts[0] });
 });
 
 /* --- Member: chronological feed --- */
@@ -291,7 +464,8 @@ app.get("/feed", async (c) => {
 
   const rows = await DB.prepare(
     `SELECT p.id, p.body, p.created_at,
-            u.id AS author_id, u.name AS author_name, u.display_name, u.avatar_key
+            u.id AS author_id, u.name AS author_name, u.display_name, u.username AS author_username,
+            u.avatar_key, u.avatar_r2_key
      FROM posts p
      JOIN users u ON u.id = p.author_id
      WHERE (? = '' OR p.created_at < ?)
@@ -302,126 +476,8 @@ app.get("/feed", async (c) => {
 
   const page = rows.results.slice(0, limit);
   const hasMore = rows.results.length > limit;
-  const postIds = page.map((p: any) => p.id);
+  const posts = await enrichPosts(c, userId, page);
 
-  // Batch-fetch media, polls, options, counts, and the viewer's votes.
-  let mediaRows: any[] = [];
-  let pollRows: any[] = [];
-  let optionRows: any[] = [];
-  let countRows: any[] = [];
-  let myVoteRows: any[] = [];
-  if (postIds.length > 0) {
-    const inList = postIds.map(() => "?").join(",");
-    mediaRows = (
-      await DB.prepare(
-        `SELECT post_id, r2_key, kind, width, height, duration_s, position
-         FROM post_media WHERE post_id IN (${inList}) ORDER BY post_id, position`
-      )
-        .bind(...postIds)
-        .all()
-    ).results;
-    pollRows = (
-      await DB.prepare(
-        `SELECT id, post_id, question, closes_at, show_voters FROM polls WHERE post_id IN (${inList})`
-      )
-        .bind(...postIds)
-        .all()
-    ).results;
-    const pollIds = pollRows.map((p: any) => p.id);
-    if (pollIds.length > 0) {
-      const pIn = pollIds.map(() => "?").join(",");
-      optionRows = (
-        await DB.prepare(
-          `SELECT id, poll_id, label, position FROM poll_options WHERE poll_id IN (${pIn}) ORDER BY poll_id, position`
-        )
-          .bind(...pollIds)
-          .all()
-      ).results;
-      countRows = (
-        await DB.prepare(
-          `SELECT option_id, COUNT(*) AS votes FROM poll_votes WHERE poll_id IN (${pIn}) GROUP BY option_id`
-        )
-          .bind(...pollIds)
-          .all()
-      ).results;
-      myVoteRows = (
-        await DB.prepare(
-          `SELECT poll_id, option_id FROM poll_votes WHERE poll_id IN (${pIn}) AND voter_id = ?`
-        )
-          .bind(...pollIds, userId)
-          .all()
-      ).results;
-    }
-  }
-
-  const counts: Record<string, number> = {};
-  for (const r of countRows) counts[r.option_id] = r.votes;
-  const myVotes: Record<string, string> = {};
-  for (const r of myVoteRows) myVotes[r.poll_id] = r.option_id;
-
-  // Reactions: counts per post per kind, plus the viewer's own reaction.
-  const reactCounts: Record<string, Record<string, number>> = {};
-  const myReacts: Record<string, string> = {};
-  if (postIds.length > 0) {
-    const inList = postIds.map(() => "?").join(",");
-    const rc = await DB.prepare(
-      `SELECT post_id, kind, COUNT(*) AS n FROM post_reactions
-       WHERE post_id IN (${inList}) GROUP BY post_id, kind`
-    )
-      .bind(...postIds)
-      .all();
-    for (const r of rc.results as any[]) {
-      (reactCounts[r.post_id] ||= {})[r.kind] = Number(r.n);
-    }
-    const mr = await DB.prepare(
-      `SELECT post_id, kind FROM post_reactions WHERE post_id IN (${inList}) AND member_id = ?`
-    )
-      .bind(...postIds, userId)
-      .all();
-    for (const r of mr.results as any[]) myReacts[r.post_id] = r.kind;
-  }
-
-  const pollsByPost: Record<string, any> = {};
-  for (const p of pollRows) {
-    const opts = optionRows
-      .filter((o) => o.poll_id === p.id)
-      .map((o) => ({ id: o.id, label: o.label, votes: counts[o.id] || 0 }));
-    const total = opts.reduce((s: number, o: any) => s + o.votes, 0);
-    pollsByPost[p.post_id] = {
-      id: p.id,
-      question: p.question,
-      closes_at: p.closes_at,
-      closed: closedOf(p.closes_at),
-      show_voters: p.show_voters === 1,
-      total_votes: total,
-      options: opts,
-      my_vote: myVotes[p.id] || null,
-    };
-  }
-
-  const posts = page.map((p: any) => ({
-    id: p.id,
-    body: p.body,
-    created_at: p.created_at,
-    author: publicAuthor(
-      { id: p.author_id, name: p.author_name, display_name: p.display_name, avatar_key: p.avatar_key },
-      c
-    ),
-    media: mediaRows
-      .filter((m) => m.post_id === p.id)
-      .map((m) => ({
-        url: mediaUrl(c, m.r2_key),
-        kind: m.kind,
-        width: m.width,
-        height: m.height,
-        duration_s: m.duration_s,
-      })),
-    poll: pollsByPost[p.id] || null,
-    reactions: {
-      counts: REACTIONS.reduce((o, k) => ({ ...o, [k]: (reactCounts[p.id] || {})[k] || 0 }), {}),
-      my_reaction: myReacts[p.id] || null,
-    },
-  }));
 
   return c.json({
     ok: true,
@@ -570,7 +626,7 @@ app.get("/polls/:id/results", async (c) => {
   // Voter identities are private unless the poll author enabled show_voters.
   if (poll.show_voters === 1) {
     const voters = await DB.prepare(
-      `SELECT v.option_id, v.voter_id, u.display_name, u.name, u.avatar_key
+      `SELECT v.option_id, v.voter_id, u.display_name, u.name, u.username, u.avatar_key, u.avatar_r2_key
        FROM poll_votes v JOIN users u ON u.id = v.voter_id
        WHERE v.poll_id = ? ORDER BY v.voted_at`
     )
@@ -579,7 +635,7 @@ app.get("/polls/:id/results", async (c) => {
     result.voters = voters.results.map((v: any) => ({
       option_id: v.option_id,
       voter: publicAuthor(
-        { id: v.voter_id, name: v.name, display_name: v.display_name, avatar_key: v.avatar_key },
+        { id: v.voter_id, name: v.name, display_name: v.display_name, avatar_key: v.avatar_key, avatar_r2_key: v.avatar_r2_key },
         c
       ),
     }));

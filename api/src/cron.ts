@@ -117,6 +117,46 @@ export async function sendEventReminders(
   return reminded;
 }
 
+/**
+ * Poll close notifications (social-UX reconciliation): for polls whose
+ * closes_at has passed and which have not been notified yet, drop a
+ * `poll_closed` in-app notification on every voter, then mark the poll.
+ * Idempotent via polls.notified_closed_at (0021): at-least-once cron
+ * retries cannot re-notify.
+ */
+export async function sendPollCloseNotifications(DB: D1Database): Promise<number> {
+  const nowIso = new Date().toISOString();
+  const polls = await DB.prepare(
+    `SELECT id, post_id, question FROM polls
+     WHERE closes_at <= ? AND notified_closed_at IS NULL`
+  )
+    .bind(nowIso)
+    .all();
+  let notified = 0;
+  for (const poll of (polls.results as any[])) {
+    const voters = await DB.prepare(
+      "SELECT DISTINCT voter_id FROM poll_votes WHERE poll_id = ?"
+    )
+      .bind(poll.id)
+      .all();
+    for (const v of (voters.results as any[])) {
+      await emitNotification(DB, {
+        userId: v.voter_id,
+        kind: "poll_closed",
+        actorId: null,
+        targetType: "poll",
+        targetId: poll.post_id,
+        preview: `Results are in: ${(poll.question || "").slice(0, 200)}`,
+      }).catch(() => {});
+    }
+    await DB.prepare("UPDATE polls SET notified_closed_at = ? WHERE id = ?")
+      .bind(nowIso, poll.id)
+      .run();
+    notified++;
+  }
+  return notified;
+}
+
 /** Digest body for one subscriber — unsubUrl is fully built by the caller. */
 export function digestBody(
   postItems: string,
@@ -178,6 +218,11 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
       RESEND_API_KEY,
       env.SITE_URL || "https://brimwoodinnovation.com"
     ).catch((e) => console.error("event reminders failed:", e));
+    // Poll close notifications (social-UX reconciliation): voters of newly
+    // closed polls get one `poll_closed` notification each. Idempotent.
+    await sendPollCloseNotifications(DB).catch((e) =>
+      console.error("poll close notifications failed:", e)
+    );
     return;
   }
 

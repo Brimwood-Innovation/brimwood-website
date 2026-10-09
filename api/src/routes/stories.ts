@@ -139,7 +139,7 @@ app.get("/tray", async (c) => {
 
   const rows = await DB.prepare(
     `SELECT s.id, s.r2_key, s.kind, s.created_at, s.expires_at, s.author_id,
-            u.display_name, u.name,
+            u.display_name, u.name, u.avatar_r2_key, u.avatar_key,
             EXISTS (SELECT 1 FROM story_views v
                     WHERE v.story_id = s.id AND v.viewer_id = ?) AS seen
      FROM stories s
@@ -158,6 +158,7 @@ app.get("/tray", async (c) => {
       a = {
         author_id: r.author_id,
         display: displayOf(r),
+        avatar_url: r.avatar_r2_key || r.avatar_key ? mediaUrl(c, r.avatar_r2_key || r.avatar_key) : null,
         is_self: r.author_id === userId,
         stories: [],
       };
@@ -262,7 +263,7 @@ app.post("/:id/reply", async (c) => {
 
   const id = cleanStr(c.req.param("id"), 100);
   const story: any = await DB.prepare(
-    "SELECT id FROM stories WHERE id = ? AND expires_at > ?"
+    "SELECT id, author_id FROM stories WHERE id = ? AND expires_at > ?"
   )
     .bind(id, nowIso())
     .first();
@@ -291,6 +292,22 @@ app.post("/:id/reply", async (c) => {
 
   // The DM/chat system surfaces this row to the story author; the reply is
   // not shown anywhere else (stories have no public comment thread).
+  // Notify the author (unless replying to your own story).
+  if (story.author_id && story.author_id !== userId) {
+    try {
+      const { emitNotification } = await import("./notifications");
+      await emitNotification(DB, {
+        userId: story.author_id,
+        kind: "story_reply",
+        actorId: userId,
+        targetType: "story",
+        targetId: story.id,
+        preview: body.slice(0, 200),
+      });
+    } catch {
+      /* notifications must never break the reply path */
+    }
+  }
   return c.json({ ok: true, id: replyId });
 });
 

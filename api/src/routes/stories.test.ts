@@ -48,8 +48,8 @@ function storyHandler(opts: {
     if (/WHERE s\.id = \?/i.test(sql)) return { row: opts.story ?? null };
     if (/FROM story_views v/i.test(sql))
       return { results: opts.viewers ?? [] };
-    if (/^SELECT id FROM stories/i.test(sql))
-      return { row: opts.replyTarget === undefined ? { id: "s1" } : opts.replyTarget };
+    if (/^SELECT id(, author_id)? FROM stories/i.test(sql))
+      return { row: opts.replyTarget === undefined ? { id: "s1", author_id: "other-1" } : opts.replyTarget };
     return undefined;
   };
 }
@@ -346,6 +346,10 @@ describe("POST /:id/reply", () => {
       from_user_id: "member-1",
       body: "See you at 6!",
     });
+    // The story author (other-1) gets a story_reply notification.
+    const notifs = env.DB.inserts.get("notifications") || [];
+    const nr = (notifs as any[]).find((n) => n.kind === "story_reply");
+    expect(nr).toMatchObject({ user_id: "other-1", target_type: "story", target_id: "s1" });
   });
 
   it("rate-limits replies", async () => {

@@ -796,8 +796,8 @@ describe("POST /profiles/me/avatar", () => {
     const upd = env.DB.calls
       .filter((c: any) => c.op === "run" && /^update\s+users/i.test(c.sql))
       .pop();
-    expect(upd.params[0]).toBe(d.avatar_key); // avatar_key
-    expect(upd.params[1]).toBe(d.avatar_key); // avatar_r2_key
-    expect(upd.params[2]).toBe("member-1");
+    expect(upd?.params[0]).toBe(d.avatar_key); // avatar_key
+    expect(upd?.params[1]).toBe(d.avatar_key); // avatar_r2_key
+    expect(upd?.params[2]).toBe("member-1");
   });
 });

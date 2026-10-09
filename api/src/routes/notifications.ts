@@ -134,7 +134,7 @@ export function deepLinkFor(n: {
     case "story_reply":
       return "/hub/stories";
     case "poll_closed":
-      return `/hub/post/${encodeURIComponent(tid)}`;
+      return `/hub/post/?id=${encodeURIComponent(tid)}`;
     case "event_reminder":
       return `/events/${encodeURIComponent(tid)}`;
     case "mention":
@@ -147,10 +147,10 @@ export function deepLinkFor(n: {
       }
       if (n.target_type === "comment" && tid.includes(":")) {
         const [postId, commentId] = tid.split(":");
-        return `/hub/post/${encodeURIComponent(postId)}#comment-${encodeURIComponent(commentId)}`;
+        return `/hub/post/?id=${encodeURIComponent(postId)}#comment-${encodeURIComponent(commentId)}`;
       }
       if (n.target_type === "post" || n.target_type === "comment" || n.target_type === "poll") {
-        return `/hub/post/${encodeURIComponent(tid)}`;
+        return `/hub/post/?id=${encodeURIComponent(tid)}`;
       }
       if (n.target_type === "event") {
         return `/events/${encodeURIComponent(tid)}`;

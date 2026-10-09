@@ -147,3 +147,70 @@ reply (the X finding in research).
   undrawable; the list filters them via target checks only where cheap. Documented
   as a follow-up (same reasoning as the langx finding in research: count and list
   share one pipeline so the badge can never disagree with the list).
+
+## Reconciliation addendum (merge of the five area branches, 2026-10-09)
+
+During the merge I found and closed these connections the area work left open.
+Each is now implemented, tested, and verified green (549 API tests).
+
+1. **Story replies → notification (closed).** The stories agent's contract said
+   story replies should surface in chat; the wiring agent wrote an emission
+   snippet but it never ran. `POST /api/stories/:id/reply` now emits a real
+   `story_reply` notification to the story author (skips self-replies, best-effort
+   so a notification failure can never break the reply). Deep link: `/hub/stories`.
+
+2. **Feed-post @mentions → notification (closed).** The notifications module's
+   emission contract named `post`/`comment` as valid mention target types, but
+   no feed route called it. `POST /api/posts` now parses @handles from the body,
+   resolves them to active members, and emits `mention` notifications (deduped
+   by the partial unique index; never notifies the author about their own post).
+   Feed bodies also render @handles as profile links via shared
+   `site/public/js/mentions.js`.
+
+3. **Poll close → voter notification (closed).** Polls had durations and results
+   but nobody was told when one closed. New migration `0021_poll_close_notify.sql`
+   adds `notified_closed_at` to `polls`; the 15-minute cron (`sendPollCloseNotifications`)
+   notifies every voter once with a `poll_closed` notification deep-linking to the
+   post permalink. Migration applies via the standard local/CI path; remote D1 is
+   untouched per the local-first rule.
+
+4. **Dead notification deep links → real permalink (closed).** `deepLinkFor`
+   generated `/hub/post/<id>` for mentions/replies/poll notifications, but no
+   such route existed — every one of those notifications landed on a 404. New
+   `GET /api/posts/:id` (reuses the feed's `enrichPosts` shaper; members only)
+   and a static permalink page `/hub/post/?id=<id>` (query-param form — the site
+   is fully static with no SSR adapter, so a dynamic path segment was impossible).
+   The page renders author (profile-linked), body (mention-linkified), media,
+   poll (vote + results), reactions, and a share button. `deepLinkFor` updated.
+
+5. **Feed post authors → profiles (closed).** Post author names/avatars were
+   unlinked text. The feed API now returns `username` + `profile_url` per author
+   and voter; the feed links both to the canonical `/@username` (falling back to
+   `/u/<id>`).
+
+6. **Share → DM on feed posts (closed).** The share-to-DM helper existed but was
+   only wired to blog posts. Feed posts and the permalink page now have share
+   buttons using `Brimwood.shareToDM` (recipient picker → message with quoted
+   post → navigate to conversation; falls back to copying the link).
+
+7. **Avatar unification (closed).** Three divergent avatar styles shipped across
+   areas (hash-tint, blue-600 gradient, plain gray) and server/client drift
+   (Avatar.astro vs feed's JS). New shared `site/public/js/avatar.js` is the
+   client-side twin of `Avatar.astro` (hashed brand-green background, 2-letter
+   initials); feed, messages, and stories tray all use it. Stories tray now
+   prefers `avatar_r2_key` via the shared `publicAuthor` shape, and the tray API
+   returns `avatar_url`.
+
+8. **Chat profile links (closed).** DM thread header avatars and story-reply
+   cards link to `/u/<id>` (stable alias → canonical redirect). Conversation
+   list rows stay whole-row buttons (opening the thread), so the avatar inside
+   was deliberately left unlinked to avoid nested interactive elements.
+
+Still open (documented follow-ups, not regressions):
+- Feed comment threads (replies to posts) do not exist yet — so `reply` emission
+  for feed comments has no producer. When comments ship, wire `reply` per the
+  contract above.
+- Follow model does not exist — so `follow` emission has no producer. The
+  notification kind and deep link are ready.
+- Per-category notification toggles; grouping/collapsing; notifications on
+  source delete (see "Deliberately left out" above).

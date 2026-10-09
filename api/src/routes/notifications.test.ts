@@ -96,12 +96,12 @@ describe("deepLinkFor", () => {
       deepLinkFor({ kind: "follow", target_type: "user", target_id: "a1", actor_username: null, actor_id: "a1" })
     ).toBe("/u/a1");
   });
-  it("links feed targets to /hub/post", () => {
-    expect(deepLinkFor({ kind: "reply", target_type: "post", target_id: "p1" })).toBe("/hub/post/p1");
+  it("links feed targets to /hub/post (query-param permalink; the site is fully static)", () => {
+    expect(deepLinkFor({ kind: "reply", target_type: "post", target_id: "p1" })).toBe("/hub/post/?id=p1");
     expect(deepLinkFor({ kind: "reply", target_type: "comment", target_id: "p1:c2" })).toBe(
-      "/hub/post/p1#comment-c2"
+      "/hub/post/?id=p1#comment-c2"
     );
-    expect(deepLinkFor({ kind: "poll_closed", target_type: "poll", target_id: "p9" })).toBe("/hub/post/p9");
+    expect(deepLinkFor({ kind: "poll_closed", target_type: "poll", target_id: "p9" })).toBe("/hub/post/?id=p9");
   });
   it("links story replies and event reminders", () => {
     expect(deepLinkFor({ kind: "story_reply", target_type: "story", target_id: "s1" })).toBe("/hub/stories");

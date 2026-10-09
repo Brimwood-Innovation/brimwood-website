@@ -50,7 +50,7 @@
   .story{flex:none;text-align:center;width:76px;background:none;border:0;cursor:pointer;font:inherit;color:inherit;padding:0}
   .story .ring{width:66px;height:66px;border-radius:50%;padding:3px;background:conic-gradient(var(--emerald),var(--signal),var(--emerald));margin:0 auto 6px}
   .story .ring.seen{background:var(--line)}
-  .story .ring .face{width:100%;height:100%;border-radius:50%;background:var(--mint);display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:var(--emerald-deep);border:2px solid #fff;overflow:hidden}
+  .story .ring .face{width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;overflow:hidden;background:var(--mint)}
   .story .ring .face img{width:100%;height:100%;object-fit:cover}
   .story small{font-size:11px;color:var(--stone);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .story .add{position:relative}
@@ -83,6 +83,7 @@
   .sv-reply-err{font-size:12.5px;color:#ffb4a8;padding:0 14px 12px;margin:0}
 </style>
 
+<script is:inline src="/js/avatar.js"></script>
 <script>
   (function () {
     const API_BASE = import.meta.env.PUBLIC_API_BASE || '';
@@ -106,8 +107,11 @@
       if (s < 86400) return Math.floor(s / 3600) + 'h';
       return Math.floor(s / 86400) + 'd';
     }
-    function initial(name) {
-      return (name || '?').trim().charAt(0).toUpperCase();
+    /* Shared avatar (public/js/avatar.js) — matches Avatar.astro exactly. */
+    function setViewerAvatar(url, name) {
+      document.getElementById('svAvatar').outerHTML =
+        '<span id="svAvatar" style="display:inline-flex;flex:none;">' +
+        brimwoodAvatar({ src: url, name: name, size: 32 }) + '</span>';
     }
     function esc(s) {
       return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -136,7 +140,7 @@
       you.setAttribute('role', 'listitem');
       you.setAttribute('aria-label', 'Add to your story');
       you.innerHTML = '<span class="ring seen add"><span class="face">' +
-        (self ? esc(initial(self.display)) : '📷') + '</span></span><small>You</small>';
+        (self ? brimwoodAvatar({ src: self.avatar_url, name: self.display, size: 60 }) : '📷') + '</span></span><small>You</small>';
       you.addEventListener('click', () => fileInput.click());
       tray.appendChild(you);
       for (const g of groups) {
@@ -145,7 +149,7 @@
         b.setAttribute('role', 'listitem');
         b.setAttribute('aria-label', 'View ' + g.display + "'s story");
         b.innerHTML = '<span class="ring' + (g.has_unseen ? '' : ' seen') + '"><span class="face">' +
-          esc(initial(g.display)) + '</span></span><small>' + esc(g.display) + '</small>';
+          brimwoodAvatar({ src: g.avatar_url, name: g.display, size: 60 }) + '</span></span><small>' + esc(g.display) + '</small>';
         b.addEventListener('click', () => openViewer(g));
         tray.appendChild(b);
       }
@@ -155,7 +159,7 @@
       // Flatten: this author's stories, oldest first (playback order).
       queue = group.stories.slice()
         .sort((a, b) => a.created_at.localeCompare(b.created_at))
-        .map((s) => ({ ...s, author_display: group.display }));
+        .map((s) => ({ ...s, author_display: group.display, author_avatar: group.avatar_url }));
       qi = 0;
       viewer.style.display = 'flex';
       document.body.style.overflow = 'hidden';
@@ -190,7 +194,7 @@
         el.className = i < qi ? 'done' : '';
       });
       document.getElementById('svAuthor').textContent = s.author_display || '';
-      document.getElementById('svAvatar').textContent = initial(s.author_display);
+      setViewerAvatar(s.author_avatar, s.author_display);
       document.getElementById('svTime').textContent = ago(s.created_at);
       document.getElementById('svTime').title = 'Expires ' + new Date(s.expires_at).toLocaleString();
       const media = document.getElementById('svMedia');
@@ -205,7 +209,7 @@
       if (detail && detail.ok) {
         s.author_display = detail.story.author;
         document.getElementById('svAuthor').textContent = detail.story.author;
-        document.getElementById('svAvatar').textContent = initial(detail.story.author);
+        setViewerAvatar(s.author_avatar, detail.story.author);
         renderViewers(detail.viewers || null);
         s.seen = true;
       }

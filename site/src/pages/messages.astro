@@ -141,13 +141,6 @@ import Base from "../layouts/Base.astro";
       min-width: 22px; height: 22px; border-radius: 999px; display: inline-flex;
       align-items: center; justify-content: center; padding: 0 6px; flex-shrink: 0;
     }
-    .avatar {
-      width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0;
-      display: inline-flex; align-items: center; justify-content: center;
-      font-weight: 700; font-size: 17px; overflow: hidden;
-    }
-    .avatar img { width: 100%; height: 100%; object-fit: cover; }
-    .avatar.sm { width: 32px; height: 32px; font-size: 13px; }
     .chat-empty { padding: 40px 20px; text-align: center; color: var(--brimwood-stone, #5b6862); }
     .story-card {
       display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px;
@@ -258,6 +251,7 @@ import Base from "../layouts/Base.astro";
     }
   </style>
 
+  <script is:inline src="/js/avatar.js"></script>
   <script>
     const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
     const withCreds = { credentials: "include" };
@@ -296,21 +290,9 @@ import Base from "../layouts/Base.astro";
     function clock(iso) {
       return new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
     }
-    const TINTS = [
-      ["#DDF5E9", "#075E40"], ["#E8F4F8", "#1B5E7B"], ["#F3EAFB", "#5B3E8C"],
-      ["#FDEEDC", "#8A5A1B"], ["#F6E3E6", "#8C2F3E"], ["#E5EFEA", "#0C9463"],
-    ];
-    function tint(id) {
-      let h = 0;
-      for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-      return TINTS[h % TINTS.length];
-    }
+    /* Shared renderer (public/js/avatar.js) — matches Avatar.astro exactly. */
     function avatar(p, cls) {
-      const [bg, fg] = tint(p.id);
-      const inner = p.avatar_url
-        ? `<img src="${esc(p.avatar_url)}" alt="" loading="lazy" />`
-        : esc((p.display_name || "?").trim().charAt(0).toUpperCase());
-      return `<span class="avatar${cls ? " " + cls : ""}" style="background:${bg};color:${fg}" aria-hidden="true">${inner}</span>`;
+      return brimwoodAvatar({ src: p.avatar_url, name: p.display_name, size: cls === "sm" ? 32 : 48 });
     }
 
     /* --- conversation list --- */
@@ -357,7 +339,7 @@ import Base from "../layouts/Base.astro";
         box.innerHTML =
           `<div style="padding:12px 16px 4px;"><span class="story-tag">Story replies</span></div>` +
           d.replies.map((sr) =>
-            `<div class="story-card">${avatar(sr.from, "sm")}<div><strong style="font-size:14px;">${esc(sr.from.display_name)}</strong>` +
+            `<div class="story-card"><a href="/u/${esc(sr.from.id)}" style="display:inline-flex;flex:none;text-decoration:none;" aria-label="View profile">${avatar(sr.from, "sm")}</a><div><a href="/u/${esc(sr.from.id)}" style="font-size:14px;font-weight:700;color:inherit;text-decoration:none;">${esc(sr.from.display_name)}</a>` +
             `<span class="thread-sub"> · ${esc(relTime(sr.created_at))}</span>` +
             `<p>${esc(sr.body)}</p></div></div>`
           ).join("");
@@ -377,7 +359,11 @@ import Base from "../layouts/Base.astro";
       $("threadSub").textContent = c.kind === "dm"
         ? "@" + (others[0]?.username || "member")
         : c.member_count + (c.member_count === 1 ? " member" : " members");
-      $("threadAvatar").outerHTML = avatar(c.kind === "dm" ? (others[0] || { id: c.id, display_name: c.title }) : { id: c.id, display_name: c.title }).replace('class="avatar"', 'id="threadAvatar" class="avatar"');
+      const dmPeer = c.kind === "dm" ? (others[0] || null) : null;
+      const avInner = avatar(dmPeer || { id: c.id, display_name: c.title });
+      $("threadAvatar").outerHTML = dmPeer && dmPeer.id
+        ? '<a id="threadAvatar" href="/u/' + esc(dmPeer.id) + '" style="display:inline-flex;flex:none;text-decoration:none;" aria-label="View profile">' + avInner + "</a>"
+        : '<span id="threadAvatar" style="display:inline-flex;flex:none;">' + avInner + "</span>";
       $("infoBtn").style.display = c.kind === "group" ? "" : "none";
       await loadMessages();
       markRead();

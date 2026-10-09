@@ -92,13 +92,6 @@ import Base from "../../layouts/Base.astro";
   </section>
 
   <style>
-    .feed-avatar {
-      width: 40px; height: 40px; border-radius: 50%; flex: none;
-      background: var(--emerald-deep); color: #fff;
-      display: inline-flex; align-items: center; justify-content: center;
-      font-weight: 700; font-size: 16px; overflow: hidden;
-    }
-    .feed-avatar img { width: 100%; height: 100%; object-fit: cover; }
     .feed-post { background: #fff; border: 1px solid rgba(18,26,22,0.08); border-radius: 16px; padding: 18px; }
     .feed-post .meta { font-size: 12.5px; color: var(--stone); }
     .feed-body { font-size: 15px; line-height: 1.6; margin: 8px 0 0; white-space: pre-wrap; word-wrap: break-word; }
@@ -128,13 +121,15 @@ import Base from "../../layouts/Base.astro";
     .reactbar button:hover { background: var(--paper); }
     .reactbar button.on { color: var(--emerald-deep); font-weight: 700; }
     .voter-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 6px; font-size: 12.5px; color: var(--stone); }
-    .voter-row .feed-avatar { width: 24px; height: 24px; font-size: 11px; }
     .reel-card { position: relative; flex: none; width: 120px; height: 200px; border-radius: 12px; overflow: hidden; background: #000; cursor: pointer; }
     .reel-card video { width: 100%; height: 100%; object-fit: cover; }
     .reel-card .cap { position: absolute; bottom: 0; left: 0; right: 0; padding: 20px 8px 8px; font-size: 11.5px; color: #fff;
       background: linear-gradient(transparent, rgba(0,0,0,0.7)); }
   </style>
 
+  <script is:inline src="/js/avatar.js"></script>
+  <script is:inline src="/js/mentions.js"></script>
+  <script is:inline src="/js/share-to-dm.js"></script>
   <script>
     const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
     const $ = (id) => document.getElementById(id);
@@ -153,11 +148,9 @@ import Base from "../../layouts/Base.astro";
     let cursor = null;
     let posting = false;
 
+    /* Shared renderer (public/js/avatar.js) — matches Avatar.astro exactly. */
     function avatarHtml(a, size) {
-      const inner = a.avatar_url
-        ? `<img src="${esc(a.avatar_url)}" alt="" />`
-        : esc((a.display || "·").charAt(0).toUpperCase());
-      return `<span class="feed-avatar"${size ? ` style="width:${size}px;height:${size}px;"` : ""}>${inner}</span>`;
+      return brimwoodAvatar({ src: a.avatar_url, name: a.display, size: size || 40 });
     }
 
     function relTime(iso) {
@@ -216,10 +209,11 @@ import Base from "../../layouts/Base.astro";
       }).join("");
       return `<article class="feed-post" id="post-${p.id}">
         <div style="display:flex;gap:10px;align-items:center;">
-          ${avatarHtml(p.author)}
-          <div><b style="font-size:14px;">${esc(p.author.display)}</b><br /><span class="meta">${relTime(p.created_at)} · Members</span></div>
+          <a href="${esc(p.author.profile_url || "/members")}" style="display:inline-flex;flex:none;text-decoration:none;" aria-label="${esc(p.author.display)}'s profile">${avatarHtml(p.author)}</a>
+          <div><a href="${esc(p.author.profile_url || "/members")}" style="font-size:14px;font-weight:700;color:inherit;text-decoration:none;">${esc(p.author.display)}</a><br /><span class="meta">${relTime(p.created_at)} · Members</span></div>
+          <button type="button" class="btn btn-ghost btn-sm" data-share="${p.id}" data-share-author="${esc(p.author.display)}" style="margin-left:auto;" aria-label="Share post">↗</button>
         </div>
-        ${p.body ? `<p class="feed-body">${esc(p.body)}</p>` : ""}
+        ${p.body ? `<p class="feed-body">${Brimwood.renderMentions(p.body)}</p>` : ""}
         ${mediaGridHtml(p.media)}
         ${p.poll ? pollCardHtml(p.poll) : ""}
         <div class="reactbar">${reacts}</div>
@@ -410,7 +404,7 @@ import Base from "../../layouts/Base.astro";
           (d.voters || []).forEach((v) => { (byOpt[v.option_id] ||= []).push(v.voter); });
           list.innerHTML = d.options.map((o) =>
             `<div class="voter-row"><b>${esc(o.label)}:</b> ` +
-            ((byOpt[o.id] || []).map((v) => `<span class="feed-avatar" title="${esc(v.display)}">${v.avatar_url ? `<img src="${esc(v.avatar_url)}" alt="" />` : esc(v.display.charAt(0))}</span>`).join("") || "—") +
+            ((byOpt[o.id] || []).map((v) => `<a href="${esc(v.profile_url || "/members")}" title="${esc(v.display)}" style="display:inline-flex;text-decoration:none;">${brimwoodAvatar({ src: v.avatar_url, name: v.display, size: 24 })}</a>`).join("") || "—") +
             `</div>`
           ).join("");
           list.dataset.loaded = "1";
@@ -433,6 +427,22 @@ import Base from "../../layouts/Base.astro";
           cursor = null;
           await loadFeed(false);
         } catch { /* keep calm, counts stay as they were */ }
+        return;
+      }
+      const shareBtn = e.target.closest("[data-share]");
+      if (shareBtn) {
+        const pid = shareBtn.dataset.share;
+        if (window.Brimwood && window.Brimwood.shareToDM) {
+          window.Brimwood.shareToDM({
+            title: `Post by ${shareBtn.dataset.shareAuthor || "a member"}`,
+            url: `https://brimwoodinnovation.com/hub/post/?id=${encodeURIComponent(pid)}`,
+            targetType: "post",
+            targetId: pid,
+          });
+        } else {
+          try { await navigator.clipboard.writeText(`https://brimwoodinnovation.com/hub/post/${encodeURIComponent(pid)}`); } catch {}
+        }
+        return;
       }
     });
 
@@ -456,6 +466,15 @@ import Base from "../../layouts/Base.astro";
     (async () => {
       try {
         await loadFeed(false);
+        try {
+          const me = await (await api("/api/profiles/me")).json();
+          if (me && me.ok && me.profile) {
+            $("composer-avatar").outerHTML =
+              '<span id="composer-avatar" style="display:inline-flex;flex:none;">' +
+              brimwoodAvatar({ src: me.profile.avatar_url, name: me.profile.display_name, size: 40 }) +
+              "</span>";
+          }
+        } catch {}
         $("feed-loading").style.display = "none";
         $("feed-home").style.display = "block";
       } catch {

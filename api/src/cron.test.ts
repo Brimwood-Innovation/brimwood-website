@@ -241,3 +241,39 @@ describe("event reminders (*/15 * * * *)", () => {
     }
   });
 });
+
+describe("poll close notifications (*/15 * * * *)", () => {
+  function pollEnv(polls: any[], voters: any[]) {
+    const env = mockEnv();
+    env.DB.handler = (sql) => {
+      if (/FROM polls/.test(sql)) return { results: polls };
+      if (/FROM poll_votes/.test(sql)) return { results: voters };
+      return undefined;
+    };
+    return env;
+  }
+
+  it("notifies every voter once when a poll closes, then marks it", async () => {
+    const env = pollEnv(
+      [{ id: "poll1", post_id: "post1", question: "Best demo night?" }],
+      [{ voter_id: "v1" }, { voter_id: "v2" }]
+    );
+    const { sendPollCloseNotifications } = await import("./cron");
+    const n = await sendPollCloseNotifications(env.DB as any);
+    expect(n).toBe(1);
+    const notifs = env.DB.inserts.get("notifications") || [];
+    expect(notifs).toHaveLength(2);
+    expect(notifs[0]).toMatchObject({ user_id: "v1", kind: "poll_closed", target_type: "poll", target_id: "post1" });
+    expect(notifs[1]).toMatchObject({ user_id: "v2", kind: "poll_closed" });
+    const mark = env.DB.calls.find((c) => /UPDATE polls SET notified_closed_at/.test(c.sql));
+    expect(mark?.params).toEqual([expect.any(String), "poll1"]);
+  });
+
+  it("skips polls with nothing due (idempotent)", async () => {
+    const env = pollEnv([], []);
+    const { sendPollCloseNotifications } = await import("./cron");
+    const n = await sendPollCloseNotifications(env.DB as any);
+    expect(n).toBe(0);
+    expect(env.DB.inserts.get("notifications") || []).toHaveLength(0);
+  });
+});

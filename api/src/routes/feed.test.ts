@@ -114,6 +114,24 @@ describe("POST /posts", () => {
     expect(ins?.[0].body).toBe("Demo day went well.");
   });
 
+  it("emits a mention notification for @handles in the body", async () => {
+    const env = envWithMedia();
+    const h = memberSession(env);
+    const prev = env.DB.handler;
+    env.DB.handler = (sql: string, params: unknown[]) => {
+      if (/FROM users/.test(sql) && /username IN/.test(sql)) {
+        return { results: [{ id: "user-kim", username: "kim" }] };
+      }
+      return prev?.(sql, params);
+    };
+    const res = await postJSON(app, "/posts", { body: "Hey @kim, great demo!" }, env, h);
+    expect(res.status).toBe(200);
+    const notifs = env.DB.inserts.get("notifications") || [];
+    const mention = (notifs as any[]).find((n) => n.kind === "mention");
+    expect(mention).toMatchObject({ user_id: "user-kim", target_type: "post" });
+    expect(mention.target_id).toBeTruthy();
+  });
+
   it("rejects media refs that are not in R2", async () => {
     const env = envWithMedia();
     const h = memberSession(env);
@@ -223,6 +241,63 @@ describe("POST /posts", () => {
       h
     );
     expect(res.status).toBe(400);
+  });
+});
+
+describe("GET /posts/:id (permalink)", () => {
+  function permalinkEnv() {
+    const env = envWithMedia();
+    env.DB.handler = (sql) => {
+      if (/FROM posts p/i.test(sql) && /p\.id = \?/i.test(sql)) {
+        return {
+          results: [
+            {
+              id: "p9",
+              body: "Permalink post",
+              created_at: "2026-10-08T10:00:00.000Z",
+              author_id: "member-2",
+              author_name: "Kara",
+              display_name: "Kara K",
+              author_username: "karak",
+              avatar_key: null,
+              avatar_r2_key: null,
+            },
+          ],
+        };
+      }
+      return { results: [] };
+    };
+    return env;
+  }
+
+  it("requires sign in", async () => {
+    const env = envWithMedia();
+    const res = await app.request("/posts/p9", { headers: {} }, env);
+    expect(res.status).toBe(401);
+  });
+
+  it("returns the shaped post with canonical profile URL", async () => {
+    const env = permalinkEnv();
+    const h = memberSession(env);
+    const res = await app.request("/posts/p9", { headers: h }, env);
+    expect(res.status).toBe(200);
+    const d: any = await res.json();
+    expect(d.ok).toBe(true);
+    expect(d.post.id).toBe("p9");
+    expect(d.post.author.profile_url).toBe("/@karak");
+    expect(d.post.author.display).toBe("Kara K");
+  });
+
+  it("404s on unknown posts", async () => {
+    const env = envWithMedia();
+    const h = memberSession(env);
+    const prev = env.DB.handler;
+    env.DB.handler = (sql, params) => {
+      if (/FROM posts p/i.test(sql)) return { results: [] };
+      return prev?.(sql, params);
+    };
+    const res = await app.request("/posts/nope", { headers: h }, env);
+    expect(res.status).toBe(404);
   });
 });
 
