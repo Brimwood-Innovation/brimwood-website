@@ -140,3 +140,104 @@ describe("scheduled pruning (*/5 * * * *)", () => {
     expect(pruneRateCall).toBeDefined();
   });
 });
+
+/** Env for the reminder job: one event in the 24h window, one confirmed RSVP. */
+function reminderEnv(opts: { eventInWindow: boolean; alreadyReminded: boolean; memberEmail: string | null }) {
+  const env = mockEnv();
+  env.DB.handler = (sql) => {
+    if (/FROM events/.test(sql)) {
+      if (!opts.eventInWindow || opts.alreadyReminded) return { results: [] };
+      return {
+        results: [
+          {
+            id: "ev1",
+            slug: "demo-night",
+            title: "Demo night",
+            starts_at: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+            location: "1365 Gerrard St E",
+          },
+        ],
+      };
+    }
+    if (/FROM event_rsvps/.test(sql))
+      return { results: [{ name: "Karl", email: "karl@example.com" }] };
+    if (/FROM users/.test(sql))
+      return opts.memberEmail ? { row: { id: "user-karl" } } : { row: null };
+    return undefined;
+  };
+  return env;
+}
+
+describe("event reminders (*/15 * * * *)", () => {
+  it("emails the RSVP list and notifies the matching member, then marks the event", async () => {
+    const sent: { to: string; subject: string }[] = [];
+    const restore = mailStub(sent);
+    try {
+      const env = reminderEnv({ eventInWindow: true, alreadyReminded: false, memberEmail: "karl@example.com" });
+      const { sendEventReminders } = await import("./cron");
+      const n = await sendEventReminders(env.DB as any, env.RESEND_API_KEY, "https://brimwoodinnovation.com");
+      expect(n).toBe(1);
+      expect(sent).toHaveLength(1);
+      expect(sent[0].to).toBe("karl@example.com");
+      expect(sent[0].subject).toBe("Tomorrow: Demo night — Brimwood Innovation");
+      const notifs = env.DB.inserts.get("notifications") || [];
+      expect(notifs).toHaveLength(1);
+      expect(notifs[0]).toMatchObject({
+        user_id: "user-karl",
+        kind: "event_reminder",
+        target_type: "event",
+        target_id: "demo-night",
+      });
+      const mark = env.DB.calls.find((c) => /UPDATE events SET reminder_sent_at/.test(c.sql));
+      expect(mark?.params).toEqual([expect.any(String), "ev1"]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("skips events outside the window or already reminded (idempotent)", async () => {
+    const sent: { to: string; subject: string }[] = [];
+    const restore = mailStub(sent);
+    try {
+      const { sendEventReminders } = await import("./cron");
+      for (const opts of [
+        { eventInWindow: false, alreadyReminded: false, memberEmail: "karl@example.com" },
+        { eventInWindow: true, alreadyReminded: true, memberEmail: "karl@example.com" },
+      ]) {
+        const env = reminderEnv(opts);
+        const n = await sendEventReminders(env.DB as any, env.RESEND_API_KEY, "https://brimwoodinnovation.com");
+        expect(n).toBe(0);
+      }
+      expect(sent).toHaveLength(0);
+    } finally {
+      restore();
+    }
+  });
+
+  it("still emails when the RSVP email matches no member (no in-app row)", async () => {
+    const sent: { to: string; subject: string }[] = [];
+    const restore = mailStub(sent);
+    try {
+      const env = reminderEnv({ eventInWindow: true, alreadyReminded: false, memberEmail: null });
+      const { sendEventReminders } = await import("./cron");
+      await sendEventReminders(env.DB as any, env.RESEND_API_KEY, "https://brimwoodinnovation.com");
+      expect(sent).toHaveLength(1);
+      expect(env.DB.inserts.get("notifications") || []).toHaveLength(0);
+    } finally {
+      restore();
+    }
+  });
+
+  it("runs inside the 15-minute scheduled job", async () => {
+    const sent: { to: string; subject: string }[] = [];
+    const restore = mailStub(sent);
+    try {
+      const env = reminderEnv({ eventInWindow: true, alreadyReminded: false, memberEmail: "karl@example.com" });
+      // No scheduled posts in this env: the posts query returns nothing.
+      await handleScheduled({ cron: "*/15 * * * *" } as any, env as any);
+      expect(sent).toHaveLength(1);
+    } finally {
+      restore();
+    }
+  });
+});
