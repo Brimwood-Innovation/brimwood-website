@@ -2,6 +2,7 @@
 /* Members shell (T19): auth-gated. Client-side session check against
  * /api/auth/me; anonymous visitors see the sign-in form. */
 import Base from "../layouts/Base.astro";
+import StoriesTray from "../components/StoriesTray.astro";
 ---
 
 <Base
@@ -41,6 +42,7 @@ import Base from "../layouts/Base.astro";
       Welcome<span id="memberName"></span>.
     </h1>
     <p class="sec-lede">Your Brimwood home base.</p>
+    <StoriesTray />
     <div class="cards" style="grid-template-columns:repeat(2,1fr);">
       <div class="card"><div class="n">ROLE</div><h3 id="memberRole">—</h3><p>Your membership role.</p></div>
       <div class="card"><div class="n">EMAIL</div><h3 id="memberEmail" style="font-size:15px;word-break:break-all;">—</h3><p>Signed in as.</p></div>

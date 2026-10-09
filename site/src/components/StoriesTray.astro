@@ -1,0 +1,315 @@
+---
+/* Stories tray + viewer (social stories area).
+ *
+ * Self-contained: markup, styles, and client logic live here so the feed
+ * area can drop <StoriesTray /> at the top of /hub/feed when it ships.
+ * Currently mounted on the members home page (#members-home).
+ *
+ * Behaviour mirrors the API contract in api/src/routes/stories.ts:
+ * - GET /api/stories/tray → round avatars; emerald ring = unseen stories,
+ *   grey ring = all seen (per the UX design mock in section 19).
+ * - GET /api/stories/:id → marks viewed; viewer list only for the author.
+ * - POST /api/stories/:id/reply → replies route to DMs via the chat system.
+ * - POST /api/stories (multipart) → upload from the "You" tile.
+ * Stories are members-only: a 401 from the tray hides the whole section.
+ */
+---
+
+<div id="stories-section" style="display:none;margin-bottom:28px">
+  <div class="story-tray" id="storyTray" role="list" aria-label="Stories"></div>
+  <p class="story-note">Stories expire in 24 hours · replies land as DMs</p>
+  <input type="file" id="storyFile" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4" style="display:none" />
+</div>
+
+<div id="storyViewer" class="sv-overlay" style="display:none" role="dialog" aria-modal="true" aria-label="Story viewer">
+  <div class="story-viewer">
+    <div class="sv-bar" id="svBar"></div>
+    <div class="sv-head">
+      <span class="sv-avatar" id="svAvatar">?</span>
+      <b id="svAuthor">—</b>
+      <small id="svTime">—</small>
+      <button class="sv-close" id="svClose" aria-label="Close story viewer">✕</button>
+    </div>
+    <div class="sv-media" id="svMedia"></div>
+    <button class="sv-nav sv-prev" id="svPrev" aria-label="Previous story">‹</button>
+    <button class="sv-nav sv-next" id="svNext" aria-label="Next story">›</button>
+    <div class="sv-viewers" id="svViewers" style="display:none">
+      <button class="sv-viewers-toggle" id="svViewersToggle" aria-expanded="false">👁 <span id="svViewCount">0</span> viewed</button>
+      <ul class="sv-viewers-list" id="svViewersList" style="display:none"></ul>
+    </div>
+    <form class="sv-reply" id="svReplyForm">
+      <input id="svReplyInput" maxlength="500" placeholder="Reply…" aria-label="Reply to this story" autocomplete="off" />
+      <button class="btn btn-sm" type="submit">Send</button>
+    </form>
+    <p class="sv-reply-err" id="svReplyErr" style="display:none"></p>
+  </div>
+</div>
+
+<style>
+  .story-tray{display:flex;gap:14px;overflow-x:auto;padding:6px 2px 12px;scrollbar-width:thin}
+  .story{flex:none;text-align:center;width:76px;background:none;border:0;cursor:pointer;font:inherit;color:inherit;padding:0}
+  .story .ring{width:66px;height:66px;border-radius:50%;padding:3px;background:conic-gradient(var(--emerald),var(--signal),var(--emerald));margin:0 auto 6px}
+  .story .ring.seen{background:var(--line)}
+  .story .ring .face{width:100%;height:100%;border-radius:50%;background:var(--mint);display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:var(--emerald-deep);border:2px solid #fff;overflow:hidden}
+  .story .ring .face img{width:100%;height:100%;object-fit:cover}
+  .story small{font-size:11px;color:var(--stone);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .story .add{position:relative}
+  .story .add::after{content:"+";position:absolute;right:2px;bottom:8px;width:22px;height:22px;border-radius:50%;background:var(--emerald);color:#fff;font-size:16px;line-height:20px;font-weight:700;border:2px solid #fff}
+  .story-note{font-size:12.5px;color:var(--stone);text-align:center;margin:2px 0 0}
+  .sv-overlay{position:fixed;inset:0;background:rgba(10,20,16,.82);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px}
+  .story-viewer{background:#0d1512;border-radius:var(--radius);color:#fff;width:min(400px,100%);max-height:92vh;overflow:hidden;position:relative;display:flex;flex-direction:column}
+  .sv-bar{display:flex;gap:4px;padding:12px 12px 0}
+  .sv-bar i{flex:1;height:3px;background:rgba(255,255,255,.28);border-radius:99px;overflow:hidden;position:relative}
+  .sv-bar i.done{background:#fff}
+  .sv-bar i.filling::after{content:"";position:absolute;inset:0;background:#fff;transform:scaleX(0);transform-origin:left;animation:svfill var(--dur,6000ms) linear forwards}
+  @keyframes svfill{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+  .sv-head{padding:10px 14px;display:flex;gap:8px;align-items:center}
+  .sv-avatar{width:32px;height:32px;border-radius:50%;background:var(--mint);color:var(--emerald-deep);font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+  .sv-head b{font-size:13px}
+  .sv-head small{opacity:.7;font-size:12px}
+  .sv-close{margin-left:auto;background:none;border:0;color:#fff;font-size:18px;cursor:pointer;padding:4px 8px}
+  .sv-media{position:relative;min-height:300px;max-height:52vh;display:flex;align-items:center;justify-content:center;background:#000}
+  .sv-media img,.sv-media video{max-width:100%;max-height:52vh;display:block}
+  .sv-nav{position:absolute;top:45%;background:rgba(255,255,255,.14);border:0;color:#fff;font-size:26px;width:36px;height:52px;border-radius:8px;cursor:pointer}
+  .sv-prev{left:6px}.sv-next{right:6px}
+  .sv-viewers{padding:8px 14px 0}
+  .sv-viewers-toggle{background:none;border:0;color:#fff;font-size:13px;cursor:pointer;opacity:.85}
+  .sv-viewers-list{list-style:none;margin:8px 0 0;padding:0;max-height:120px;overflow-y:auto;font-size:13px}
+  .sv-viewers-list li{padding:4px 0;opacity:.85;border-top:1px solid rgba(255,255,255,.12)}
+  .sv-viewers-list small{opacity:.6;margin-left:8px}
+  .sv-reply{padding:12px 14px;display:flex;gap:8px}
+  .sv-reply input{flex:1;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);border-radius:99px;padding:8px 14px;color:#fff;font-size:13px;font-family:inherit}
+  .sv-reply input::placeholder{color:rgba(255,255,255,.6)}
+  .sv-reply-err{font-size:12.5px;color:#ffb4a8;padding:0 14px 12px;margin:0}
+</style>
+
+<script>
+  (function () {
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || '';
+    const base = API_BASE;
+    const creds = { credentials: 'include' };
+    const section = document.getElementById('stories-section');
+    const tray = document.getElementById('storyTray');
+    const viewer = document.getElementById('storyViewer');
+    const fileInput = document.getElementById('storyFile');
+
+    let groups = [];        // tray author groups
+    let queue = [];         // flattened stories for the open viewer
+    let qi = 0;             // index into queue
+    let timer = null;       // auto-advance timer
+    const PHOTO_MS = 6000;  // photo dwell before auto-advance
+
+    function ago(iso) {
+      const s = Math.max(1, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+      if (s < 60) return s + 's';
+      if (s < 3600) return Math.floor(s / 60) + 'm';
+      if (s < 86400) return Math.floor(s / 3600) + 'h';
+      return Math.floor(s / 86400) + 'd';
+    }
+    function initial(name) {
+      return (name || '?').trim().charAt(0).toUpperCase();
+    }
+    function esc(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    async function loadTray() {
+      let d;
+      try {
+        const r = await fetch(base + '/api/stories/tray', { headers: { accept: 'application/json' }, ...creds });
+        if (r.status === 401) return; // not signed in: stories stay hidden
+        if (!r.ok) return;
+        d = await r.json();
+        if (!d.ok) return;
+      } catch { return; }
+      groups = d.authors || [];
+      renderTray();
+      section.style.display = '';
+    }
+
+    function renderTray() {
+      tray.innerHTML = '';
+      // "You" tile: opens the upload picker. Labelled by self group when present.
+      const self = groups.find((g) => g.is_self);
+      const you = document.createElement('button');
+      you.className = 'story';
+      you.setAttribute('role', 'listitem');
+      you.setAttribute('aria-label', 'Add to your story');
+      you.innerHTML = '<span class="ring seen add"><span class="face">' +
+        (self ? esc(initial(self.display)) : '📷') + '</span></span><small>You</small>';
+      you.addEventListener('click', () => fileInput.click());
+      tray.appendChild(you);
+      for (const g of groups) {
+        const b = document.createElement('button');
+        b.className = 'story';
+        b.setAttribute('role', 'listitem');
+        b.setAttribute('aria-label', 'View ' + g.display + "'s story");
+        b.innerHTML = '<span class="ring' + (g.has_unseen ? '' : ' seen') + '"><span class="face">' +
+          esc(initial(g.display)) + '</span></span><small>' + esc(g.display) + '</small>';
+        b.addEventListener('click', () => openViewer(g));
+        tray.appendChild(b);
+      }
+    }
+
+    function openViewer(group) {
+      // Flatten: this author's stories, oldest first (playback order).
+      queue = group.stories.slice()
+        .sort((a, b) => a.created_at.localeCompare(b.created_at))
+        .map((s) => ({ ...s, author_display: group.display }));
+      qi = 0;
+      viewer.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+      renderBar();
+      showStory();
+    }
+
+    function renderBar() {
+      const bar = document.getElementById('svBar');
+      bar.innerHTML = '';
+      queue.forEach((_, i) => {
+        const seg = document.createElement('i');
+        if (i < qi) seg.className = 'done';
+        bar.appendChild(seg);
+      });
+    }
+
+    /** Restart the progress fill on the active segment. */
+    function fillActive(ms) {
+      const el = document.getElementById('svBar').children[qi];
+      if (!el) return;
+      el.className = 'filling';
+      el.style.setProperty('--dur', (ms || PHOTO_MS) + 'ms');
+    }
+
+    async function showStory() {
+      clearTimeout(timer);
+      const s = queue[qi];
+      if (!s) { closeViewer(); return; }
+      const bar = document.getElementById('svBar');
+      [...bar.children].forEach((el, i) => {
+        el.className = i < qi ? 'done' : '';
+      });
+      document.getElementById('svAuthor').textContent = s.author_display || '';
+      document.getElementById('svAvatar').textContent = initial(s.author_display);
+      document.getElementById('svTime').textContent = ago(s.created_at);
+      document.getElementById('svTime').title = 'Expires ' + new Date(s.expires_at).toLocaleString();
+      const media = document.getElementById('svMedia');
+      media.innerHTML = '';
+      // Fetch the full story: marks it viewed server-side and, for the
+      // author, returns the viewer list.
+      let detail = null;
+      try {
+        const r = await fetch(base + '/api/stories/' + encodeURIComponent(s.id), { headers: { accept: 'application/json' }, ...creds });
+        if (r.ok) detail = await r.json();
+      } catch { /* viewer still plays from the tray data */ }
+      if (detail && detail.ok) {
+        s.author_display = detail.story.author;
+        document.getElementById('svAuthor').textContent = detail.story.author;
+        document.getElementById('svAvatar').textContent = initial(detail.story.author);
+        renderViewers(detail.viewers || null);
+        s.seen = true;
+      }
+      if (s.kind === 'video') {
+        const v = document.createElement('video');
+        v.src = s.url; v.controls = true; v.playsInline = true; v.autoplay = true; v.muted = true;
+        v.addEventListener('ended', next);
+        v.addEventListener('loadedmetadata', () => { if (v.duration && isFinite(v.duration)) fillActive(v.duration * 1000); });
+        media.appendChild(v);
+      } else {
+        const img = document.createElement('img');
+        img.src = s.url; img.alt = 'Story photo';
+        media.appendChild(img);
+        fillActive(PHOTO_MS);
+        timer = setTimeout(next, PHOTO_MS);
+      }
+      document.getElementById('svReplyInput').value = '';
+      document.getElementById('svReplyErr').style.display = 'none';
+      document.getElementById('svPrev').style.visibility = qi > 0 ? 'visible' : 'hidden';
+      document.getElementById('svNext').style.visibility = qi < queue.length - 1 ? 'visible' : 'hidden';
+    }
+
+    function next() { if (qi < queue.length - 1) { qi++; showStory(); } else closeViewer(); }
+    function prev() { if (qi > 0) { qi--; showStory(); } }
+
+    function renderViewers(viewers) {
+      const box = document.getElementById('svViewers');
+      if (!viewers) { box.style.display = 'none'; return; }
+      box.style.display = '';
+      document.getElementById('svViewCount').textContent = viewers.length;
+      const list = document.getElementById('svViewersList');
+      list.innerHTML = viewers.map((v) =>
+        '<li>' + esc(v.display) + '<small>' + esc(ago(v.viewed_at)) + ' ago</small></li>'
+      ).join('') || '<li>No views yet.</li>';
+    }
+
+    function closeViewer() {
+      clearTimeout(timer);
+      viewer.style.display = 'none';
+      document.body.style.overflow = '';
+      renderTray(); // refresh seen/unseen rings
+    }
+
+    document.getElementById('svClose').addEventListener('click', closeViewer);
+    document.getElementById('svNext').addEventListener('click', next);
+    document.getElementById('svPrev').addEventListener('click', prev);
+    viewer.addEventListener('click', (e) => { if (e.target === viewer) closeViewer(); });
+    document.addEventListener('keydown', (e) => {
+      if (viewer.style.display === 'none') return;
+      if (e.key === 'Escape') closeViewer();
+      if (e.key === 'ArrowRight') next();
+      if (e.key === 'ArrowLeft') prev();
+    });
+    document.getElementById('svViewersToggle').addEventListener('click', () => {
+      const list = document.getElementById('svViewersList');
+      const open = list.style.display === 'none';
+      list.style.display = open ? '' : 'none';
+      document.getElementById('svViewersToggle').setAttribute('aria-expanded', String(open));
+    });
+
+    document.getElementById('svReplyForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = document.getElementById('svReplyInput');
+      const err = document.getElementById('svReplyErr');
+      const s = queue[qi];
+      const body = input.value.trim();
+      if (!body || !s) return;
+      err.style.display = 'none';
+      try {
+        const r = await fetch(base + '/api/stories/' + encodeURIComponent(s.id) + '/reply', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', accept: 'application/json' },
+          body: JSON.stringify({ body }),
+          ...creds,
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok) throw new Error(d.error || 'Could not send the reply.');
+        input.value = '';
+        input.placeholder = 'Sent — the author will see it as a DM ✓';
+        setTimeout(() => { input.placeholder = 'Reply…'; }, 2500);
+      } catch (ex) {
+        err.textContent = ex.message;
+        err.style.display = '';
+      }
+    });
+
+    fileInput.addEventListener('change', async () => {
+      const f = fileInput.files[0];
+      fileInput.value = '';
+      if (!f) return;
+      if (f.size > 10 * 1024 * 1024) { alert('That file is over the 10 MB limit.'); return; }
+      const fd = new FormData();
+      fd.append('file', f);
+      try {
+        const r = await fetch(base + '/api/stories', { method: 'POST', body: fd, ...creds });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok) throw new Error(d.error || 'Upload failed.');
+        loadTray();
+      } catch (ex) {
+        alert(ex.message);
+      }
+    });
+
+    // Only boot when the section is on the page (members home for now).
+    if (section) loadTray();
+  })();
+</script>
