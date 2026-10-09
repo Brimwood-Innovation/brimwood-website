@@ -66,7 +66,22 @@ export function page(title: string, heading: string, message: string, env?: { SI
     '<div style="font-size:16px;color:#5B6862;">' + message + "</div>" +
     '<p style="margin-top:40px;"><a href="' + site + '" style="color:#0C9463;">Back to brimwoodinnovation.com</a></p>' +
     "</div></body></html>";
-  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+  // Tight CSP for these standalone pages (newsletter verify/unsubscribe):
+  // no scripts at all, inline styles only, logo from our own origin.
+  // (The OAuth popup pages in routes/oauth.ts carry their own inline scripts
+  // and must NOT inherit this policy — hence it lives here, not globally.)
+  return new Response(html, {
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "content-security-policy":
+        "default-src 'self'; script-src 'none'; style-src 'unsafe-inline'; " +
+        "img-src 'self' data: https:; font-src 'self'; object-src 'none'; " +
+        "base-uri 'self'; form-action 'self'",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "referrer-policy": "strict-origin-when-cross-origin",
+    },
+  });
 }
 
 export type EmailInput = {

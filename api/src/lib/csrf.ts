@@ -10,10 +10,10 @@
  *    uploads (admin media library), which remain protected by the Origin
  *    check above.
  *
- * NOTE: the SameSite=None cookie branch in auth.ts / password.ts is kept
- * until F3 (same-origin API). Removing it now would break cookie auth on
- * preview deployments, which call the worker cross-origin. This middleware
- * is the actual CSRF defence; the cookie change follows in F3.
+ * NOTE (audit/security-ci): the old SameSite=None cookie branches were removed
+ * in F3 — the site calls the API same-origin, so session cookies are now
+ * `__Host-` + `SameSite=Lax` only (see api/src/lib/auth.ts). This middleware
+ * remains the CSRF defence for every mutating route.
  */
 
 const EXACT_ORIGINS = [
@@ -57,7 +57,16 @@ export async function csrfGuard(c: any, next: any) {
     if (len > 0 || ct) {
       const isJson = ct.includes("application/json");
       const isMultipart = ct.includes("multipart/form-data");
-      if (!isJson && !isMultipart) {
+      // RFC 8058 one-click unsubscribe: mailbox providers POST
+      // `List-Unsubscribe=One-Click` as application/x-www-form-urlencoded
+      // with no Origin header. Narrow exemption for exactly this path —
+      // the Origin check above still applies when an Origin is present,
+      // and the endpoint only acts on an unguessable per-recipient token.
+      const isOneClickUnsub =
+        c.req.method === "POST" &&
+        c.req.path === "/api/newsletter/unsubscribe" &&
+        ct.includes("application/x-www-form-urlencoded");
+      if (!isJson && !isMultipart && !isOneClickUnsub) {
         return c.json(
           { ok: false, error: "Content-Type must be application/json." },
           403
