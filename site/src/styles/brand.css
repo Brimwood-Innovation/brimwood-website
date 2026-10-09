@@ -318,6 +318,14 @@ footer.site { background: var(--forest); color: #fff; margin-top: 88px; }
   clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 
+/* ---- social wiring (audit/social/wiring) ---- */
+/* @mention links: calm emerald, never louder than body text. */
+a.mention { color: var(--emerald-deep); font-weight: 600; text-decoration: none; }
+a.mention:hover { text-decoration: underline; }
+/* Profile links produced by Brimwood.linkProfiles: inherit surrounding style. */
+a.profile-link { color: inherit; text-decoration: none; }
+a.profile-link:hover { text-decoration: underline; }
+
 /* ---- print ---- */
 @media print {
   header.site, footer.site, .announcement-bar, .skip-link,

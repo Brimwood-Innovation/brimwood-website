@@ -15,6 +15,7 @@ import search from "./routes/search";
 import comments from "./routes/comments";
 import events from "./routes/events";
 import forms from "./routes/forms";
+import notifications from "./routes/notifications";
 import profiles from "./routes/profiles";
 import studio from "./routes/studio";
 import { handleScheduled } from "./cron";
@@ -106,6 +107,7 @@ app.route("/api/search", search);
 app.route("/api", comments);
 app.route("/api", events);
 app.route("/api/forms", forms);
+app.route("/api", notifications);
 app.route("/api/studio", studio);
 app.route("/api", profiles);
 

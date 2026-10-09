@@ -60,8 +60,11 @@ const pillars: Record<string, string> = {
       {post.data.tags.length > 0 && <>{" · "}{post.data.tags.join(", ")}</>}
     </p>
     <Content />
-    <p style="margin-top:3rem;">
+    <p style="margin-top:3rem;display:flex;gap:12px;flex-wrap:wrap;">
       <a class="btn btn-ghost" href="/blog">All posts</a>
+      <button class="btn btn-ghost" id="sharePostBtn" type="button" data-share-title={post.data.title} data-share-url={`https://brimwoodinnovation.com/blog/${slug}`}>
+        Share to DM →
+      </button>
     </p>
   </article>
 
@@ -88,4 +91,19 @@ const pillars: Record<string, string> = {
   </section>
 
   <script is:inline src="/js/blog-comments.js"></script>
+  <script>
+    // Share-to-DM (audit/social/wiring): paper-plane pattern for blog posts.
+    (function () {
+      var btn = document.getElementById("sharePostBtn");
+      if (!btn || !window.Brimwood || !window.Brimwood.shareToDM) return;
+      btn.addEventListener("click", function () {
+        window.Brimwood.shareToDM({
+          title: btn.getAttribute("data-share-title") || document.title,
+          url: btn.getAttribute("data-share-url") || location.href,
+          targetType: "blog_post",
+          targetId: btn.getAttribute("data-share-url") || location.href,
+        });
+      });
+    })();
+  </script>
 </Base>

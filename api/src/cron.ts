@@ -1,7 +1,8 @@
 /* Scheduled tasks (T25, T33): publish scheduled posts + weekly digest + health monitoring.
  *
  * Runs on Cloudflare Cron Triggers. Three jobs:
- * 1. Every 15 min: publish posts where status='scheduled' AND published_at <= now.
+ * 1. Every 15 min: publish posts where status='scheduled' AND published_at <= now,
+ *    plus event reminders (RSVP → 24h-before reminder email + in-app notification).
  * 2. Weekly (Monday 09:00 UTC): digest email to active subscribers with
  *    the week's new published posts + lessons.
  * 3. Every 5 min: health check — ping key endpoints, log to D1,
@@ -11,6 +12,110 @@ import { sendEmail, shell, esc } from "./lib/email";
 import { INBOX } from "./lib/email";
 import { pruneSessions } from "./lib/auth";
 import { pruneRateLimits } from "./lib/ratelimit-d1";
+import { emitNotification } from "./routes/notifications";
+
+/**
+ * Event reminders (audit/social/wiring): for published events starting in
+ * roughly 24 hours that have not been reminded yet, email every confirmed
+ * RSVP and drop an in-app `event_reminder` notification on the matching
+ * member (RSVP email → user). Idempotent via events.reminder_sent_at (0020):
+ * at-least-once cron retries cannot re-send.
+ */
+export async function sendEventReminders(
+  DB: D1Database,
+  resendKey: string | undefined,
+  siteUrl: string
+): Promise<number> {
+  const nowIso = new Date().toISOString();
+  const events = await DB.prepare(
+    `SELECT id, slug, title, starts_at, location FROM events
+     WHERE status = 'published' AND reminder_sent_at IS NULL
+       AND starts_at > ? AND starts_at <= ?
+     ORDER BY starts_at ASC LIMIT 25`
+  )
+    .bind(
+      new Date(Date.now() + 23 * 3600 * 1000).toISOString(),
+      new Date(Date.now() + 25 * 3600 * 1000).toISOString()
+    )
+    .all();
+  const rows = (events.results as any[]) || [];
+  let reminded = 0;
+
+  for (const ev of rows) {
+    const rsvps = await DB.prepare(
+      `SELECT name, email FROM event_rsvps
+       WHERE event_id = ? AND status = 'confirmed'`
+    )
+      .bind(ev.id)
+      .all();
+    const when = new Date(ev.starts_at).toLocaleString("en-CA", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: "America/Toronto",
+    });
+    const url = `${siteUrl}/events/${ev.slug}`;
+
+    for (const r of ((rsvps.results as any[]) || [])) {
+      // In-app notification for the member behind this RSVP email (best effort).
+      try {
+        const user = await DB.prepare(
+          "SELECT id FROM users WHERE email = ? AND status = 'active'"
+        )
+          .bind(String(r.email || "").toLowerCase())
+          .first<{ id: string }>()
+          .catch(() => null);
+        if (user) {
+          await emitNotification(DB, {
+            userId: user.id,
+            kind: "event_reminder",
+            targetType: "event",
+            targetId: ev.slug,
+            preview: `Reminder: ${ev.title} starts tomorrow — ${when}.`,
+          });
+        }
+      } catch {}
+      // Reminder email (best effort — the in-app row above stands alone).
+      if (resendKey) {
+        const html = shell(
+          "See you tomorrow",
+          `Reminder: ${ev.title}`,
+          `<p style="margin:0 0 16px;">Hello ${esc(r.name || "there")},</p>` +
+            `<p style="margin:0 0 16px;">A reminder that <strong>${esc(ev.title)}</strong> starts tomorrow — ` +
+            `${esc(when)}${ev.location ? ` at ${esc(ev.location)}` : ""}.</p>` +
+            `<p style="margin:0;font-size:13px;color:#5B6862;"><a href="${esc(url)}" style="color:#0C9463;">Event details</a></p>`
+        );
+        await sendEmail(resendKey, {
+          to: r.email,
+          subject: `Tomorrow: ${ev.title} — Brimwood Innovation`,
+          html,
+          text:
+            `Hello ${r.name || "there"},\n\nA reminder that ${ev.title} starts tomorrow — ${when}` +
+            `${ev.location ? ` at ${ev.location}` : ""}.\n\nEvent details: ${url}\n\n` +
+            `Build a business. Build yourself.\n— Brimwood Innovation`,
+        })
+          .then(() =>
+            DB.prepare(
+              "INSERT INTO email_log (id, kind, to_email, subject, status) VALUES (?, 'rsvp-reminder', ?, ?, 'sent')"
+            )
+              .bind(crypto.randomUUID(), r.email, `Tomorrow: ${ev.title}`)
+              .run()
+              .catch(() => {})
+          )
+          .catch(() => {});
+      }
+    }
+
+    await DB.prepare("UPDATE events SET reminder_sent_at = ? WHERE id = ?")
+      .bind(nowIso, ev.id)
+      .run();
+    reminded++;
+    console.log(`event reminder sent for: ${ev.slug}`);
+  }
+  return reminded;
+}
 
 /** Digest body for one subscriber — unsubUrl is fully built by the caller. */
 export function digestBody(
@@ -66,6 +171,13 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
         .run();
       console.log(`published scheduled post: ${p.slug}`);
     }
+    // Event reminders ride the same 15-minute cadence (audit/social/wiring):
+    // RSVP → reminder, 24h before each published event. Idempotent.
+    await sendEventReminders(
+      DB,
+      RESEND_API_KEY,
+      env.SITE_URL || "https://brimwoodinnovation.com"
+    ).catch((e) => console.error("event reminders failed:", e));
     return;
   }
 

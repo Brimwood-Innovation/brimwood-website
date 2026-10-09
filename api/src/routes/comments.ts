@@ -19,6 +19,11 @@ import { getAdminUser } from "../lib/auth";
 import { cleanStr, isEmail, clientIp } from "../lib/validate";
 import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 import { verifyTurnstile } from "../lib/turnstile";
+import {
+  emitNotification,
+  parseMentions,
+  resolveMentionedUsers,
+} from "./notifications";
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -91,7 +96,7 @@ app.get("/comments/:slug", async (c) => {
   if (!slug) return c.json({ ok: false }, 400);
 
   const rows = await DB.prepare(
-    `SELECT name, body, created_at FROM comments
+    `SELECT id, name, body, created_at FROM comments
      WHERE post_slug = ? AND status = 'approved'
      ORDER BY created_at ASC LIMIT 100`
   )
@@ -148,14 +153,46 @@ app.patch("/admin/comments/:id", async (c) => {
     return c.json({ ok: false, error: "Status must be approved or spam." }, 400);
   }
 
-  const existing = await DB.prepare("SELECT post_slug, name FROM comments WHERE id = ?")
+  const existing = await DB.prepare(
+    "SELECT post_slug, name, email, body FROM comments WHERE id = ?"
+  )
     .bind(id)
-    .first<{ post_slug: string; name: string }>();
+    .first<{ post_slug: string; name: string; email: string; body: string }>();
   if (!existing) return c.json({ ok: false, error: "Comment not found." }, 404);
 
   await DB.prepare("UPDATE comments SET status = ? WHERE id = ?")
     .bind(status, id)
     .run();
+
+  // Approving makes the comment visible: @mentions in it now notify.
+  // (Best-effort — a failed notification never fails the moderation action.)
+  if (status === "approved") {
+    try {
+      const handles = parseMentions(existing.body || "");
+      if (handles.length) {
+        const mentioned = await resolveMentionedUsers(DB, handles);
+        if (mentioned.length) {
+          const actor = await DB.prepare(
+            "SELECT id FROM users WHERE email = ? AND status = 'active'"
+          )
+            .bind((existing.email || "").toLowerCase())
+            .first<{ id: string }>()
+            .catch(() => null);
+          const preview = (existing.body || "").replace(/\s+/g, " ").trim().slice(0, 200);
+          for (const u of mentioned) {
+            await emitNotification(DB, {
+              userId: u.id,
+              kind: "mention",
+              actorId: actor?.id || null,
+              targetType: "blog_comment",
+              targetId: id,
+              preview,
+            });
+          }
+        }
+      }
+    } catch {}
+  }
 
   await DB.prepare(
     "INSERT INTO audit_log (id, actor_id, action, detail) VALUES (?, ?, ?, ?)"
