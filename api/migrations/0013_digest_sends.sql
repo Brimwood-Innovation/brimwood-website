@@ -1,4 +1,4 @@
--- 0012_digest_sends.sql — retry-safe weekly digest (cron idempotency).
+-- 0013_digest_sends.sql — retry-safe weekly digest (cron idempotency).
 --
 -- The weekly digest send loop is at-least-once: a cron retry or overlapping
 -- invocation after a partial send must not re-mail subscribers. digest_id is

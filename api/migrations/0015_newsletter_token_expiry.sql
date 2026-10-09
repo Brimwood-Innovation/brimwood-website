@@ -1,4 +1,4 @@
--- 0012_newsletter_token_expiry.sql — audit/security-ci: newsletter confirm tokens
+-- 0015_newsletter_token_expiry.sql — audit/security-ci: newsletter confirm tokens
 -- now expire (48h). Previously confirm_token lived forever, so a leaked link
 -- confirmed a subscription indefinitely. The verify handler treats expired
 -- tokens like unknown ones; legacy rows with NULL expiry read as expired.
