@@ -63,11 +63,21 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
   }
 
   // Job 2: weekly digest (Monday 09:00 UTC).
+  // Idempotency: cron triggers are at-least-once. One row per subscriber per
+  // digest run is INSERT OR IGNOREd into digest_sends BEFORE sending; a retry
+  // after a partial send skips rows already recorded (see 0012_digest_sends.sql).
   if (cron === "0 9 * * 1") {
     if (!RESEND_API_KEY) {
       console.error("digest: RESEND_API_KEY not set");
       return;
     }
+    // Digest id = the Monday (UTC) of this week, e.g. 'digest-2026-10-05'.
+    const nowUtc = new Date();
+    const mondayOffset = (nowUtc.getUTCDay() + 6) % 7; // 0 = Monday
+    const monday = new Date(
+      Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth(), nowUtc.getUTCDate() - mondayOffset)
+    );
+    const digestId = "digest-" + monday.toISOString().slice(0, 10);
     // Posts published in the last 7 days.
     const posts = await DB.prepare(
       `SELECT slug, title, excerpt FROM posts
@@ -78,7 +88,7 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
 
     // Lessons published in the last 7 days.
     const lessons = await DB.prepare(
-      `SELECT l.slug, l.title, co.slug AS course_slug FROM lessons l
+      `SELECT l.id, l.slug, l.title, co.slug AS course_slug FROM lessons l
        JOIN modules m ON m.id = l.module_id
        JOIN courses co ON co.id = m.course_id
        WHERE l.status = 'published'
@@ -98,7 +108,7 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
     const lessonItems = lessonRows
       .map(
         (l) =>
-          `<p style="margin:0 0 12px;"><a href="${site}/academy/${esc(l.course_slug)}" style="color:#0C9463;font-weight:600;">${esc(l.title)}</a></p>`
+          `<p style="margin:0 0 12px;"><a href="${site}/academy/${esc(l.course_slug)}/${esc(l.id)}" style="color:#0C9463;font-weight:600;">${esc(l.title)}</a></p>`
       )
       .join("");
     const postList = postRows.map((p) => ({ title: p.title, url: `${site}/blog/${p.slug}` }));
@@ -119,6 +129,15 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
 
     let sent = 0;
     for (const s of (subs.results as any[])) {
+      // Dedupe first: if this subscriber already got this digest run (a retry
+      // after a partial send), skip. INSERT OR IGNORE + changes is atomic.
+      const claimed = await DB.prepare(
+        "INSERT OR IGNORE INTO digest_sends (digest_id, email) VALUES (?, ?)"
+      )
+        .bind(digestId, s.email)
+        .run();
+      if (claimed.meta.changes === 0) continue;
+
       const unsubUrl =
         `${site}/api/newsletter/unsubscribe?email=${encodeURIComponent(s.email)}&token=${encodeURIComponent(s.unsub_token)}`;
       const { html, text } = digestBody(postItems, lessonItems, unsubUrl, {
@@ -144,11 +163,11 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
     }
     console.log(`digest: sent to ${sent} subscribers`);
 
-    // Log to audit.
+    // Log to audit (tagged with the digest run id for traceability).
     await DB.prepare(
       "INSERT INTO email_log (id, kind, to_email, subject, status) VALUES (?, 'digest', ?, ?, 'sent')"
     )
-      .bind(crypto.randomUUID(), `${sent} subscribers`, "This week at Brimwood")
+      .bind(crypto.randomUUID(), `${sent} subscribers (${digestId})`, "This week at Brimwood")
       .run();
   }
 }
