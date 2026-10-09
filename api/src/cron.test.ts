@@ -1,7 +1,8 @@
-/* Cron tests: weekly digest — confirmed-subscribers only, retry-safe sends. */
-import { describe, it, expect } from "vitest";
+/* Cron tests: weekly digest (confirmed-subscribers only, retry-safe sends)
+ * and scheduled pruning (expired sessions + stale rate-limit rows). */
+import { describe, it, expect, afterEach } from "vitest";
 import { handleScheduled } from "./cron";
-import { mockEnv, mailStub } from "./test/helpers";
+import { mockEnv, mailStub, stubFetch, type MockEnv } from "./test/helpers";
 
 /** DB handler for the digest job. `claims` emulates the digest_sends PK:
  *  INSERT OR IGNORE reports changes=1 the first time, 0 on retry. */
@@ -90,5 +91,52 @@ describe("weekly digest", () => {
     } finally {
       restore();
     }
+  });
+});
+
+let restoreFetch: (() => void) | null = null;
+
+afterEach(() => {
+  if (restoreFetch) {
+    restoreFetch();
+    restoreFetch = null;
+  }
+});
+
+describe("scheduled pruning (*/5 * * * *)", () => {
+  it("deletes expired sessions and stale rate-limit rows", async () => {
+    const env: MockEnv = mockEnv();
+    restoreFetch = stubFetch(() => new Response(null, { status: 200 }));
+
+    const now = Date.now();
+    env.DB.sessionStore.set("sess:expired", {
+      user_id: "u1",
+      role: "member",
+      created_at: now - 40 * 86400000,
+      expires_at: now - 10 * 86400000,
+    });
+    env.DB.sessionStore.set("sess:live", {
+      user_id: "u1",
+      role: "member",
+      created_at: now,
+      expires_at: now + 86400000,
+    });
+    env.DB.rateLimitStore.set("pwlogin:email:spam@example.com", {
+      count: 99,
+      window_start: now - 7200 * 1000,
+    });
+
+    await handleScheduled({ cron: "*/5 * * * *" } as any, env as any);
+
+    expect(env.DB.sessionStore.has("sess:expired")).toBe(false);
+    expect(env.DB.sessionStore.has("sess:live")).toBe(true);
+    const pruneSessionsCall = env.DB.calls.find((c) =>
+      /delete\s+from\s+sessions\s+where\s+expires_at/i.test(c.sql)
+    );
+    expect(pruneSessionsCall).toBeDefined();
+    const pruneRateCall = env.DB.calls.find((c) =>
+      /delete\s+from\s+rate_limits/i.test(c.sql)
+    );
+    expect(pruneRateCall).toBeDefined();
   });
 });

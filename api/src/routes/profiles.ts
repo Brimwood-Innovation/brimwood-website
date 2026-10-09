@@ -17,7 +17,7 @@
  * registration order, otherwise "me" would be treated as an id.
  */
 import { Hono } from "hono";
-import { readSession, getAdminUser } from "../lib/auth";
+import { readSession, getAdminUser, destroyUserSessions } from "../lib/auth";
 import type { Bindings } from "../index";
 import { cleanStr, clientIp } from "../lib/validate";
 import { checkRateLimitD1 } from "../lib/ratelimit-d1";
@@ -521,7 +521,11 @@ app.patch("/admin/users/:id", async (c) => {
     return c.json({ ok: false, error: "Nothing to update." }, 400);
   }
 
-  const target: any = await c.env.DB.prepare("SELECT id FROM users WHERE id = ?").bind(id).first();
+  const target: any = await c.env.DB.prepare(
+    "SELECT id, role, status FROM users WHERE id = ?"
+  )
+    .bind(id)
+    .first();
   if (!target) return c.json({ ok: false, error: "Not found." }, 404);
 
   await c.env.DB.prepare(
@@ -529,6 +533,15 @@ app.patch("/admin/users/:id", async (c) => {
   )
     .bind(...binds, id)
     .run();
+
+  // Privilege change takes effect immediately: a demoted admin or suspended
+  // user must not keep using sessions minted while they were privileged.
+  const demoted = body.role !== undefined && target.role === "admin" && body.role !== "admin";
+  const suspended = body.status !== undefined && target.status !== "suspended" && body.status === "suspended";
+  if (demoted || suspended) {
+    await destroyUserSessions(c.env, id);
+  }
+
   await audit(c, admin!.id, admin!.email, "admin.user.update", `user ${id}: ${updates.join(", ")}`);
 
   return c.json({ ok: true });

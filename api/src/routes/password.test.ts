@@ -194,6 +194,36 @@ describe("POST /login", () => {
     const res = await postJSON(app, "/login", { email: "user@example.com", password: "CorrectHorse12" }, env);
     expect(res.status).toBe(429);
   });
+
+  it("burns a dummy PBKDF2 verify for unknown emails (no timing oracle)", async () => {
+    await seedUser({ withPassword: true });
+    const spy = vi.spyOn(crypto.subtle, "deriveBits");
+    try {
+      // Wrong password for a known user: one real PBKDF2 verify.
+      await postJSON(app, "/login", { email: "user@example.com", password: "WrongPassword99" }, env);
+      expect(spy).toHaveBeenCalledTimes(1);
+      spy.mockClear();
+      // Unknown email: one dummy PBKDF2 verify — same cost, same shape.
+      const res = await postJSON(app, "/login", { email: "nobody@example.com", password: "WrongPassword99" }, env);
+      expect(res.status).toBe(401);
+      expect((await res.json()).error).toBe("Invalid email or password.");
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("burns a dummy verify for suspended and password-less users too", async () => {
+    await seedUser({ withPassword: true, status: "suspended" });
+    const spy = vi.spyOn(crypto.subtle, "deriveBits");
+    try {
+      const res = await postJSON(app, "/login", { email: "user@example.com", password: "CorrectHorse12" }, env);
+      expect(res.status).toBe(401);
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });
 
 describe("POST /password/set", () => {
@@ -277,6 +307,39 @@ describe("POST /password/change", () => {
     );
     expect(res.status).toBe(401);
   });
+
+  it("destroys other sessions on change but keeps the current one", async () => {
+    const h = await hashPassword("CorrectHorse12");
+    const prev = env.DB.handler;
+    env.DB.handler = (sql) => {
+      if (/from\s+users/i.test(sql)) {
+        return { row: { id: "user-1", password_hash: h.hash, password_salt: h.salt } };
+      }
+      return prev?.(sql, []);
+    };
+    const headers = memberSession(env, "user-1");
+    // A second, older session for the same user (e.g. another device).
+    const now = Date.now();
+    env.DB.sessionStore.set("sess:oldsessionshoulddie", {
+      user_id: "user-1",
+      role: "member",
+      created_at: now,
+      expires_at: now + 86400000,
+    });
+    expect(env.DB.sessionStore.size).toBe(2);
+    const res = await postJSON(
+      app,
+      "/password/change",
+      { currentPassword: "CorrectHorse12", newPassword: "EvenBetter34" },
+      env,
+      headers
+    );
+    expect(res.status).toBe(200);
+    // Only the current session (tok-member) survives.
+    const keys = [...env.DB.sessionStore.keys()];
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).toBe("sess:1f01ccd79fa83611b7efefef57e9f6fca2f70f5fa6f3fb943c6bf7733dccaea4");
+  });
 });
 
 describe("POST /password/reset/request", () => {
@@ -299,6 +362,32 @@ describe("POST /password/reset/request", () => {
     expect(sent).toHaveLength(1);
     expect(sent[0].to).toBe("user@example.com");
     expect(sent[0].subject).toMatch(/password/i);
+  });
+
+  it("throttles per email (inbox-bombing defence) without revealing it", async () => {
+    await seedUser({});
+    const sent: { to: string; subject: string }[] = [];
+    restoreFetch = mailStub(sent);
+    // 3/hour allowed; the 4th is throttled but still returns ok.
+    for (let i = 0; i < 4; i++) {
+      const res = await postJSON(app, "/password/reset/request", { email: "user@example.com" }, env);
+      expect(res.status).toBe(200);
+      expect((await res.json()).ok).toBe(true);
+    }
+    const rows = env.DB.inserts.get("password_resets") || [];
+    expect(rows).toHaveLength(3);
+    expect(sent).toHaveLength(3);
+  });
+
+  it("invalidates previously issued unused tokens", async () => {
+    await seedUser({});
+    const sent: { to: string; subject: string }[] = [];
+    restoreFetch = mailStub(sent);
+    await postJSON(app, "/password/reset/request", { email: "user@example.com" }, env);
+    await postJSON(app, "/password/reset/request", { email: "user@example.com" }, env);
+    const del = env.DB.calls.find((c) => /delete\s+from\s+password_resets/i.test(c.sql));
+    expect(del).toBeDefined();
+    expect(del!.params).toContain("user-1");
   });
 });
 

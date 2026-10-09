@@ -9,6 +9,8 @@
  */
 import { sendEmail, shell, esc } from "./lib/email";
 import { INBOX } from "./lib/email";
+import { pruneSessions } from "./lib/auth";
+import { pruneRateLimits } from "./lib/ratelimit-d1";
 
 /** Digest body for one subscriber — unsubUrl is fully built by the caller. */
 export function digestBody(
@@ -44,6 +46,11 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
   // Job 3: health monitoring (runs every 5 min).
   if (cron === "*/5 * * * *") {
     await runHealthCheck(DB, RESEND_API_KEY, env);
+    // Hygiene: expired sessions and stale rate-limit rows would otherwise
+    // accumulate forever (rate-limit keys are attacker-controlled), so prune
+    // both on the same cadence.
+    await pruneSessions(env);
+    await pruneRateLimits(DB);
     return;
   }
 

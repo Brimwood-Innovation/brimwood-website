@@ -10,10 +10,11 @@
  *    uploads (admin media library), which remain protected by the Origin
  *    check above.
  *
- * NOTE: the SameSite=None cookie branch in auth.ts / password.ts is kept
- * until F3 (same-origin API). Removing it now would break cookie auth on
- * preview deployments, which call the worker cross-origin. This middleware
- * is the actual CSRF defence; the cookie change follows in F3.
+ * NOTE: the SameSite=None cookie branch was removed in F3 — the site calls
+ * the API same-origin, so cross-origin cookies are no longer needed. All
+ * session cookies go through setSessionCookie in lib/auth.ts with
+ * `__Host-brimwood-sess; Path=/; HttpOnly; Secure; SameSite=Lax`. This
+ * middleware remains the CSRF defence for mutating routes.
  */
 
 const EXACT_ORIGINS = [
