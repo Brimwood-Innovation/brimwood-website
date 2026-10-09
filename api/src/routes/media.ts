@@ -15,6 +15,7 @@
  */
 import { Hono } from "hono";
 import { requireAdmin, getAdminUser } from "../lib/auth";
+import { checkMagicBytes, publicMediaUrl } from "../lib/upload";
 import type { Bindings } from "../index";
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -124,13 +125,20 @@ app.post("/admin/media", async (c) => {
 
   // Server-generated flat key: unique per upload, no client input in the path.
   const key = `media-${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${ext}`;
-  await c.env.MEDIA.put(key, await file.arrayBuffer(), {
+  // Hardening: file.type is browser-supplied — verify the actual content bytes
+  // before storing (polyglot / renamed-executable defense in depth).
+  const bytes = await file.arrayBuffer();
+  if (!checkMagicBytes(bytes, file.type)) {
+    return c.json({ ok: false, error: "File content doesn't match its type." }, 400);
+  }
+  await c.env.MEDIA.put(key, bytes, {
     httpMetadata: { contentType: file.type },
   });
   await audit(c, admin!, "media.upload", `${key} (${file.size} bytes)`);
 
-  const host = c.req.header("host") || "brimwood-api.adamsayani.workers.dev";
-  return c.json({ ok: true, key, url: `https://${host}/api/media/${key}` });
+  // Hardening: public URL from the runtime request origin, never the Host
+  // header (a poisoned Host would make clients store attacker URLs).
+  return c.json({ ok: true, key, url: publicMediaUrl(c, key) });
 });
 
 /* --- Admin: delete --- */
