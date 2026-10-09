@@ -98,19 +98,32 @@ app.post("/request-code", async (c) => {
   const code = randomSixDigit();
   await storeCode(SESSIONS_KV, email, code);
 
-  await sendEmail(resendKey, {
-    to: email,
-    subject: "Your Brimwood sign-in code",
-    html: shell(
-      "Your sign-in code",
-      "Use this code within 10 minutes.",
-      "<p style=\"margin:0 0 16px;\">Hello" + (user.name ? " " + esc(user.name) : "") + ",</p>" +
-        "<p style=\"margin:0 0 8px;\">Your Brimwood sign-in code is:</p>" +
-        '<p style="font-size:36px;font-weight:700;letter-spacing:0.3em;color:#0C9463;margin:16px 0;">' + code + "</p>" +
-        '<p style="font-size:13px;color:#5B6862;margin:16px 0 0;">It expires in 10 minutes. If you did not request this, just ignore it.</p>'
-    ),
-    text: "Your Brimwood sign-in code is: " + code + "\n\nIt expires in 10 minutes. If you did not request this, just ignore it.",
-  });
+  // A Resend outage must not throw unhandled after the code is stored in KV:
+  // log the failure and return a clean 503. The code stays valid for its
+  // 10-minute TTL, so retrying the request sends a fresh email with the
+  // same code still usable. Validity of the email is never revealed.
+  try {
+    await sendEmail(resendKey, {
+      to: email,
+      subject: "Your Brimwood sign-in code",
+      html: shell(
+        "Your sign-in code",
+        "Use this code within 10 minutes.",
+        "<p style=\"margin:0 0 16px;\">Hello" + (user.name ? " " + esc(user.name) : "") + ",</p>" +
+          "<p style=\"margin:0 0 8px;\">Your Brimwood sign-in code is:</p>" +
+          '<p style="font-size:36px;font-weight:700;letter-spacing:0.3em;color:#0C9463;margin:16px 0;">' + code + "</p>" +
+          '<p style="font-size:13px;color:#5B6862;margin:16px 0 0;">It expires in 10 minutes. If you did not request this, just ignore it.</p>'
+      ),
+      text: "Your Brimwood sign-in code is: " + code + "\n\nIt expires in 10 minutes. If you did not request this, just ignore it.",
+    });
+  } catch (err) {
+    await DB.prepare(
+      "INSERT INTO email_log (id, kind, to_email, subject, status, error) VALUES (?, 'auth-code', ?, ?, 'failed', ?)"
+    )
+      .bind(crypto.randomUUID(), email, "Your Brimwood sign-in code", String(err).slice(0, 300))
+      .run();
+    return c.json({ ok: false, error: "Could not send the sign-in code. Please try again." }, 503);
+  }
   await DB.prepare(
     "INSERT INTO email_log (id, kind, to_email, subject, status) VALUES (?, 'auth-code', ?, ?, 'sent')"
   )

@@ -57,7 +57,7 @@ import Base from "../layouts/Base.astro";
       });
     const sesc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-    // ---- Collection schemas (mirror site/src/content/config.ts) ----
+    // ---- Collection schemas (mirror site/src/content.config.ts) ----
     const PILLARS = ["micro-business", "ai-in-practice", "owner-mindset", "members-hub"];
     const SCHEMAS = {
       blog: {

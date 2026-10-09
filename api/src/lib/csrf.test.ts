@@ -152,3 +152,45 @@ describe("real endpoints reject the CSRF attack", () => {
     expect(res.status).not.toBe(403);
   });
 });
+
+describe("RFC 8058 one-click unsubscribe exemption", () => {
+  async function guardedNewsletterApp() {
+    const { Hono } = await import("hono");
+    const newsletterRoutes = (await import("../routes/newsletter")).default;
+    const app = new Hono();
+    app.use(csrfGuard);
+    app.route("/api/newsletter", newsletterRoutes);
+    return app;
+  }
+
+  it("urlencoded one-click POST with no Origin passes the guard", async () => {
+    const app = await guardedNewsletterApp();
+    const res = await app.request("/api/newsletter/unsubscribe?email=a%40b.co&token=tok", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "List-Unsubscribe=One-Click",
+    });
+    // Guard passes (handler then 429/200s on its own — never 403).
+    expect(res.status).not.toBe(403);
+  });
+
+  it("urlencoded one-click POST with a foreign Origin is still 403", async () => {
+    const app = await guardedNewsletterApp();
+    const res = await app.request("/api/newsletter/unsubscribe?email=a%40b.co&token=tok", {
+      method: "POST",
+      headers: { origin: ATTACK_ORIGIN, "content-type": "application/x-www-form-urlencoded" },
+      body: "List-Unsubscribe=One-Click",
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("urlencoded POST to other paths is still 403", async () => {
+    const app = await guardedNewsletterApp();
+    const res = await app.request("/api/newsletter", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "email=a@b.co",
+    });
+    expect(res.status).toBe(403);
+  });
+});
