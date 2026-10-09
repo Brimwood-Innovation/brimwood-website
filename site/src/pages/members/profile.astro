@@ -90,7 +90,7 @@ import Base from "../../layouts/Base.astro";
   <script>
     const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
     const $ = (id) => document.getElementById(id);
-    const esc = (s) => String(s || "").replace(/</g, "&lt;");
+    const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     const api = (p, opts = {}) =>
       fetch(API_BASE + p, { credentials: "include", headers: { accept: "application/json", ...(opts.headers || {}) }, ...opts });
 
@@ -219,7 +219,7 @@ import Base from "../../layouts/Base.astro";
         }
         updateUsernameHint();
       } catch (ex) {
-        msg.textContent = esc(ex.message);
+        msg.textContent = ex.message || "Something went wrong.";
       } finally {
         btn.disabled = false;
       }
@@ -240,7 +240,7 @@ import Base from "../../layouts/Base.astro";
         $("avatarImg").style.display = "block";
         msg.textContent = "Avatar updated.";
       } catch (ex) {
-        msg.textContent = esc(ex.message);
+        msg.textContent = ex.message || "Something went wrong.";
       }
     });
 
