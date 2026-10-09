@@ -26,7 +26,7 @@ import Base from "../layouts/Base.astro";
       Saving commits to the <code>develop</code> branch — the site rebuilds automatically.
     </p>
 
-    <div id="studio-status" class="admin-muted" style="margin-bottom:16px;"></div>
+    <div id="studio-status" class="admin-muted" style="margin-bottom:16px;white-space:pre-line;"></div>
 
     <div style="display:grid;grid-template-columns:260px 1fr;gap:24px;align-items:start;" id="studio-grid">
       <aside>
@@ -96,9 +96,9 @@ import Base from "../layouts/Base.astro";
         fields: [
           { key: "title", label: "Title", type: "text", required: true },
           { key: "tagline", label: "Tagline", type: "text" },
-          { key: "level", label: "Level", type: "select", options: ["foundations", "builder", "founder"] },
+          { key: "level", label: "Level", type: "select", options: ["foundations", "builder", "operator"] },
           { key: "visibility", label: "Visibility", type: "select", options: ["public", "members"] },
-          { key: "status", label: "Status", type: "select", options: ["draft", "published"] },
+          { key: "status", label: "Status", type: "select", options: ["draft", "published", "archived"] },
           { key: "description", label: "Description", type: "textarea" },
         ],
         rawSection: "modules",
@@ -268,7 +268,8 @@ import Base from "../layouts/Base.astro";
       const schema = SCHEMAS[state.collection];
       const name = prompt(`Filename for new ${schema.label.toLowerCase()} (e.g. my-post${schema.ext}):`);
       if (!name) return;
-      const clean = slugify(name.replace(/\.[a-z]+$/i, "")) + schema.ext || ("untitled" + schema.ext);
+      const base = slugify(name.replace(/\.[a-z]+$/i, ""));
+      const clean = (base || "untitled") + schema.ext;
       const path = schema.dir + "/" + clean;
       state.current = { path, isNew: true };
       state.fm = { draft: true };
@@ -391,7 +392,13 @@ import Base from "../layouts/Base.astro";
           }),
         });
         const d = await r.json();
-        if (!d.ok) throw new Error(d.error || "save failed");
+        if (!d.ok) {
+          // Server-side editorial guardrails return the issue list.
+          const detail = Array.isArray(d.issues) && d.issues.length
+            ? "\n" + d.issues.map((i) => "• " + i).join("\n")
+            : "";
+          throw new Error((d.error || "save failed") + detail);
+        }
         setStatus("Saved ✓ Commit " + String(d.commitSha || "").slice(0, 7) + " — the site will rebuild in a minute or two.");
         state.current.isNew = false;
       } catch (e) {
