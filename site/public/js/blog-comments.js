@@ -8,7 +8,11 @@
   var apiBase = section.dataset.apiBase || "";
 
   var listEl = document.getElementById("commentList");
-  var esc = function (s) { return String(s || "").replace(/</g, "&lt;").replace(/>/g, "&gt;"); };
+  var esc = function (s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  };
   var fmtDate = function (iso) {
     try { return new Date(iso).toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric" }); }
     catch (e) { return ""; }

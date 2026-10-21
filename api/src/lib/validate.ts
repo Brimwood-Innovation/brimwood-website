@@ -11,6 +11,13 @@ export function isEmail(v: string): boolean {
   return EMAIL_RE.test(v);
 }
 
+/** True when v is a plain JSON object (not null, not an array).
+ * Use after `await req.json()` — a valid-JSON body like `null` or `[]`
+ * would otherwise crash field access. */
+export function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
 export function clientIp(request: Request): string {
   return (
     request.headers.get("cf-connecting-ip") ||

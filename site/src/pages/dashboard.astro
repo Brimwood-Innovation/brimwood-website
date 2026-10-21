@@ -47,7 +47,7 @@ import Base from "../layouts/Base.astro";
         }
 
         const total = list.length;
-        const done = list.filter((e) => e.completed_at).length;
+        const done = list.filter((e) => e.completed).length;
         document.getElementById("dashSub").textContent =
           `Enrolled in ${total} course${total === 1 ? "" : "s"}${done ? ` · ${done} completed` : ""}.`;
 
@@ -60,7 +60,7 @@ import Base from "../layouts/Base.astro";
               `<h3>${esc(e.title)}</h3>` +
               `<div style="height:8px;background:var(--mint);border-radius:4px;overflow:hidden;margin:12px 0;">` +
               `<div style="height:100%;width:${pct}%;background:var(--emerald);border-radius:4px;"></div></div>` +
-              `<p>${e.completed_at ? "Completed ✓" : pct === 0 ? "Start →" : "Continue →"}</p></a>`
+              `<p>${e.completed ? "Completed ✓" : pct === 0 ? "Start →" : "Continue →"}</p></a>`
             );
           })
           .join("");

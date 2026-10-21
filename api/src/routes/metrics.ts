@@ -4,8 +4,7 @@ import { Hono } from "hono";
 import type { Bindings } from "../index";
 import { requireAdmin, type AuthVariables } from "../lib/auth";
 
-type Env = Bindings & { SESSIONS_KV: KVNamespace };
-const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
+const app = new Hono<{ Bindings: Bindings; Variables: AuthVariables }>();
 
 app.use(requireAdmin);
 
