@@ -76,7 +76,9 @@ Branch model:
 - `main`: production. Gate 2. No direct pushes; release merges only.
 - `develop`: integration and preview production branch. All work lands here through pull requests.
 - `program/*`, `feature/*`, `fix/*`, `audit/*`: work branches, one purpose each, PR into `develop`.
-- PR stack awaiting Phase 0 repair, merge order fixed: #13 (gitleaks OSS binary) -> #14 (audit/all-features) -> #15 (audit/social-ux-deep) -> #16 (hardening/security-max). Known from 2026-10-17 re-verification: #13 needs a rebase onto develop; #14/#15 need the drafted CodeQL notifications patch; secrets failures on #14 to #16 clear once #13 lands; Lighthouse fails identically on all four (treat as one CI environment issue until proven otherwise).
+- PR stack awaiting Phase 0 repair, merge order fixed: #13 (gitleaks OSS binary) -> #14 (audit/all-features) -> #15 (audit/social-ux-deep) -> #16 (hardening/security-max). Verified root causes (discovery audit, 2026-10-20, from live job logs): the secrets failures on #14 to #16 are the gitleaks action's license gate, not found secrets, and clear once #13 lands; the CodeQL workflow passes everywhere with 0 open alerts (the failing CodeQL rollup on #14/#15 is the separate code-scanning check); npm audit fails on #13 and #16 and passes on #14/#15 (dependency state; #14 carries the fix); Lighthouse fails on all four on ONE assertion, home page total weight about 235 KB against the 200 KB budget in `.lighthouserc.json`. That is a real page-weight overage, not a CI environment issue (this corrects the 2026-10-17 read), and it is an independent Site crew task: about 31 KB out of the home page payload. #16 is a parallel branch off develop, not stacked on #15, so it gets rebased onto develop after #15 lands.
+- No branch protection exists on develop or main today. Phase 0 adds required status checks (build, secrets, audit, CodeQL) on develop so the test gate is enforced by GitHub, not by habit.
+- Caution: `sync-courses.yml` posts to the production Worker on develop pushes too, not only on main. Treat course-content pushes as production-affecting until that workflow is split by branch.
 
 Automation in repo today:
 - CI (`.github/workflows/ci.yml`): build and test site and API, npm audit at high, secret scan over full history, Lighthouse CI against a local preview server.
@@ -84,7 +86,7 @@ Automation in repo today:
 - Dependabot (`.github/dependabot.yml`): weekly npm (site, api) and GitHub Actions update PRs.
 - Course sync (above).
 
-Automation targets for production grade (Phase 0/1 work, not yet claimed done): required status checks on `develop` and `main` in branch protection; schema tests (89) running in CI against the migration chain; a preview smoke suite (invite sign-in, feed post, lesson reflection, room booking) after each preview deploy; a pre-migration backup step (D1 export plus Time Travel bookmark) in the migration runbook; stale-branch cleanup after merges.
+Automation targets for production grade (Phase 0/1 work, not yet claimed done): required status checks on `develop` and `main` in branch protection; schema tests (89) running in CI against the migration chain; a preview smoke suite (invite sign-in, feed post, lesson reflection, room booking) after each preview deploy; a pre-migration backup step (D1 export plus Time Travel bookmark) in the migration runbook; stale-branch cleanup after merges. Parity gaps found 2026-10-20, to close under the rule that whatever exists in Cloudflare exists in GitHub: neither Pages project's build settings exist as repo config (dashboard plus runbook prose only); the legacy `brimwood-introduction` Worker has source in the repo but no wrangler config for its bindings or route; DNS is dashboard-managed with no repo record beyond the runbooks; `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` names are missing from `api/.dev.vars.example`; migrations 0022 to 0036 are not in the repo yet (Phase 0/1 import, after the 0012 to 0021 chain lands on develop).
 
 ## 8. SDLC, crews, and the grading loop
 
@@ -113,7 +115,7 @@ Accept rule: 9,500 or higher, no dimension at zero, no open P0. Below that, the 
 
 ## 9. Phase map and current state
 
-- Phase 0, foundation and access: IN PROGRESS. Cloudflare session live (dashboard sign-in done 2026-10-20); scoped API token being created in the dashboard session; PR stack repair; migrations 0022 to 0036 copied into the repo; preview D1 state checked read-only.
+- Phase 0, foundation and access: IN PROGRESS. Cloudflare connected 2026-10-20 (dashboard sign-in via the founder's Google identity info@; the scoped token `brimmy-migration-session-oct20` was created and verified with wrangler; it is used transiently and stored nowhere). Read-only checks done: production `posts` is the blog table, no `feed_posts` exists, production has no feed child tables at all (0012 to 0021 never reached production); preview D1 has only 0001 to 0010 applied. Discovery audit done 2026-10-20 (PR root causes, automation gaps, parity gaps, all folded into sections 6 and 7). Remaining in Phase 0: PR stack repair in order with the Lighthouse page-weight fix, branch protection on develop, migrations 0022 to 0036 copied into the repo once the 0012 to 0021 chain lands on develop, then the preview apply in Phase 1 order.
 - Phase 1, data and API: preview apply of 0022 to 0036, the 20 API changes, preview smoke flows.
 - Phase 2, public site: build from the prototype public sections, preview Pages only.
 - Phase 3, member hub and auth: passkey and email-code sign-in, invite-only flow, feed on `feed_posts`, DM requests.
