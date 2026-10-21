@@ -10,18 +10,10 @@
  *    uploads (admin media library), which remain protected by the Origin
  *    check above.
  *
-<<<<<<< HEAD
- * NOTE: the SameSite=None cookie branch was removed in F3 — the site calls
- * the API same-origin, so cross-origin cookies are no longer needed. All
- * session cookies go through setSessionCookie in lib/auth.ts with
- * `__Host-brimwood-sess; Path=/; HttpOnly; Secure; SameSite=Lax`. This
- * middleware remains the CSRF defence for mutating routes.
-=======
- * NOTE (audit/security-ci): the old SameSite=None cookie branches were removed
- * in F3 — the site calls the API same-origin, so session cookies are now
- * `__Host-` + `SameSite=Lax` only (see api/src/lib/auth.ts). This middleware
- * remains the CSRF defence for every mutating route.
->>>>>>> audit/security-ci
+ * NOTE: the old SameSite=None cookie branches were removed — the site calls
+ * the API same-origin, so session cookies are now `__Host-` + `SameSite=Lax`
+ * only (see api/src/lib/auth.ts). This middleware remains the CSRF defence
+ * for every mutating route.
  */
 
 const EXACT_ORIGINS = [

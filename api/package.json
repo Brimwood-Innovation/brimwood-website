@@ -18,5 +18,8 @@
     "test": "vitest run"
   },
   "type": "module",
-  "version": "0.1.0"
+  "version": "0.1.0",
+  "overrides": {
+    "vite": "^8.3.4"
+  }
 }

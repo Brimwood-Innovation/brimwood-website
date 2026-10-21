@@ -1,0 +1,54 @@
+---
+/* Shared avatar (profiles area, social-UX overhaul): round everywhere,
+ * consistent sizes (sm/md/lg/xl), initials fallback in brand colours when
+ * no avatar is set. Brand Kit v1.0: Emerald #0C9463-led palette,
+ * Plus Jakarta Sans (inherited). */
+interface Props {
+  src?: string | null;
+  /** Display name — used for the initials fallback and alt text. */
+  name?: string;
+  size?: "sm" | "md" | "lg" | "xl";
+  alt?: string;
+  /** Optional id so client JS can target the element (e.g. avatar preview). */
+  id?: string;
+}
+const { src, name = "Member", size = "md", alt, id } = Astro.props;
+
+const SIZES = { sm: 32, md: 48, lg: 96, xl: 128 } as const;
+const px = SIZES[size] ?? SIZES.md;
+
+function initials(n: string): string {
+  const parts = n.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "M";
+  return (parts[0][0] + (parts[1]?.[0] || "")).toUpperCase();
+}
+
+/* Deterministic brand-colour background from the name hash. */
+const BRAND_BG = ["#0C9463", "#075E40", "#0A3D2B"];
+let hash = 0;
+for (const ch of name) hash = (hash * 31 + (ch.codePointAt(0) || 0)) >>> 0;
+const bg = BRAND_BG[hash % BRAND_BG.length];
+
+const label = alt || `${name}'s avatar`;
+const dim = `width:${px}px;height:${px}px;`;
+---
+
+{
+  src ? (
+    <img
+      id={id}
+      src={src}
+      alt={label}
+      style={`${dim}border-radius:50%;object-fit:cover;display:block;flex:none;`}
+    />
+  ) : (
+    <span
+      id={id}
+      role="img"
+      aria-label={label}
+      style={`${dim}border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex:none;background:${bg};color:#F6F8F7;font-weight:700;font-size:${Math.round(px * 0.38)}px;letter-spacing:0.02em;`}
+    >
+      {initials(name)}
+    </span>
+  )
+}
