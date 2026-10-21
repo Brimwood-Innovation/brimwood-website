@@ -1,0 +1,156 @@
+---
+/* Public member profile view (profiles area, social-UX overhaul).
+ * Renders whatever fields the API's server-side visibility filter returned —
+ * the page never decides visibility itself. Sections: About, Hobbies,
+ * Achievements, Education, Milestones. Empty sections never render. */
+import Avatar from "./Avatar.astro";
+
+interface Props {
+  profile: any;
+  /** id or username, for the client-side freshness refresh. */
+  profileKey: string;
+  apiBase: string;
+}
+const { profile, profileKey, apiBase } = Astro.props;
+
+const socialEntries = Object.entries(profile.social_links || {});
+const chip =
+  "display:inline-block;background:#DDF5E9;color:#075E40;border-radius:999px;padding:4px 12px;margin:0 8px 8px 0;font-size:14px;";
+const secStyle = "margin-top:32px;text-align:left;";
+---
+
+<section
+  class="block"
+  style="text-align:center;max-width:640px;margin-inline:auto;"
+  id="profileSection"
+  data-profile-key={profileKey}
+  data-api-base={apiBase}
+>
+  <div style="display:flex;justify-content:center;margin-bottom:20px;">
+    <Avatar src={profile.avatar_url} name={profile.display_name} size="xl" id="uAvatar" />
+  </div>
+  <div class="kicker">Member</div>
+  <h1 class="sec" id="uName" style="font-size:clamp(30px,5vw,48px);">{profile.display_name}</h1>
+  {
+    profile.username && (
+      <p class="admin-muted">@{profile.username}</p>
+    )
+  }
+  {
+    profile.member_since && (
+      <p class="sec-lede" id="uSince" style="margin-inline:auto;">
+        Member since {profile.member_since}
+      </p>
+    )
+  }
+  {profile.bio && <p id="uBio" style="margin-top:20px;line-height:1.7;text-align:left;">{profile.bio}</p>}
+
+  {
+    (profile.location || profile.gender || profile.website || socialEntries.length > 0) && (
+      <div style={secStyle}>
+        <div class="kicker">About</div>
+        {profile.location && <p>📍 {profile.location}</p>}
+        {profile.gender && <p>🧭 {profile.gender}</p>}
+        {profile.website && (
+          <p>
+            🔗{" "}
+            <a href={profile.website} rel="noopener" target="_blank">
+              {profile.website.replace(/^https?:\/\//, "")}
+            </a>
+          </p>
+        )}
+        {socialEntries.length > 0 && (
+          <p>
+            {socialEntries.map(([k, v]) => (
+              <a
+                href={v as string}
+                target="_blank"
+                rel="noopener"
+                class="btn btn-ghost small"
+                style="margin:0 8px 8px 0;"
+              >
+                {k} →
+              </a>
+            ))}
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  {
+    (profile.hobbies?.length > 0) && (
+      <div style={secStyle}>
+        <div class="kicker">Hobbies</div>
+        <p>
+          {profile.hobbies.map((h: string) => (
+            <span style={chip}>{h}</span>
+          ))}
+        </p>
+      </div>
+    )
+  }
+
+  {
+    profile.achievements?.length > 0 && (
+      <div style={secStyle}>
+        <div class="kicker">Achievements</div>
+        {profile.achievements.map((a: any) => (
+          <p>
+            <strong>🏅 {a.title}</strong>
+            {a.date && <span class="admin-muted"> · {a.date}</span>}
+            {a.description && <><br /><span class="admin-muted">{a.description}</span></>}
+          </p>
+        ))}
+      </div>
+    )
+  }
+
+  {
+    (profile.work_history?.length > 0) && (
+      <div style={secStyle}>
+        <div class="kicker">Work</div>
+        {profile.work_history.map((w: any) => (
+          <p>
+            <strong>{w.title}</strong>
+            {w.company && <> · {w.company}</>}
+            {w.period && <span class="admin-muted"> ({w.period})</span>}
+          </p>
+        ))}
+      </div>
+    )
+  }
+
+  {
+    profile.education?.length > 0 && (
+      <div style={secStyle}>
+        <div class="kicker">Education</div>
+        {profile.education.map((e: any) => (
+          <p>
+            <strong>{e.school}</strong>
+            {e.degree && <> · {e.degree}</>}
+            <span class="admin-muted"> · {e.kind === "school" ? "School" : "College"}</span>
+            {e.years && <span class="admin-muted"> ({e.years})</span>}
+          </p>
+        ))}
+      </div>
+    )
+  }
+
+  {
+    profile.life_events?.length > 0 && (
+      <div style={secStyle}>
+        <div class="kicker">Milestones</div>
+        {profile.life_events.map((m: any) => (
+          <p>
+            <strong>✦ {m.title}</strong>
+            {m.date && <span class="admin-muted"> · {m.date}</span>}
+            {m.description && <><br /><span class="admin-muted">{m.description}</span></>}
+          </p>
+        ))}
+      </div>
+    )
+  }
+</section>
+
+<script is:inline src="/js/profile-refresh.js"></script>

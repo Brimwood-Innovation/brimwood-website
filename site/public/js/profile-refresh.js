@@ -49,14 +49,25 @@
           bioEl.style.display = "none";
         }
       }
-      var img = document.getElementById("uAvatar");
-      if (img) {
+      var av = document.getElementById("uAvatar");
+      if (av) {
         if (u.avatar_url) {
-          if (img.getAttribute("src") !== u.avatar_url) img.setAttribute("src", u.avatar_url);
-          img.style.display = "";
-        } else {
-          img.removeAttribute("src");
-          img.style.display = "none";
+          if (av.tagName === "IMG") {
+            if (av.getAttribute("src") !== u.avatar_url) av.setAttribute("src", u.avatar_url);
+            av.style.display = "";
+          } else {
+            /* Initials fallback (a span): swap in the real image, keeping
+             * the round shape. */
+            var ni = document.createElement("img");
+            ni.id = "uAvatar";
+            ni.src = u.avatar_url;
+            ni.alt = (u.display_name || "Member") + "'s avatar";
+            ni.style.cssText = av.style.cssText;
+            av.replaceWith(ni);
+          }
+        } else if (av.tagName === "IMG") {
+          av.removeAttribute("src");
+          av.style.display = "none";
         }
       }
     })
