@@ -15,12 +15,15 @@ backend:
   api_root: https://api.github.com
 
 # Editorial guardrails (T27) are enforced via custom widgets + pre-publish checks.
-# See: site/src/cms/editorial.js
+# See: site/public/cms/editorial.js
 
 media_folder: "site/public/img/uploads"
 public_folder: "/img/uploads"
 
 collections:
+  # Field names must match the Astro content schema in site/src/content/config.ts
+  # (description, publishDate, pillar, tags, author, draft) or the build drops
+  # the entry.
   - name: "blog"
     label: "Blog Posts"
     folder: "site/src/content/blog"
@@ -28,9 +31,11 @@ collections:
     slug: "{{slug}}"
     fields:
       - { label: "Title", name: "title", widget: "string" }
-      - { label: "Excerpt", name: "excerpt", widget: "text", hint: "One or two short sentences. Appears in lists and SEO." }
-      - { label: "Publish date", name: "date", widget: "datetime", format: "YYYY-MM-DD" }
-      - { label: "Pillar", name: "pillar", widget: "select", options: ["micro-business", "ai-in-practice", "owner-mindset", "members-and-hub"] }
+      - { label: "Description", name: "description", widget: "text", hint: "One or two short sentences. Appears in lists and SEO." }
+      - { label: "Publish date", name: "publishDate", widget: "datetime", format: "YYYY-MM-DD" }
+      - { label: "Pillar", name: "pillar", widget: "select", options: ["micro-business", "ai-in-practice", "owner-mindset", "members-hub"] }
+      - { label: "Tags", name: "tags", widget: "list", required: false, field: { label: "Tag", name: "tag", widget: "string" } }
+      - { label: "Author", name: "author", widget: "string", default: "Brimwood Team" }
       - { label: "Draft", name: "draft", widget: "boolean", default: true, hint: "Keep on until the founder approves." }
       - { label: "Body", name: "body", widget: "markdown", hint: "Short sentences. Canadian spelling. No hype." }
 

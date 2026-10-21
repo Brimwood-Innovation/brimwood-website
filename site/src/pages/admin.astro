@@ -160,22 +160,47 @@ import FormsTab from "../components/admin/FormsTab.astro";
           </div></div>
           <p class="admin-muted">New code: <strong id="invNew"></strong></p></div>` +
         (d.invites.length === 0 ? "<p class='admin-muted'>No invite codes yet.</p>" :
-          d.invites.map((i) => `<div class="admin-card"><strong style="font-family:monospace;">${esc(i.code)}</strong><br><span class="admin-muted">${i.uses}/${i.max_uses} used · by ${esc(i.created_by || "?")} · ${i.created_at.slice(0, 10)}${i.expires_at ? " · expires " + i.expires_at.slice(0, 10) : ""}</span></div>`).join(""));
+          d.invites.map((i) => `<div class="admin-card"><div class="admin-row"><div><strong style="font-family:monospace;">${esc(i.code)}</strong><br><span class="admin-muted">${i.uses}/${i.max_uses} used · by ${esc(i.created_by || "?")} · ${i.created_at.slice(0, 10)}${i.expires_at ? " · expires " + i.expires_at.slice(0, 10) : ""}</span></div><button class="btn btn-ghost small" data-revoke="${i.id}" data-code="${esc(i.code)}">Revoke</button></div></div>`).join(""));
       document.getElementById("invCreate").addEventListener("click", async () => {
         const rr = await api("/api/admin/invites", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ max_uses: +document.getElementById("invUses").value, expires_days: +document.getElementById("invDays").value }) });
         const dd = await rr.json();
         if (dd.ok) { document.getElementById("invNew").textContent = dd.code; loadInvites(); }
+        else { alert(dd.error || "Could not create invite."); }
       });
+      el.querySelectorAll("[data-revoke]").forEach((b) => b.addEventListener("click", async () => {
+        if (!confirm("Revoke invite " + b.dataset.code + "? New redemptions will fail.")) return;
+        const rr = await api("/api/admin/invites/" + encodeURIComponent(b.dataset.revoke), { method: "DELETE" });
+        const dd = await rr.json().catch(() => ({}));
+        if (!rr.ok || !dd.ok) { alert(dd.error || "Revoke failed."); return; }
+        loadInvites();
+      }));
     }
 
+    let userQuery = "";
+    let userPage = 1;
     async function loadUsers() {
       const el = document.getElementById("tab-users");
       el.innerHTML = "<p class='admin-muted'>Loading…</p>";
-      const r = await api("/api/admin/users");
+      const r = await api(`/api/admin/users?q=${encodeURIComponent(userQuery)}&page=${userPage}&limit=25`);
       const d = await r.json();
       if (!d.ok) { el.innerHTML = "<p>Failed to load.</p>"; return; }
-      el.innerHTML = `<div class="admin-card"><strong>${d.users.length} users</strong>` +
-        d.users.map((u) => `<div style="padding:8px 0;border-top:1px solid rgba(18,26,22,.06);"><span>${esc(u.email)}</span> <span class="admin-muted">${esc(u.name || "")} · ${u.role} · ${u.status}</span></div>`).join("") + "</div>";
+      const totalPages = Math.max(1, Math.ceil((d.total || 0) / (d.limit || 25)));
+      el.innerHTML =
+        `<div class="admin-card"><div class="admin-row" style="margin-bottom:12px;"><strong>${d.total} users</strong>` +
+        `<div style="display:flex;gap:8px;"><input id="userSearch" type="text" placeholder="Search email or name" value="${esc(userQuery)}" style="padding:8px;border:1px solid rgba(18,26,22,.12);border-radius:8px;"><button class="btn small" id="userGo">Search</button></div></div>` +
+        (d.users.length === 0 ? "<p class='admin-muted'>No users found.</p>" :
+          d.users.map((u) => `<div style="padding:8px 0;border-top:1px solid rgba(18,26,22,.06);"><span>${esc(u.email)}</span> <span class="admin-muted">${esc(u.name || "")} · ${u.role} · ${u.status}</span></div>`).join("")) +
+        `<div class="admin-row" style="margin-top:12px;"><span class="admin-muted">Page ${d.page} of ${totalPages}</span><div style="display:flex;gap:8px;">` +
+        (d.page > 1 ? `<button class="btn btn-ghost small" id="userPrev">← Prev</button>` : "") +
+        (d.page < totalPages ? `<button class="btn btn-ghost small" id="userNext">Next →</button>` : "") +
+        `</div></div></div>`;
+      const go = () => { userQuery = document.getElementById("userSearch").value; userPage = 1; loadUsers(); };
+      document.getElementById("userGo").addEventListener("click", go);
+      document.getElementById("userSearch").addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+      const prev = document.getElementById("userPrev");
+      if (prev) prev.addEventListener("click", () => { userPage--; loadUsers(); });
+      const next = document.getElementById("userNext");
+      if (next) next.addEventListener("click", () => { userPage++; loadUsers(); });
     }
 
     async function loadMetrics() {
@@ -184,10 +209,22 @@ import FormsTab from "../components/admin/FormsTab.astro";
       const r = await api("/api/metrics");
       const d = await r.json();
       if (!d.ok) { el.innerHTML = "<p>Failed to load.</p>"; return; }
-      const m = d.metrics || d;
-      el.innerHTML = `<div class="cards">` +
-        Object.entries(m).map(([k, v]) => `<div class="card" style="text-align:center;"><div class="n">${k}</div><h3 style="font-size:32px;">${v}</h3></div>`).join("") +
-        `</div>`;
+      const row = ([k, v]) => `<div style="padding:6px 0;border-top:1px solid rgba(18,26,22,.06);display:flex;justify-content:space-between;gap:12px;"><span>${esc(k)}</span><strong>${esc(String(v))}</strong></div>`;
+      const groupCard = (title, obj) => {
+        const entries = Object.entries(obj || {});
+        if (!entries.length) return "";
+        return `<div class="admin-card"><strong>${title}</strong>` + entries.map(row).join("") + "</div>";
+      };
+      const emailCard = (d.emailLog && d.emailLog.length)
+        ? `<div class="admin-card"><strong>Email log</strong>` +
+          d.emailLog.map((e) => row([`${e.kind} · ${e.status}`, e.count])).join("") + "</div>"
+        : "";
+      el.innerHTML =
+        groupCard("Introduction requests", d.introductionRequests) +
+        groupCard("Newsletter subscribers", d.newsletterSubscribers) +
+        groupCard("Users", d.users) +
+        emailCard +
+        `<p class="admin-muted">Generated ${esc((d.generatedAt || "").slice(0, 19).replace("T", " "))} UTC.</p>`;
     }
 
     async function loadAudit() {
@@ -197,7 +234,7 @@ import FormsTab from "../components/admin/FormsTab.astro";
       const d = await r.json();
       if (!d.ok) { el.innerHTML = "<p>Failed to load.</p>"; return; }
       el.innerHTML = (d.log.length === 0 ? "<p class='admin-muted'>No audit entries yet.</p>" :
-        `<div class="admin-card">` + d.log.map((a) => `<div style="padding:8px 0;border-top:1px solid rgba(18,26,22,.06);"><strong>${esc(a.action)}</strong> <span class="admin-muted">${esc(a.detail || "")}</span><br><span class="admin-muted">${a.created_at}</span></div>`).join("") + "</div>");
+        `<div class="admin-card">` + d.log.map((a) => `<div style="padding:8px 0;border-top:1px solid rgba(18,26,22,.06);"><strong>${esc(a.action)}</strong> <span class="admin-muted">${esc(a.detail || "")}</span><br><span class="admin-muted">${esc(a.actor_email || a.actor_id || "system")} · ${a.created_at}</span></div>`).join("") + "</div>");
     }
 
     let mediaCursor = null;

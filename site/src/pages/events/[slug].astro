@@ -39,9 +39,9 @@ export async function getStaticPaths() {
         <input type="text" name="website" id="rSite" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true" />
         <div class="cf-turnstile" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx" style="margin:16px 0;"></div>
         <button class="btn" type="submit" id="rsvpBtn">RSVP</button>
-        <p class="form-err" id="rsvpErr" style="display:none"></p>
+        <p class="form-err" id="rsvpErr" role="status" style="display:none"></p>
       </form>
-      <div class="thanks" id="rsvpThanks">You are on the list — check your inbox for confirmation.</div>
+      <div class="thanks" id="rsvpThanks" role="status">You are on the list — check your inbox for confirmation.</div>
     </div>
   </section>
 

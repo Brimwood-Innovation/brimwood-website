@@ -22,11 +22,11 @@ export function esc(s: string): string {
 
 export function shell(title: string, preheader: string, bodyHtml: string): string {
   return (
-    "<!DOCTYPE html><html><body style=\"margin:0;padding:0;font-family:'Plus Jakarta Sans',-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;background:#F6F8F7;\">" +
+    "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>" + esc(title) + " — Brimwood Innovation</title></head><body style=\"margin:0;padding:0;font-family:'Plus Jakarta Sans',-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;background:#F6F8F7;\">" +
     '<div style="display:none;max-height:0;overflow:hidden;opacity:0;">' + esc(preheader) + "</div>" +
     '<div style="max-width:560px;margin:0 auto;padding:32px 20px;">' +
     '<div style="background:#0C9463;border-radius:16px 16px 0 0;padding:28px 32px;text-align:center;">' +
-    '<img src="' + LOGO_URL + '" alt="Brimwood Innovation" style="height:44px;width:auto;" />' +
+    '<img src="' + LOGO_URL + '" alt="Brimwood Innovation" width="148" style="height:44px;width:148px;max-width:100%;" />' +
     "</div>" +
     '<div style="background:#ffffff;border:1px solid rgba(18,26,22,.08);border-top:0;border-radius:0 0 16px 16px;padding:32px;">' +
     '<h1 style="margin:0 0 16px;font-size:22px;color:#121A16;">' + esc(title) + "</h1>" +
@@ -57,7 +57,7 @@ export function button(url: string, label: string): string {
 export function page(title: string, heading: string, message: string, env?: { SITE_URL?: string }): Response {
   const site = SITE(env);
   const html =
-    "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
+    "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
     "<title>" + esc(title) + " — Brimwood Innovation</title></head>" +
     '<body style="margin:0;font-family:\'Plus Jakarta Sans\',-apple-system,\'Segoe UI\',Helvetica,Arial,sans-serif;background:#F6F8F7;color:#121A16;">' +
     '<div style="max-width:520px;margin:80px auto;padding:0 20px;text-align:center;">' +
@@ -66,7 +66,22 @@ export function page(title: string, heading: string, message: string, env?: { SI
     '<div style="font-size:16px;color:#5B6862;">' + message + "</div>" +
     '<p style="margin-top:40px;"><a href="' + site + '" style="color:#0C9463;">Back to brimwoodinnovation.com</a></p>' +
     "</div></body></html>";
-  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+  // Tight CSP for these standalone pages (newsletter verify/unsubscribe):
+  // no scripts at all, inline styles only, logo from our own origin.
+  // (The OAuth popup pages in routes/oauth.ts carry their own inline scripts
+  // and must NOT inherit this policy — hence it lives here, not globally.)
+  return new Response(html, {
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "content-security-policy":
+        "default-src 'self'; script-src 'none'; style-src 'unsafe-inline'; " +
+        "img-src 'self' data: https:; font-src 'self'; object-src 'none'; " +
+        "base-uri 'self'; form-action 'self'",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "referrer-policy": "strict-origin-when-cross-origin",
+    },
+  });
 }
 
 export type EmailInput = {
@@ -98,6 +113,9 @@ export async function sendEmail(
       "content-type": "application/json",
     },
     body: JSON.stringify(payload),
+    // Bound the outbound call: a hung Resend request must not hold a worker
+    // invocation (or a cron run) open indefinitely.
+    signal: AbortSignal.timeout(15000),
   });
   if (!r.ok) {
     const detail = await r.text().catch(() => "");

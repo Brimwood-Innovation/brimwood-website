@@ -7,6 +7,11 @@ import "../styles/brand.css";
 import siteSettings from "../content/settings.json";
 import navigation from "../content/navigation.json";
 
+interface ArticleMeta {
+  publishedTime: string;
+  author: string;
+  tags: string[];
+}
 interface Props {
   title: string;
   description: string;
@@ -15,10 +20,24 @@ interface Props {
   /* F7: Turnstile loads only on pages that render a cf-turnstile widget.
    * Pages opt in with <Base turnstile>. Never load it globally. */
   turnstile?: boolean;
+  /* og:type override (default "website"); article pages pass "article"
+   * together with articleMeta. jsonld renders extra schema in <head>. */
+  ogType?: string;
+  articleMeta?: ArticleMeta;
+  jsonld?: Record<string, unknown>;
 }
-const { title, description, path = "/", image, turnstile = false } = Astro.props;
+const {
+  title,
+  description,
+  path = "/",
+  image,
+  turnstile = false,
+  ogType = "website",
+  articleMeta,
+  jsonld,
+} = Astro.props;
 const canonical = `https://brimwoodinnovation.com${path}`;
-const ogImage = image || "https://brimwoodinnovation.com/img/brimwood-logo-colour.svg";
+const ogImage = image || "https://brimwoodinnovation.com/img/brimwood-og.png";
 // Brand rule: logo left, four links, one emerald button. Extra CMS links
 // are ignored so the CMS can never break the nav structure.
 const headerLinks = (navigation.header_links || []).slice(0, 4);
@@ -29,23 +48,37 @@ const announcement = (siteSettings.announcement_bar || "").trim();
 const siteTitle = siteSettings.site_title || "Brimwood Innovation";
 ---
 <!doctype html>
-<html lang="en-ca">
+<html lang="en-CA">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0C9463" />
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
 
-    <meta property="og:type" content="website" />
+    <meta property="og:type" content={ogType} />
     <meta property="og:site_name" content={siteTitle} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
     <meta property="og:image" content={ogImage} />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Brimwood Innovation — Build a business. Build yourself." />
+    <meta property="og:locale" content="en_CA" />
+    {ogType === "article" && articleMeta && (
+      <>
+        <meta property="article:published_time" content={articleMeta.publishedTime} />
+        <meta property="article:author" content={articleMeta.author} />
+        {articleMeta.tags.map((t) => <meta property="article:tag" content={t} />)}
+      </>
+    )}
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+    <meta name="twitter:image:alt" content="Brimwood Innovation — Build a business. Build yourself." />
 
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
@@ -60,8 +93,8 @@ const siteTitle = siteSettings.site_title || "Brimwood Innovation";
       crossorigin
     />
 
-    <script type="application/ld+json">
-      {JSON.stringify({
+    {/* set:html — expressions are not evaluated inside <script> bodies. */}
+    <script type="application/ld+json" set:html={JSON.stringify({
         "@context": "https://schema.org",
         "@type": "Organization",
         name: siteTitle,
@@ -74,8 +107,10 @@ const siteTitle = siteSettings.site_title || "Brimwood Innovation";
           addressRegion: "ON",
           addressCountry: "CA",
         },
-      })}
-    </script>
+      })} />
+    {jsonld && (
+      <script type="application/ld+json" set:html={JSON.stringify(jsonld)} />
+    )}
     {turnstile && (
       <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
     )}
@@ -107,7 +142,9 @@ const siteTitle = siteSettings.site_title || "Brimwood Innovation";
         <div class="foot-top">
           <img src="/img/brimwood-logo-reversed.svg" alt="Brimwood Innovation" />
           <div class="foot-links">
-            {footerLinks.map((l) => <a href={l.url}>{l.label}</a>)}
+            {footerLinks.map((l) => (
+              <a href={l.url} id={l.url === "/members" ? "footMember" : undefined}>{l.label}</a>
+            ))}
             <a href="/admin" id="footAdmin" style="display:none;">Admin</a>
           </div>
           <div class="foot-links">
