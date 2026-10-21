@@ -226,40 +226,14 @@ describe("POST /login", () => {
   });
 });
 
-describe("POST /password/set", () => {
-  it("sets an initial password for an authenticated user", async () => {
+describe("POST /password/set (retired by D1)", () => {
+  it("no longer exists: a first password cannot be set", async () => {
     await seedUser({ withPassword: false });
     const headers = memberSession(env, "user-1");
     const res = await postJSON(app, "/password/set", { password: "NewPassword12" }, env, headers);
-    expect(res.status).toBe(200);
-    expect((await res.json()).ok).toBe(true);
+    expect(res.status).toBe(404);
     const upd = env.DB.calls.find((c) => /update\s+users/i.test(c.sql));
-    expect(upd).toBeTruthy();
-    // params: hash, salt, set_at, updated_at, id — hash and salt are hex.
-    expect(String(upd!.params[0])).toMatch(/^[0-9a-f]{64}$/);
-    expect(String(upd!.params[1])).toMatch(/^[0-9a-f]{64}$/);
-    const auditCall = env.DB.calls.find((c) => /insert\s+into\s+audit_log/i.test(c.sql));
-    expect(auditCall?.params).toContain("password.set");
-  });
-
-  it("rejects when a password is already set", async () => {
-    await seedUser({ withPassword: true });
-    const headers = memberSession(env, "user-1");
-    const res = await postJSON(app, "/password/set", { password: "NewPassword12" }, env, headers);
-    expect(res.status).toBe(400);
-  });
-
-  it("requires authentication", async () => {
-    const res = await postJSON(app, "/password/set", { password: "NewPassword12" }, env);
-    expect(res.status).toBe(401);
-  });
-
-  it("enforces the password policy", async () => {
-    await seedUser({ withPassword: false });
-    const headers = memberSession(env, "user-1");
-    const res = await postJSON(app, "/password/set", { password: "short" }, env, headers);
-    expect(res.status).toBe(400);
-    expect((await res.json()).error).toMatch(/at least 12 characters/);
+    expect(upd).toBeFalsy();
   });
 });
 
@@ -408,7 +382,7 @@ describe("POST /password/reset/confirm", () => {
           ? { row: { id: "reset-1", user_id: "user-1", expires_at: expiresAt, used_at: usedAt } }
           : { row: null };
       }
-      if (/from\s+users/i.test(sql)) return { row: { id: "user-1", status: "active" } };
+      if (/from\s+users/i.test(sql)) return { row: { id: "user-1", status: "active", password_hash: "existing-hash" } };
       return prev?.(sql, params);
     };
     withSessionList();
@@ -482,5 +456,26 @@ describe("POST /password/reset/confirm", () => {
       env
     );
     expect(res.status).toBe(400);
+  });
+
+  it("rejects a passwordless account with the same generic error (D1)", async () => {
+    await confirmSetup();
+    const prev = env.DB.handler;
+    env.DB.handler = (sql, params) => {
+      if (/from\s+users/i.test(sql)) {
+        return { row: { id: "user-1", status: "active", password_hash: null } };
+      }
+      return prev?.(sql, params);
+    };
+    const res = await postJSON(
+      app,
+      "/password/reset/confirm",
+      { token: RAW, newPassword: "FreshStart12" },
+      env
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("Invalid or expired reset link.");
+    const upd = env.DB.calls.find((c) => /update\s+users\s+set/i.test(c.sql));
+    expect(upd).toBeFalsy();
   });
 });

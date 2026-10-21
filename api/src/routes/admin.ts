@@ -4,6 +4,8 @@
 import { Hono } from "hono";
 import type { Bindings } from "../index";
 import { requireAdmin, type AuthVariables } from "../lib/auth";
+import { cleanStr, isEmail } from "../lib/validate";
+import { generateInviteCode, inviteCodeHmac } from "../lib/invites";
 
 const app = new Hono<{ Bindings: Bindings; Variables: AuthVariables }>();
 
@@ -79,7 +81,7 @@ app.get("/invites", async (c) => {
   const admin = c.get("admin");
   const { DB } = c.env;
   const rows = await DB.prepare(
-    `SELECT ic.id, ic.code, ic.max_uses, ic.uses, ic.expires_at, ic.created_at, u.email as created_by
+    `SELECT ic.id, ic.code, ic.max_uses, ic.uses, ic.expires_at, ic.created_at, ic.email, ic.revoked_at, u.email as created_by
      FROM invite_codes ic LEFT JOIN users u ON u.id = ic.created_by
      ORDER BY ic.created_at DESC LIMIT 100`
   ).all();
@@ -89,7 +91,8 @@ app.get("/invites", async (c) => {
 app.post("/invites", async (c) => {
   const admin = c.get("admin");
   const { DB } = c.env;
-  const { max_uses, expires_days } = await c.req.json().catch(() => ({}));
+  const body = await c.req.json().catch(() => ({}));
+  const { max_uses, expires_days } = body;
   /* Validate inputs: a 0/negative max_uses would create an instantly-dead
    * code, and negative expires_days an already-expired one. */
   const uses = max_uses === undefined || max_uses === null ? 1 : Number(max_uses);
@@ -104,28 +107,58 @@ app.post("/invites", async (c) => {
     }
     expires_at = new Date(Date.now() + days * 86400000).toISOString();
   }
-  const code = "BRM-" + crypto.randomUUID().slice(0, 8).toUpperCase();
-  await DB.prepare(
-    `INSERT INTO invite_codes (id, code, created_by, max_uses, expires_at)
-     VALUES (?, ?, ?, ?, ?)`
-  )
-    .bind(crypto.randomUUID(), code, admin!.id, uses, expires_at)
-    .run();
-  await audit(c, admin!, "invite.create", `${code} (max_uses=${uses}${expires_at ? `, expires ${expires_at.slice(0, 10)}` : ", no expiry"})`);
+  /* S2: an invite can be bound to one email (and to the intro request it
+   * answers). The binding is stored lower case; the redemption trigger
+   * enforces the match. */
+  const emailRaw = cleanStr(body.email, 200).toLowerCase();
+  if (emailRaw && !isEmail(emailRaw)) {
+    return c.json({ ok: false, error: "email must be a valid email address" }, 400);
+  }
+  const email = emailRaw || null;
+  const intro_request_id = cleanStr(body.intro_request_id, 100) || null;
+  /* C28: BRIM-XXXX-XXXX from the 31-symbol alphabet. Only the HMAC is
+   * stored (S2); the plain code is shown exactly once, in this response,
+   * and never written to the audit log. */
+  const code = generateInviteCode();
+  const stored = await inviteCodeHmac(c.env, code);
+  const id = crypto.randomUUID();
+  try {
+    await DB.prepare(
+      `INSERT INTO invite_codes (id, code, created_by, max_uses, expires_at, email, intro_request_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+      .bind(id, stored, admin!.id, uses, expires_at, email, intro_request_id)
+      .run();
+  } catch (e) {
+    if (String(e).includes("idx_invite_codes_open_email")) {
+      return c.json({ ok: false, error: "An open invite already exists for that email." }, 400);
+    }
+    throw e;
+  }
+  await audit(c, admin!, "invite.create", `invite ${id} (max_uses=${uses}${expires_at ? `, expires ${expires_at.slice(0, 10)}` : ", no expiry"}${email ? `, for ${email}` : ""})`);
   return c.json({ ok: true, code });
 });
 
-/* Revoke an invite code (e.g. leaked). Redeems after this point fail. */
+/* Revoke an invite code (e.g. leaked). Redeems after this point fail.
+ * S2: revoke, never delete. A redeemed invite is history (the redemption
+ * row points at it), so deletion is both forbidden by trigger and wrong;
+ * revoking also frees the member quota, which counts revoked_at IS NULL. */
 app.delete("/invites/:id", async (c) => {
   const admin = c.get("admin");
   const { DB } = c.env;
   const id = c.req.param("id");
-  const row = await DB.prepare("SELECT code FROM invite_codes WHERE id = ?")
+  const row = await DB.prepare("SELECT id, revoked_at FROM invite_codes WHERE id = ?")
     .bind(id)
-    .first<{ code: string }>();
+    .first<{ id: string; revoked_at: string | null }>();
   if (!row) return c.json({ ok: false, error: "Invite not found" }, 404);
-  await DB.prepare("DELETE FROM invite_codes WHERE id = ?").bind(id).run();
-  await audit(c, admin!, "invite.revoke", row.code);
+  if (!row.revoked_at) {
+    await DB.prepare(
+      "UPDATE invite_codes SET revoked_at = ?, revoked_by = ? WHERE id = ? AND revoked_at IS NULL"
+    )
+      .bind(new Date().toISOString(), admin!.id, id)
+      .run();
+    await audit(c, admin!, "invite.revoke", `invite ${id}`);
+  }
   return c.json({ ok: true });
 });
 

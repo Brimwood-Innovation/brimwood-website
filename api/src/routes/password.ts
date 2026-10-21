@@ -129,44 +129,11 @@ app.post("/login", async (c) => {
   return c.json({ ok: true });
 });
 
-/* ---------------- Set initial password ---------------- */
-
-/** POST /password/set {password} — authenticated; for users without one yet. */
-app.post("/password/set", async (c) => {
-  const { DB } = c.env;
-  if (!(await checkRateLimitD1(DB, "pwset:" + clientIp(c.req.raw), 5, 3600))) {
-    return c.json({ ok: false, error: "Too many requests. Please try again later." }, 429);
-  }
-  const sess = await sessionUser(c);
-  if (!sess) return c.json({ ok: false, error: "Not signed in." }, 401);
-
-  const data = await jsonBody(c);
-  if (!data) return c.json({ ok: false }, 400);
-  const password = typeof data.password === "string" ? data.password : "";
-  const policyError = validatePassword(password);
-  if (policyError) return c.json({ ok: false, error: policyError }, 400);
-
-  const user = await DB.prepare("SELECT id, password_hash FROM users WHERE id = ?")
-    .bind(sess.userId)
-    .first<{ id: string; password_hash: string | null }>();
-  if (!user) return c.json({ ok: false, error: "Not signed in." }, 401);
-  if (user.password_hash) {
-    return c.json(
-      { ok: false, error: "A password is already set. Use change password instead." },
-      400
-    );
-  }
-
-  const { hash, salt } = await hashPassword(password);
-  const now = new Date().toISOString();
-  await DB.prepare(
-    "UPDATE users SET password_hash = ?, password_salt = ?, password_set_at = ?, updated_at = ? WHERE id = ?"
-  )
-    .bind(hash, salt, now, now, user.id)
-    .run();
-  await audit(DB, user.id, "password.set", "Initial password set");
-  return c.json({ ok: true });
-});
+/* D1 (SCHEMA section 7 item 5): there is no "set a first password".
+ * Passwords exist only on accounts that already have one (legacy and admin
+ * accounts); passkey and email-code sign-in cover everyone else. The old
+ * POST /password/set endpoint is removed, and the 0023 trigger
+ * trg_users_no_new_password enforces the same rule in the database. */
 
 /* ---------------- Change password ---------------- */
 
@@ -243,7 +210,7 @@ app.post("/password/reset/request", async (c) => {
   // Always respond ok — never reveal whether the email exists.
   if (isEmail(email) && resendKey) {
     const user = await DB.prepare(
-      "SELECT id, name FROM users WHERE email = ? AND status = 'active'"
+      "SELECT id, name FROM users WHERE email = ? AND status = 'active' AND password_hash IS NOT NULL"
     )
       .bind(email)
       .first<{ id: string; name: string }>();
@@ -319,10 +286,12 @@ app.post("/password/reset/confirm", async (c) => {
     return c.json({ ok: false, error: "Invalid or expired reset link." }, 400);
   }
 
-  const user = await DB.prepare("SELECT id, status FROM users WHERE id = ?")
+  const user = await DB.prepare("SELECT id, status, password_hash FROM users WHERE id = ?")
     .bind(rec.user_id)
-    .first<{ id: string; status: string }>();
-  if (!user || user.status !== "active") {
+    .first<{ id: string; status: string; password_hash: string | null }>();
+  // D1: reset completes only for accounts that already have a password.
+  // The generic error keeps this indistinguishable from a bad token.
+  if (!user || user.status !== "active" || !user.password_hash) {
     return c.json({ ok: false, error: "Invalid or expired reset link." }, 400);
   }
 
