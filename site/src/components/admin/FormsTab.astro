@@ -11,7 +11,14 @@
   const FAPI_BASE = import.meta.env.PUBLIC_API_BASE || "";
   const fapi = (p, opts = {}) =>
     fetch(FAPI_BASE + p, { credentials: "include", headers: { accept: "application/json", ...(opts.headers || {}) }, ...opts });
-  const fesc = (s) => String(s ?? "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  /* Hardening: complete HTML escaper (was missing & and quotes). */
+  const fesc = (s) =>
+    String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   const FIELD_TYPES = ["text", "email", "textarea", "select", "checkbox"];
 
   let formsView = "list"; // list | builder | submissions

@@ -179,7 +179,14 @@ import Base from "../layouts/Base.astro";
 
     // ---- Tiny Markdown preview (subset: headings, bold/italic, links, lists, code, quotes) ----
     function mdPreview(src) {
-      const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      /* Hardening: complete HTML escaper (was missing quotes). */
+      const esc = (s) =>
+        s
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
       const inline = (s) =>
         esc(s)
           .replace(/`([^`]+)`/g, "<code>$1</code>")

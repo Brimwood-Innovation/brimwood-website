@@ -241,15 +241,9 @@ app.post("/redeem-invite", async (c) => {
     pwSetAt = new Date().toISOString();
   }
 
-  // Check for existing user.
-  const existing = await DB.prepare("SELECT id FROM users WHERE email = ?")
-    .bind(email)
-    .first<{ id: string }>();
-  if (existing) {
-    return c.json({ ok: false, error: "This email is already registered. Please sign in." }, 400);
-  }
-
-  // Validate the invite code.
+  // Validate the invite code FIRST (hardening: the code gate stands before any
+  // email-dependent branch, so this endpoint cannot be used to probe whether
+  // an email is registered — the magic-code endpoint already behaves this way).
   const invite = await DB.prepare(
     `SELECT id, code, max_uses, uses, expires_at FROM invite_codes WHERE code = ?`
   )
@@ -262,11 +256,20 @@ app.post("/redeem-invite", async (c) => {
     return c.json({ ok: false, error: "This invite code has expired." }, 400);
   }
 
+  // Existing-user check comes after code validation, so the endpoint cannot
+  // be used to probe whether an email is registered without a valid invite.
+  const existing = await DB.prepare("SELECT id FROM users WHERE email = ?")
+    .bind(email)
+    .first<{ id: string }>();
+  if (existing) {
+    return c.json({ ok: false, error: "This email is already registered. Please sign in." }, 400);
+  }
+
   // Atomically consume one use BEFORE creating the user. The UPDATE only
   // applies when uses < max_uses, and D1 executes it as a single statement,
   // so concurrent redemptions of a single-use code cannot both succeed
   // (the old check-then-increment had a race here). The changes count is
-  // the authority — not the SELECT above, which may be stale.
+  // the authority, not the SELECT above, which may be stale.
   const consumed = await DB.prepare(
     "UPDATE invite_codes SET uses = uses + 1 WHERE id = ? AND uses < max_uses"
   )
@@ -278,12 +281,23 @@ app.post("/redeem-invite", async (c) => {
 
   // Create the user (password columns exist after migration 0009).
   const userId = crypto.randomUUID();
-  await DB.prepare(
-    `INSERT INTO users (id, email, name, role, status, password_hash, password_salt, password_set_at)
-     VALUES (?, ?, ?, 'member', 'active', ?, ?, ?)`
-  )
-    .bind(userId, email, name, pwHash, pwSalt, pwSetAt)
-    .run();
+  try {
+    await DB.prepare(
+      `INSERT INTO users (id, email, name, role, status, password_hash, password_salt, password_set_at)
+       VALUES (?, ?, ?, 'member', 'active', ?, ?, ?)`
+    )
+      .bind(userId, email, name, pwHash, pwSalt, pwSetAt)
+      .run();
+  } catch (e) {
+    // Compensation: the use was consumed but no user was created (e.g. a
+    // concurrent registration won the email). Give the use back so the invite
+    // is not burned by our failure.
+    await DB.prepare("UPDATE invite_codes SET uses = uses - 1 WHERE id = ?")
+      .bind(invite.id)
+      .run()
+      .catch(() => {});
+    throw e;
+  }
 
   // Audit log.
   await DB.prepare(

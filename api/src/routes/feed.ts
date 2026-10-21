@@ -22,6 +22,7 @@ import { getUserId } from "../lib/auth";
 import { cleanStr, clientIp } from "../lib/validate";
 import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 import { initialsFor } from "./profiles";
+import { checkMagicBytes } from "../lib/upload";
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -135,7 +136,13 @@ app.post("/media/upload", async (c) => {
   }
 
   const key = `feed-${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${ext}`;
-  await c.env.MEDIA.put(key, await file.arrayBuffer(), {
+  // Hardening (from PR #16): file.type is browser-supplied, so verify the
+  // actual content bytes before storing.
+  const bytes = await file.arrayBuffer();
+  if (!checkMagicBytes(bytes, file.type)) {
+    return c.json({ ok: false, error: "File content doesn't match its type." }, 400);
+  }
+  await c.env.MEDIA.put(key, bytes, {
     httpMetadata: { contentType: file.type },
   });
 

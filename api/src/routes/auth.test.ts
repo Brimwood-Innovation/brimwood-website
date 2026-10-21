@@ -242,6 +242,8 @@ describe("POST /redeem-invite", () => {
     const prev = env.DB.handler;
     env.DB.handler = (sql, params) => {
       if (/from\s+users/i.test(sql)) return { row: { id: "user-9" } };
+      if (/from\s+invite_codes/i.test(sql))
+        return { row: { id: "inv-1", code: "ABC-123", max_uses: 1, uses: 0, expires_at: null } };
       return prev?.(sql, params);
     };
     const res = await postJSON(

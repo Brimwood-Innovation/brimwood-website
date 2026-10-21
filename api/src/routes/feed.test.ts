@@ -22,6 +22,13 @@ function envWithMedia(r2: Record<string, { contentType: string }> = {}): MockEnv
 
 function uploadForm(filename: string, mime: string, size: number, durationS?: string, h?: Record<string, string>) {
   const bytes = new Uint8Array(size);
+  // Upload hardening verifies magic bytes, so fixtures carry real signatures.
+  const stamp = (sig: number[], offset = 0) => sig.forEach((b, i) => { bytes[offset + i] = b; });
+  if (mime === "image/jpeg") stamp([0xff, 0xd8, 0xff]);
+  else if (mime === "image/png") stamp([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  else if (mime === "image/gif") stamp([0x47, 0x49, 0x46, 0x38]);
+  else if (mime === "image/webp") { stamp([0x52, 0x49, 0x46, 0x46]); stamp([0x57, 0x45, 0x42, 0x50], 8); }
+  else if (mime === "video/mp4") stamp([0x66, 0x74, 0x79, 0x70], 4); // ftyp box
   const file = new File([bytes], filename, { type: mime });
   const form = new FormData();
   form.append("file", file);

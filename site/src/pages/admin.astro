@@ -65,7 +65,14 @@ import FormsTab from "../components/admin/FormsTab.astro";
   <script>
     const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
     const api = (p, opts = {}) => fetch(API_BASE + p, { credentials: "include", headers: { accept: "application/json", ...(opts.headers || {}) }, ...opts });
-    const esc = (s) => String(s || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    /* Hardening: complete HTML escaper (was missing & and quotes). */
+    const esc = (s) =>
+      String(s || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
     const show = (id) => (document.getElementById(id).style.display = "block");
     const hide = (id) => (document.getElementById(id).style.display = "none");
 

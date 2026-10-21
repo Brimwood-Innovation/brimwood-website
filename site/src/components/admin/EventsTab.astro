@@ -20,7 +20,15 @@
       headers: { accept: "application/json", ...(opts.headers || {}) },
       ...opts,
     });
-  const evEsc = (s) => String(s || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  /* Hardening: complete HTML escaper — the old version left & and quotes
+     unescaped, brittle if this ever moves from text into an attribute. */
+  const evEsc = (s) =>
+    String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   const evFmt = (iso) =>
     iso ? new Date(iso).toLocaleString("en-CA", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
   const evInput = 'padding:8px 12px;border:1px solid rgba(18,26,22,.12);border-radius:8px;width:100%;margin-bottom:10px;';
