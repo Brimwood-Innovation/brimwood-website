@@ -11,8 +11,8 @@ import { sendEmail, shell, esc } from "../lib/email";
 import { cleanStr, isEmail, clientIp, sha256Hex } from "../lib/validate";
 import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 import { safeEqual } from "../lib/safe-equal";
-import { hashPassword, validatePassword } from "../lib/password";
 import { setSessionCookie, createSession, destroySession, readSession } from "../lib/auth";
+import { inviteCodeHmac } from "../lib/invites";
 
 type Env = Bindings & {
   RESEND_API_KEY?: string;
@@ -204,10 +204,14 @@ app.post("/logout", async (c) => {
   return c.json({ ok: true });
 });
 
-/* Invite redemption (T28): POST /api/auth/redeem-invite {email, name, code}
- * Validates the invite code (not expired, uses remaining), creates the user
- * as a member, increments the code's use count, then sends a magic sign-in
- * code so they can sign in immediately. */
+/* Invite redemption (T28, SCHEMA section 7 item 3): POST
+ * /api/auth/redeem-invite {email, name, code}
+ * v5 flow: the invite is looked up by the HMAC of the submitted code (the
+ * plain code is never stored, S2), then ONE batch inserts the redemption
+ * row and the user. The 0023 triggers validate and consume the invite and
+ * claim the redemption for the new user, atomically. No password is taken
+ * at sign-up (D1). A magic sign-in code follows so they can sign in at
+ * once. */
 app.post("/redeem-invite", async (c) => {
   const { DB } = c.env;
   if (!(await checkRateLimitD1(DB, "redeem:" + clientIp(c.req.raw), 5, 3600))) {
@@ -227,34 +231,40 @@ app.post("/redeem-invite", async (c) => {
     return c.json({ ok: false, error: "Please include your name, email, and invite code." }, 400);
   }
 
-  // Optional password at signup (Phase D1). Validated now, stored with the user.
-  const rawPassword = typeof data.password === "string" ? data.password : "";
-  let pwHash: string | null = null;
-  let pwSalt: string | null = null;
-  let pwSetAt: string | null = null;
-  if (rawPassword) {
-    const policyError = validatePassword(rawPassword);
-    if (policyError) return c.json({ ok: false, error: policyError }, 400);
-    const hashed = await hashPassword(rawPassword);
-    pwHash = hashed.hash;
-    pwSalt = hashed.salt;
-    pwSetAt = new Date().toISOString();
-  }
-
   // Validate the invite code FIRST (hardening: the code gate stands before any
   // email-dependent branch, so this endpoint cannot be used to probe whether
   // an email is registered — the magic-code endpoint already behaves this way).
-  const invite = await DB.prepare(
-    `SELECT id, code, max_uses, uses, expires_at FROM invite_codes WHERE code = ?`
-  )
-    .bind(code)
-    .first<{ id: string; code: string; max_uses: number; uses: number; expires_at: string | null }>();
-  if (!invite) {
-    return c.json({ ok: false, error: "Invalid invite code." }, 400);
-  }
-  if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
-    return c.json({ ok: false, error: "This invite code has expired." }, 400);
-  }
+  // Lookup is by HMAC: invite_codes.code stores HMAC(code), never the code.
+  const stored = await inviteCodeHmac(c.env, code);
+  type InviteRow = {
+    id: string;
+    max_uses: number;
+    uses: number;
+    expires_at: string | null;
+    revoked_at: string | null;
+    email: string | null;
+  };
+  const fetchInvite = () =>
+    DB.prepare(
+      `SELECT id, max_uses, uses, expires_at, revoked_at, email FROM invite_codes WHERE code = ?`
+    )
+      .bind(stored)
+      .first<InviteRow>();
+  const inviteProblem = (inv: InviteRow | null): string | null => {
+    if (!inv) return "Invalid invite code.";
+    if (inv.revoked_at) return "This invite code has been revoked.";
+    if (inv.expires_at && new Date(inv.expires_at) < new Date()) {
+      return "This invite code has expired.";
+    }
+    if (inv.email && inv.email.toLowerCase() !== email) {
+      return "This invite was issued for a different email address.";
+    }
+    if (inv.uses >= inv.max_uses) return "This invite code has already been used.";
+    return null;
+  };
+  const invite = await fetchInvite();
+  const problem = inviteProblem(invite);
+  if (problem) return c.json({ ok: false, error: problem }, 400);
 
   // Existing-user check comes after code validation, so the endpoint cannot
   // be used to probe whether an email is registered without a valid invite.
@@ -265,37 +275,31 @@ app.post("/redeem-invite", async (c) => {
     return c.json({ ok: false, error: "This email is already registered. Please sign in." }, 400);
   }
 
-  // Atomically consume one use BEFORE creating the user. The UPDATE only
-  // applies when uses < max_uses, and D1 executes it as a single statement,
-  // so concurrent redemptions of a single-use code cannot both succeed
-  // (the old check-then-increment had a race here). The changes count is
-  // the authority, not the SELECT above, which may be stale.
-  const consumed = await DB.prepare(
-    "UPDATE invite_codes SET uses = uses + 1 WHERE id = ? AND uses < max_uses"
-  )
-    .bind(invite.id)
-    .run();
-  if ((consumed.meta.changes ?? 0) === 0) {
-    return c.json({ ok: false, error: "This invite code has already been used." }, 400);
-  }
-
-  // Create the user (password columns exist after migration 0009).
+  // One batch: the redemption row first (its trigger validates the invite
+  // again and consumes one use), then the user (whose trigger requires the
+  // unclaimed redemption and claims it). If either statement fails, the
+  // whole batch rolls back, so an invite use can never be burned by a
+  // failed sign-up and no compensation step is needed. No password columns:
+  // passwords are not offered at sign-up (D1).
   const userId = crypto.randomUUID();
   try {
-    await DB.prepare(
-      `INSERT INTO users (id, email, name, role, status, password_hash, password_salt, password_set_at)
-       VALUES (?, ?, ?, 'member', 'active', ?, ?, ?)`
-    )
-      .bind(userId, email, name, pwHash, pwSalt, pwSetAt)
-      .run();
+    await DB.batch([
+      DB.prepare("INSERT INTO invite_redemptions (id, invite_code_id, email) VALUES (?, ?, ?)")
+        .bind(crypto.randomUUID(), invite!.id, email),
+      DB.prepare(
+        `INSERT INTO users (id, email, name, role, status) VALUES (?, ?, ?, 'member', 'active')`
+      ).bind(userId, email, name),
+    ]);
   } catch (e) {
-    // Compensation: the use was consumed but no user was created (e.g. a
-    // concurrent registration won the email). Give the use back so the invite
-    // is not burned by our failure.
-    await DB.prepare("UPDATE invite_codes SET uses = uses - 1 WHERE id = ?")
-      .bind(invite.id)
-      .run()
-      .catch(() => {});
+    // A racer may have consumed the invite between the check above and the
+    // batch; the trigger's verdict is the authority. Re-read and report the
+    // specific problem when there is one.
+    const now = await fetchInvite().catch(() => null);
+    const raced = inviteProblem(now);
+    if (raced) return c.json({ ok: false, error: raced }, 400);
+    if (String(e).includes("invite is not valid")) {
+      return c.json({ ok: false, error: "Invalid invite code." }, 400);
+    }
     throw e;
   }
 

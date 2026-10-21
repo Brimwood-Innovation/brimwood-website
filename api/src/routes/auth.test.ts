@@ -175,66 +175,138 @@ describe("POST /logout", () => {
 });
 
 describe("POST /redeem-invite", () => {
-  const INVITE = { id: "inv-1", code: "ABC-123", max_uses: 1, uses: 0, expires_at: null };
+  const INVITE = {
+    id: "inv-1",
+    max_uses: 1,
+    uses: 0,
+    expires_at: null,
+    revoked_at: null,
+    email: null,
+  };
 
   /** Handler: no existing user, valid invite; no email sending. */
-  function seedRedeem(invite: any = INVITE, updateResult: any = null) {
+  function seedRedeem(invite: any = INVITE) {
     delete (env as any).RESEND_API_KEY;
     const prev = env.DB.handler;
     env.DB.handler = (sql, params) => {
       if (/from\s+users/i.test(sql)) return { row: null };
       if (/from\s+invite_codes/i.test(sql)) return { row: invite };
-      if (/update\s+invite_codes/i.test(sql) && updateResult) return updateResult;
       return prev?.(sql, params);
     };
   }
 
-  it("consumes one use with an atomic conditional UPDATE", async () => {
+  it("redeems in one batch: redemption row first, then the user, no password", async () => {
     seedRedeem();
     const res = await postJSON(
       app,
       "/redeem-invite",
-      { email: "new@example.com", name: "New User", code: "abc-123" },
+      { email: "new@example.com", name: "New User", code: "brim-aaaa-bbbb" },
       env
     );
     expect(res.status).toBe(200);
     expect((await res.json()).ok).toBe(true);
-    const upd = env.DB.calls.find((c) => /update\s+invite_codes/i.test(c.sql));
-    expect(upd, "conditional UPDATE issued").toBeDefined();
-    expect(upd!.sql).toMatch(/uses\s*<\s*max_uses/);
-    // The user was created exactly once.
+    // The lookup binds the HMAC of the code, never the plain code (S2).
+    const lookup = env.DB.calls.find((c) => /from\s+invite_codes/i.test(c.sql));
+    expect(String(lookup!.params[0])).toMatch(/^[0-9a-f]{64}$/);
+    // The redemption row carries the invite id and the bound email.
+    const redemptions = env.DB.inserts.get("invite_redemptions") || [];
+    expect(redemptions).toHaveLength(1);
+    expect(redemptions[0].invite_code_id).toBe("inv-1");
+    expect(redemptions[0].email).toBe("new@example.com");
+    // The user was created exactly once, with no password columns (D1).
     const users = env.DB.inserts.get("users") || [];
     expect(users).toHaveLength(1);
     expect(users[0].email).toBe("new@example.com");
+    expect(users[0]).not.toHaveProperty("password_hash");
+    // The handler never touches invite_codes.uses itself: the 0023 trigger
+    // consumes the use inside the same batch transaction.
+    expect(env.DB.calls.find((c) => /update\s+invite_codes/i.test(c.sql))).toBeUndefined();
   });
 
-  it("loses the race cleanly: no user created when the consume finds no uses left", async () => {
-    // The SELECT saw uses < max_uses, but a concurrent redemption won —
-    // the atomic UPDATE then changes 0 rows.
-    seedRedeem(INVITE, { changes: 0 });
+  it("loses the race cleanly: the trigger rejects, the re-read explains, 400", async () => {
+    // The first SELECT saw uses < max_uses, but a concurrent redemption won:
+    // the redemption insert raises (simulated), and the re-read shows the
+    // invite fully used. Note: the mock records inserts before executing,
+    // so this test asserts the response contract, not insert counts.
+    delete (env as any).RESEND_API_KEY;
+    const prev = env.DB.handler;
+    let inviteReads = 0;
+    env.DB.handler = (sql, params) => {
+      if (/from\s+users/i.test(sql)) return { row: null };
+      if (/from\s+invite_codes/i.test(sql)) {
+        inviteReads += 1;
+        return { row: inviteReads === 1 ? INVITE : { ...INVITE, uses: 1 } };
+      }
+      if (/insert\s+into\s+invite_redemptions/i.test(sql)) {
+        throw new Error("D1_ERROR: invite is not valid for this email");
+      }
+      return prev?.(sql, params);
+    };
     const res = await postJSON(
       app,
       "/redeem-invite",
-      { email: "new@example.com", name: "New User", code: "ABC-123" },
+      { email: "new@example.com", name: "New User", code: "BRIM-AAAA-BBBB" },
       env
     );
     expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(/already been used/i);
-    expect(env.DB.inserts.get("users") || []).toHaveLength(0);
   });
 
-  it("rejects an expired invite before consuming", async () => {
+  it("rejects an expired invite before any insert", async () => {
     seedRedeem({ ...INVITE, expires_at: "2020-01-01T00:00:00.000Z" });
     const res = await postJSON(
       app,
       "/redeem-invite",
-      { email: "new@example.com", name: "New User", code: "ABC-123" },
+      { email: "new@example.com", name: "New User", code: "BRIM-AAAA-BBBB" },
       env
     );
     expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(/expired/i);
-    const upd = env.DB.calls.find((c) => /update\s+invite_codes/i.test(c.sql));
-    expect(upd, "no consume attempted").toBeUndefined();
+    expect(env.DB.inserts.get("invite_redemptions") || []).toHaveLength(0);
+    expect(env.DB.inserts.get("users") || []).toHaveLength(0);
+  });
+
+  it("rejects a revoked invite", async () => {
+    seedRedeem({ ...INVITE, revoked_at: "2026-10-01T00:00:00.000Z" });
+    const res = await postJSON(
+      app,
+      "/redeem-invite",
+      { email: "new@example.com", name: "New User", code: "BRIM-AAAA-BBBB" },
+      env
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/revoked/i);
+  });
+
+  it("rejects an invite bound to a different email", async () => {
+    seedRedeem({ ...INVITE, email: "someone-else@example.com" });
+    const res = await postJSON(
+      app,
+      "/redeem-invite",
+      { email: "new@example.com", name: "New User", code: "BRIM-AAAA-BBBB" },
+      env
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/different email/i);
+    expect(env.DB.inserts.get("users") || []).toHaveLength(0);
+  });
+
+  it("rejects an unknown code as invalid", async () => {
+    delete (env as any).RESEND_API_KEY;
+    const prev = env.DB.handler;
+    env.DB.handler = (sql, params) => {
+      if (/from\s+users/i.test(sql)) return { row: null };
+      if (/from\s+invite_codes/i.test(sql)) return { row: null };
+      return prev?.(sql, params);
+    };
+    const res = await postJSON(
+      app,
+      "/redeem-invite",
+      { email: "new@example.com", name: "New User", code: "BRIM-AAAA-BBBB" },
+      env
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/invalid invite code/i);
   });
 
   it("rejects an already-registered email", async () => {
@@ -242,14 +314,13 @@ describe("POST /redeem-invite", () => {
     const prev = env.DB.handler;
     env.DB.handler = (sql, params) => {
       if (/from\s+users/i.test(sql)) return { row: { id: "user-9" } };
-      if (/from\s+invite_codes/i.test(sql))
-        return { row: { id: "inv-1", code: "ABC-123", max_uses: 1, uses: 0, expires_at: null } };
+      if (/from\s+invite_codes/i.test(sql)) return { row: INVITE };
       return prev?.(sql, params);
     };
     const res = await postJSON(
       app,
       "/redeem-invite",
-      { email: "taken@example.com", name: "Taken", code: "ABC-123" },
+      { email: "taken@example.com", name: "Taken", code: "BRIM-AAAA-BBBB" },
       env
     );
     expect(res.status).toBe(400);

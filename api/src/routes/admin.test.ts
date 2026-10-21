@@ -41,10 +41,14 @@ describe("POST /invites validation", () => {
     expect(res.status).toBe(200);
     const d = (await res.json()) as any;
     expect(d.ok).toBe(true);
-    expect(d.code).toMatch(/^BRM-[0-9A-F]{8}$/);
+    // C28 format: BRIM-XXXX-XXXX from the 31-symbol alphabet (no 0 O 1 I L).
+    expect(d.code).toMatch(/^BRIM-[2-9A-HJKMNP-Z]{4}-[2-9A-HJKMNP-Z]{4}$/);
     const rows = env.DB.inserts.get("invite_codes") || [];
     expect(rows[0].max_uses).toBe(5);
     expect(typeof rows[0].expires_at).toBe("string");
+    // S2: only the HMAC is stored, never the plain code.
+    expect(rows[0].code).toMatch(/^[0-9a-f]{64}$/);
+    expect(rows[0].code).not.toBe(d.code);
   });
 
   it("defaults to max_uses 1 and no expiry", async () => {
@@ -55,6 +59,27 @@ describe("POST /invites validation", () => {
     expect(rows[0].max_uses).toBe(1);
     expect(rows[0].expires_at).toBeNull();
   });
+
+  it("binds an invite to an email (lower case) and an intro request", async () => {
+    const { env, h } = adminEnv();
+    const res = await postJSON(
+      app,
+      "/invites",
+      { email: "Person@Example.com", intro_request_id: "intro-9" },
+      env,
+      h
+    );
+    expect(res.status).toBe(200);
+    const rows = env.DB.inserts.get("invite_codes") || [];
+    expect(rows[0].email).toBe("person@example.com");
+    expect(rows[0].intro_request_id).toBe("intro-9");
+  });
+
+  it("rejects a malformed binding email", async () => {
+    const { env, h } = adminEnv();
+    const res = await postJSON(app, "/invites", { email: "not-an-email" }, env, h);
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("DELETE /invites/:id (revoke)", () => {
@@ -64,20 +89,39 @@ describe("DELETE /invites/:id (revoke)", () => {
     expect(res.status).toBe(404);
   });
 
-  it("deletes and audit-logs a real invite", async () => {
+  it("revokes (never deletes) and audit-logs a real invite", async () => {
     const { env, h } = adminEnv();
     const prev = env.DB.handler;
     env.DB.handler = (sql, params) => {
-      if (/from\s+invite_codes/i.test(sql)) return { row: { code: "BRM-ABCDEFGH" } };
+      if (/from\s+invite_codes/i.test(sql)) return { row: { id: "inv-1", revoked_at: null } };
       return prev?.(sql, params);
     };
     const res = await app.request("/invites/inv-1", { method: "DELETE", headers: h }, env as any);
     expect(res.status).toBe(200);
-    expect(env.DB.calls.some((c) => /delete\s+from\s+invite_codes/i.test(c.sql))).toBe(true);
+    // S2: revoke is an UPDATE carrying revoked_at and revoked_by.
+    const upd = env.DB.calls.find((c) => /update\s+invite_codes/i.test(c.sql));
+    expect(upd).toBeTruthy();
+    expect(upd!.sql).toMatch(/revoked_at/);
+    expect(upd!.sql).toMatch(/revoked_by/);
+    expect(env.DB.calls.some((c) => /delete\s+from\s+invite_codes/i.test(c.sql))).toBe(false);
     const audits = env.DB.inserts.get("audit_log") || [];
-    expect(audits.some((a) => a.action === "invite.revoke" && String(a.detail).includes("BRM-ABCDEFGH"))).toBe(
+    expect(audits.some((a) => a.action === "invite.revoke" && String(a.detail).includes("inv-1"))).toBe(
       true
     );
+  });
+
+  it("is idempotent for an already-revoked invite", async () => {
+    const { env, h } = adminEnv();
+    const prev = env.DB.handler;
+    env.DB.handler = (sql, params) => {
+      if (/from\s+invite_codes/i.test(sql)) {
+        return { row: { id: "inv-1", revoked_at: "2026-10-01T00:00:00.000Z" } };
+      }
+      return prev?.(sql, params);
+    };
+    const res = await app.request("/invites/inv-1", { method: "DELETE", headers: h }, env as any);
+    expect(res.status).toBe(200);
+    expect(env.DB.calls.some((c) => /update\s+invite_codes/i.test(c.sql))).toBe(false);
   });
 });
 
