@@ -16,7 +16,8 @@ import Base from "../layouts/Base.astro";
     <p>
       If you request an introduction, we receive your name, email address, referral
       note, and message. If you join the newsletter, we receive your email address.
-      That is all we ask for.
+      If you comment on a blog post, we receive your name, email address (never
+      published), and comment. That is all we ask for.
     </p>
 
     <h2>How we use it</h2>
@@ -36,7 +37,9 @@ import Base from "../layouts/Base.astro";
     <p>
       Form submissions are processed through our own systems on Cloudflare's
       infrastructure and transactional email is sent via Resend. Both are configured
-      to hold only what is needed to operate the site.
+      to hold only what is needed to operate the site. Forms that carry a
+      bot check use Cloudflare Turnstile, which briefly sees your browser
+      details to tell humans and bots apart.
     </p>
 
     <h2>Your rights</h2>

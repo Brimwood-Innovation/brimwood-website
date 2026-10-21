@@ -4,7 +4,8 @@ import Base from "../../layouts/Base.astro";
 import { getCollection, render } from "astro:content";
 
 export async function getStaticPaths() {
-  const posts = await getCollection("blog");
+  /* Drafts are never built: draft = seed copy awaiting founder approval. */
+  const posts = await getCollection("blog", ({ data }) => !data.draft);
   return posts.map((post) => ({
     params: { slug: post.id.replace(/\.md$/, "") },
     props: { post },
@@ -27,7 +28,27 @@ const pillars: Record<string, string> = {
 <Base
   title={`${post.data.title} — Brimwood Innovation`}
   description={post.data.description}
-  path={`/blog/${slug}`}
+  path={`/blog/${slug}/`}
+  ogType="article"
+  articleMeta={{
+    publishedTime: post.data.publishDate.toISOString(),
+    author: post.data.author,
+    tags: post.data.tags,
+  }}
+  jsonld={{
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline: post.data.title,
+    description: post.data.description,
+    datePublished: post.data.publishDate.toISOString(),
+    author: { "@type": "Organization", name: post.data.author },
+    publisher: {
+      "@type": "Organization",
+      name: "Brimwood Innovation",
+      logo: { "@type": "ImageObject", url: "https://brimwoodinnovation.com/img/brimwood-logo-colour.svg" },
+    },
+    mainEntityOfPage: `https://brimwoodinnovation.com/blog/${slug}/`,
+  }}
   turnstile
 >
   <article class="prose">
@@ -39,24 +60,11 @@ const pillars: Record<string, string> = {
       {post.data.tags.length > 0 && <>{" · "}{post.data.tags.join(", ")}</>}
     </p>
     <Content />
-    <script type="application/ld+json">
-      {JSON.stringify({
-        "@context": "https://schema.org",
-        "@type": "BlogPosting",
-        headline: post.data.title,
-        description: post.data.description,
-        datePublished: post.data.publishDate.toISOString(),
-        author: { "@type": "Organization", name: "Brimwood Innovation" },
-        publisher: {
-          "@type": "Organization",
-          name: "Brimwood Innovation",
-          logo: { "@type": "ImageObject", url: "https://brimwoodinnovation.com/img/brimwood-logo-colour.svg" },
-        },
-        mainEntityOfPage: `https://brimwoodinnovation.com/blog/${slug}/`,
-      })}
-    </script>
-    <p style="margin-top:3rem;">
+    <p style="margin-top:3rem;display:flex;gap:12px;flex-wrap:wrap;">
       <a class="btn btn-ghost" href="/blog">All posts</a>
+      <button class="btn btn-ghost" id="sharePostBtn" type="button" data-share-title={post.data.title} data-share-url={`https://brimwoodinnovation.com/blog/${slug}`}>
+        Share to DM →
+      </button>
     </p>
   </article>
 
@@ -76,11 +84,26 @@ const pillars: Record<string, string> = {
         <textarea id="cBody" name="body" rows="4" placeholder="Share your thoughts…" required minlength="10" maxlength="2000"></textarea>
         <div class="cf-turnstile" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx" style="margin:16px 0;"></div>
         <button class="btn" type="submit" id="commentBtn">Post comment</button>
-        <p class="form-err" id="commentErr" style="display:none;"></p>
+        <p class="form-err" id="commentErr" style="display:none;" role="status"></p>
       </form>
-      <div class="thanks" id="commentThanks">Thanks — your comment is awaiting moderation.</div>
+      <div class="thanks" id="commentThanks" role="status">Thanks — your comment is awaiting moderation.</div>
     </div>
   </section>
 
   <script is:inline src="/js/blog-comments.js"></script>
+  <script>
+    // Share-to-DM (audit/social/wiring): paper-plane pattern for blog posts.
+    (function () {
+      var btn = document.getElementById("sharePostBtn");
+      if (!btn || !window.Brimwood || !window.Brimwood.shareToDM) return;
+      btn.addEventListener("click", function () {
+        window.Brimwood.shareToDM({
+          title: btn.getAttribute("data-share-title") || document.title,
+          url: btn.getAttribute("data-share-url") || location.href,
+          targetType: "blog_post",
+          targetId: btn.getAttribute("data-share-url") || location.href,
+        });
+      });
+    })();
+  </script>
 </Base>

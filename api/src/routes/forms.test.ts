@@ -128,6 +128,103 @@ describe("POST /:slug/submit validation", () => {
     const env = formEnv();
     const res = await postRaw(app, "/contact/submit", "{bad", env);
     expect(res.status).toBe(400);
+    expect(((await res.json()) as any).error).toBeTruthy();
+  });
+
+  it("rejects valid-JSON non-object bodies with 400", async () => {
+    const env = formEnv();
+    for (const raw of ["null", "[]"]) {
+      const res = await postRaw(app, "/contact/submit", raw, env);
+      expect(res.status, raw).toBe(400);
+      expect(env.DB.inserts.get("form_submissions")).toBeUndefined();
+    }
+  });
+
+  it("rejects object/array values for text fields", async () => {
+    const env = formEnv();
+    const r = await turnstileStub(true);
+    try {
+      const res = await submit(env, { ...validResponses, "fld-name": { evil: 1 } });
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as any).error).toMatch(/invalid value/i);
+      expect(env.DB.inserts.get("form_submissions")).toBeUndefined();
+    } finally {
+      r();
+    }
+  });
+
+  it("tolerates corrupt options JSON on the public form page", async () => {
+    const env = mockEnv();
+    env.DB.handler = (sql) => {
+      if (/from\s+forms\s+where\s+slug/i.test(sql)) return { row: FORM };
+      if (/from\s+form_fields/i.test(sql))
+        return { results: [{ ...FIELDS[2], options: "{corrupt" }] };
+    };
+    const res = await app.request("/contact", {}, env as any);
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as any;
+    expect(data.form.fields[0].options).toBeNull();
+  });
+
+  it("idempotency key: duplicate delivery stores and notifies once", async () => {
+    const env = formEnv();
+    env.DB.handler = ((prev) => (sql: string, params: unknown[]) => {
+      if (/from\s+form_submissions\s+where\s+idempotency_key/i.test(sql)) {
+        const rows = env.DB.inserts.get("form_submissions") || [];
+        const hit = rows.find((r) => r.idempotency_key === params[0]);
+        return { row: hit ? { id: hit.id } : null };
+      }
+      return prev(sql, params);
+    })(env.DB.handler!);
+    const sent: { to: string; subject: string }[] = [];
+    const r1 = await turnstileStub(true);
+    const r2 = mailStub(sent);
+    try {
+      const headers = { "Idempotency-Key": "form-idem-1" };
+      expect((await postJSON(
+        app, "/contact/submit",
+        { responses: validResponses, "cf-turnstile-response": "tok" },
+        env, headers
+      )).status).toBe(200);
+      // second delivery carries the same key in the body this time
+      const again = await postJSON(
+        app, "/contact/submit",
+        { responses: validResponses, idempotency_key: "form-idem-1", "cf-turnstile-response": "tok" },
+        env, headers
+      );
+      expect(again.status).toBe(200);
+      expect(env.DB.inserts.get("form_submissions")).toHaveLength(1);
+      expect(sent).toHaveLength(1);
+    } finally {
+      r1();
+      r2();
+    }
+  });
+
+  it("logs the notify email to email_log (sent and failed)", async () => {
+    const env = formEnv();
+    const r1 = await turnstileStub(true);
+    const r2 = mailStub([]);
+    try {
+      await submit(env, validResponses);
+      const logs = env.DB.inserts.get("email_log")!;
+      expect(logs.some((l) => l.kind === "form-notify" && l.status === "sent")).toBe(true);
+    } finally {
+      r1();
+      r2();
+    }
+    const env2 = formEnv();
+    const r3 = await turnstileStub(true);
+    const r4 = mailFailStub();
+    try {
+      const res = await submit(env2, validResponses);
+      expect(res.status).toBe(200); // best-effort: submission kept
+      const logs = env2.DB.inserts.get("email_log")!;
+      expect(logs.some((l) => l.kind === "form-notify" && l.status === "failed")).toBe(true);
+    } finally {
+      r3();
+      r4();
+    }
   });
 
   it("stores the submission as JSON on success", async () => {
@@ -207,6 +304,14 @@ describe("POST /admin create validation", () => {
   const create = (env: ReturnType<typeof mockEnv>, body: unknown, h: Record<string, string>) =>
     postJSON(app, "/admin", body, env, h);
 
+  it("rejects valid-JSON non-object bodies with 400", async () => {
+    const env = mockEnv();
+    const h = adminSession(env);
+    const res = await postRaw(app, "/admin", "null", env, h);
+    expect(res.status).toBe(400);
+    expect(env.DB.inserts.get("forms")).toBeUndefined();
+  });
+
   it("rejects unknown field types", async () => {
     const env = mockEnv();
     const h = adminSession(env);
@@ -251,5 +356,25 @@ describe("POST /admin create validation", () => {
     expect(fields).toHaveLength(1);
     expect(fields[0].position).toBe(0);
     expect(fields[0].required).toBe(1);
+  });
+});
+
+describe("GET /admin/:id/submissions", () => {
+  it("tolerates a corrupt submission row in the admin list", async () => {
+    const env = mockEnv();
+    const h = adminSession(env);
+    const prev = env.DB.handler;
+    env.DB.handler = (sql, params) => {
+      if (/from\s+forms\s+where\s+id/i.test(sql)) return { row: { id: "f1", title: "Contact" } };
+      if (/from\s+form_fields/i.test(sql)) return { results: [] };
+      if (/from\s+form_submissions/i.test(sql))
+        return { results: [{ id: "s1", submitted_at: "2026-01-01", data: "{corrupt" }] };
+      return prev?.(sql, params);
+    };
+    const res = await app.request("/admin/f1/submissions", { headers: h }, env as any);
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as any;
+    expect(data.submissions).toHaveLength(1);
+    expect(data.submissions[0].data).toBeNull();
   });
 });

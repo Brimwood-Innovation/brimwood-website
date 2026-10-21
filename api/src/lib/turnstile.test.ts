@@ -77,4 +77,18 @@ describe("verifyTurnstile", () => {
       restore();
     }
   });
+
+  it("bounds the siteverify call with an abort timeout", async () => {
+    let signal: unknown;
+    const restore = stubFetch((_url, init) => {
+      signal = init?.signal;
+      return json({ success: true });
+    });
+    try {
+      await verifyTurnstile("tok", "secret");
+      expect(signal).toBeInstanceOf(AbortSignal);
+    } finally {
+      restore();
+    }
+  });
 });

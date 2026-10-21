@@ -101,9 +101,94 @@ describe("token not configured", () => {
   });
 });
 
+describe("editorial guardrails on /commit", () => {
+  let restore: () => void;
+  let githubCalls: number;
+  beforeEach(() => {
+    githubCalls = 0;
+    restore = stubFetch(async (url: string, init?: RequestInit) => {
+      if (url.includes("api.github.com")) githubCalls++;
+      const method = (init?.method || "GET").toUpperCase();
+      if (method === "GET") return new Response("{}", { status: 404 });
+      return new Response(JSON.stringify({ commit: { sha: "x" } }), { status: 200 });
+    });
+  });
+  afterEach(() => restore());
+
+  function cleanBlogPost(): string {
+    return (
+      "---\n" +
+      'title: "A solid post about building"\n' +
+      'description: "A short summary for the cards."\n' +
+      "---\n\nWhy build in public? " +
+      "x".repeat(400) +
+      "\n"
+    );
+  }
+
+  async function commit(path: string, content: string) {
+    const env = mockEnv({ GITHUB_CONTENT_TOKEN: "gh_test_token" });
+    const h = adminSession(env);
+    return app.request(
+      "/commit",
+      {
+        method: "POST",
+        headers: { ...h, "content-type": "application/json" },
+        body: JSON.stringify({ path, content }),
+      },
+      env as any
+    );
+  }
+
+  it("blocks banned hype phrases with 422 and never touches GitHub", async () => {
+    const res = await commit(
+      "site/src/content/blog/hype.md",
+      "---\ntitle: \"A solid post about building\"\ndescription: \"A short summary.\"\n---\n\nGet rich with 10x passive income. " + "x".repeat(400)
+    );
+    expect(res.status).toBe(422);
+    const d = (await res.json()) as any;
+    expect(d.ok).toBe(false);
+    expect(d.issues.some((i: string) => i.includes("Banned phrase"))).toBe(true);
+    expect(githubCalls).toBe(0);
+  });
+
+  it("blocks US spelling with 422", async () => {
+    const res = await commit(
+      "site/src/content/blog/spelling.md",
+      "---\ntitle: \"A solid post about building\"\ndescription: \"A short summary.\"\n---\n\nWe optimize and organize everything. " + "x".repeat(400)
+    );
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as any).issues.some((i: string) => i.includes("Canadian spelling"))).toBe(true);
+    expect(githubCalls).toBe(0);
+  });
+
+  it("blocks full-name testimonial attribution with 422", async () => {
+    const res = await commit(
+      "site/src/content/testimonials/a.md",
+      '---\nquote: "Great place."\nattribution: "John Smith"\n---\n'
+    );
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as any).issues.some((i: string) => i.includes("full name"))).toBe(true);
+    expect(githubCalls).toBe(0);
+  });
+
+  it("allows a clean post through to GitHub", async () => {
+    const res = await commit("site/src/content/blog/clean.md", cleanBlogPost());
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as any).ok).toBe(true);
+    expect(githubCalls).toBeGreaterThan(0);
+  });
+});
+
 describe("commit SHA flow (mocked GitHub)", () => {
   let restore: () => void;
   let calls: { method: string; url: string; body: any }[];
+  // Editorially valid post content (frontmatter + 300-char body), so the
+  // server-side guardrails do not interfere with the SHA-flow assertions.
+  const validPost = (title: string) =>
+    `---\ntitle: "${title}"\ndescription: "A short summary for the cards."\n---\n\nWhy build in public? ` +
+    "x".repeat(400) +
+    "\n";
   beforeEach(() => {
     calls = [];
     restore = stubFetch(async (url: string, init?: RequestInit) => {
@@ -121,6 +206,8 @@ describe("commit SHA flow (mocked GitHub)", () => {
           { status: 200 }
         );
       }
+      // NOTE: commit content below must pass the server-side editorial
+      // guardrails (valid frontmatter + 300-char body), like real posts.
       if (method === "PUT" && url.includes("/contents/")) {
         return new Response(JSON.stringify({ commit: { sha: "def456" } }), { status: 200 });
       }
@@ -142,7 +229,7 @@ describe("commit SHA flow (mocked GitHub)", () => {
       {
         method: "POST",
         headers: { ...h, "content-type": "application/json" },
-        body: JSON.stringify({ path: "site/src/content/blog/x.md", content: "# updated ✓" }),
+        body: JSON.stringify({ path: "site/src/content/blog/x.md", content: validPost("A valid updated post") }),
       },
       env as any
     );
@@ -155,7 +242,7 @@ describe("commit SHA flow (mocked GitHub)", () => {
     expect(put!.body.sha).toBe("abc123");
     expect(put!.body.branch).toBe("develop");
     expect(put!.body.committer.name).toBe("Brimwood Studio");
-    expect(b64decode(put!.body.content)).toBe("# updated ✓");
+    expect(b64decode(put!.body.content)).toBe(validPost("A valid updated post"));
     expect(put!.url).toContain("Brimwood-Innovation/brimwood-website");
   });
 
@@ -176,7 +263,7 @@ describe("commit SHA flow (mocked GitHub)", () => {
       {
         method: "POST",
         headers: { ...h, "content-type": "application/json" },
-        body: JSON.stringify({ path: "site/src/content/pages/new.md", content: "# new" }),
+        body: JSON.stringify({ path: "site/src/content/pages/new.md", content: validPost("A valid new page") }),
       },
       env as any
     );

@@ -18,6 +18,7 @@ const TARGETS: Target[] = [
   { app: adminApp, method: "GET", path: "/subscribers" },
   { app: adminApp, method: "GET", path: "/invites" },
   { app: adminApp, method: "POST", path: "/invites", body: {} },
+  { app: adminApp, method: "DELETE", path: "/invites/abc" },
   { app: adminApp, method: "GET", path: "/users" },
   { app: adminApp, method: "GET", path: "/audit" },
   // media.ts (mounted /api)

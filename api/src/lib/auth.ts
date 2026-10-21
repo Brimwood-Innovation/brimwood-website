@@ -2,7 +2,9 @@
  * Sessions are keyed by SHA-256 of the token, never the raw token.
  * Since F9, sessions live in D1 (not KV): atomic, indexed per user,
  * zero KV writes per login.
- * Admin checks re-read the role from D1 so demotion takes effect immediately.
+ * readSession JOINs users on every read: suspended/deleted users are locked
+ * out immediately and the role is always live (never the login-time cache),
+ * so demotion takes effect on the very next request everywhere.
  */
 import { getCookie, deleteCookie } from "hono/cookie";
 import type { Bindings } from "../index";
@@ -66,12 +68,21 @@ export async function createSession(
   return token;
 }
 
-/** Read the session for the request cookie, or null. */
+/** Read the session for the request cookie, or null.
+ *
+ * Joins users in the same query so that:
+ * - suspended or deleted users lose access immediately (no waiting for the
+ *   30-day session TTL), and
+ * - the returned role is always live — never the value cached in the
+ *   session row at login.
+ * One indexed query; no extra round trip. */
 export async function readSession(c: any): Promise<Session | null> {
   const token = getCookie(c, COOKIE);
   if (!token) return null;
   const row = (await c.env.DB.prepare(
-    "SELECT user_id, role, created_at FROM sessions WHERE key = ? AND expires_at > ?"
+    `SELECT s.user_id, u.role, s.created_at FROM sessions s
+     JOIN users u ON u.id = s.user_id
+     WHERE s.key = ? AND s.expires_at > ? AND u.status = 'active'`
   )
     .bind(PREFIX + (await hashToken(token)), Date.now())
     .first()) as { user_id: string; role: string; created_at: number } | null;
@@ -99,6 +110,31 @@ export async function destroyUserSessions(
   await env.DB.prepare("DELETE FROM sessions WHERE user_id = ?")
     .bind(userId)
     .run();
+}
+
+/** Delete every session belonging to a user EXCEPT the current one
+ * (password change: the changer stays signed in, everyone else is kicked).
+ * keepTokenHash is the SHA-256 hex of the current session token. */
+export async function destroyOtherUserSessions(
+  env: Bindings,
+  userId: string,
+  keepTokenHash: string
+): Promise<void> {
+  await env.DB.prepare("DELETE FROM sessions WHERE user_id = ? AND key != ?")
+    .bind(userId, PREFIX + keepTokenHash)
+    .run();
+}
+
+/** Re-read the user's role from D1 and return true iff they are an active
+ * admin. Authorization decisions MUST use this — never the role cached in
+ * the session row, which can be stale for up to SESS_TTL after a demotion. */
+export async function isAdminUser(c: any, userId: string): Promise<boolean> {
+  const u: any = await c.env.DB.prepare(
+    "SELECT role FROM users WHERE id = ? AND status = 'active'"
+  )
+    .bind(userId)
+    .first();
+  return !!u && u.role === "admin";
 }
 
 /** Delete expired sessions. Call from a scheduled job. */

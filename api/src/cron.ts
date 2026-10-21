@@ -1,7 +1,8 @@
 /* Scheduled tasks (T25, T33): publish scheduled posts + weekly digest + health monitoring.
  *
  * Runs on Cloudflare Cron Triggers. Three jobs:
- * 1. Every 15 min: publish posts where status='scheduled' AND published_at <= now.
+ * 1. Every 15 min: publish posts where status='scheduled' AND published_at <= now,
+ *    plus event reminders (RSVP → 24h-before reminder email + in-app notification).
  * 2. Weekly (Monday 09:00 UTC): digest email to active subscribers with
  *    the week's new published posts + lessons.
  * 3. Every 5 min: health check — ping key endpoints, log to D1,
@@ -9,6 +10,179 @@
  */
 import { sendEmail, shell, esc } from "./lib/email";
 import { INBOX } from "./lib/email";
+import { pruneSessions } from "./lib/auth";
+import { pruneRateLimits } from "./lib/ratelimit-d1";
+import { emitNotification } from "./routes/notifications";
+
+/**
+ * Event reminders (audit/social/wiring): for published events starting in
+ * roughly 24 hours that have not been reminded yet, email every confirmed
+ * RSVP and drop an in-app `event_reminder` notification on the matching
+ * member (RSVP email → user). Idempotent via events.reminder_sent_at (0020):
+ * at-least-once cron retries cannot re-send.
+ */
+export async function sendEventReminders(
+  DB: D1Database,
+  resendKey: string | undefined,
+  siteUrl: string
+): Promise<number> {
+  const nowIso = new Date().toISOString();
+  const events = await DB.prepare(
+    `SELECT id, slug, title, starts_at, location FROM events
+     WHERE status = 'published' AND reminder_sent_at IS NULL
+       AND starts_at > ? AND starts_at <= ?
+     ORDER BY starts_at ASC LIMIT 25`
+  )
+    .bind(
+      new Date(Date.now() + 23 * 3600 * 1000).toISOString(),
+      new Date(Date.now() + 25 * 3600 * 1000).toISOString()
+    )
+    .all();
+  const rows = (events.results as any[]) || [];
+  let reminded = 0;
+
+  for (const ev of rows) {
+    const rsvps = await DB.prepare(
+      `SELECT name, email FROM event_rsvps
+       WHERE event_id = ? AND status = 'confirmed'`
+    )
+      .bind(ev.id)
+      .all();
+    const when = new Date(ev.starts_at).toLocaleString("en-CA", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: "America/Toronto",
+    });
+    const url = `${siteUrl}/events/${ev.slug}`;
+
+    for (const r of ((rsvps.results as any[]) || [])) {
+      // In-app notification for the member behind this RSVP email (best effort).
+      try {
+        const user = await DB.prepare(
+          "SELECT id FROM users WHERE email = ? AND status = 'active'"
+        )
+          .bind(String(r.email || "").toLowerCase())
+          .first<{ id: string }>()
+          .catch(() => null);
+        if (user) {
+          await emitNotification(DB, {
+            userId: user.id,
+            kind: "event_reminder",
+            targetType: "event",
+            targetId: ev.slug,
+            preview: `Reminder: ${ev.title} starts tomorrow — ${when}.`,
+          });
+        }
+      } catch {}
+      // Reminder email (best effort — the in-app row above stands alone).
+      if (resendKey) {
+        const html = shell(
+          "See you tomorrow",
+          `Reminder: ${ev.title}`,
+          `<p style="margin:0 0 16px;">Hello ${esc(r.name || "there")},</p>` +
+            `<p style="margin:0 0 16px;">A reminder that <strong>${esc(ev.title)}</strong> starts tomorrow — ` +
+            `${esc(when)}${ev.location ? ` at ${esc(ev.location)}` : ""}.</p>` +
+            `<p style="margin:0;font-size:13px;color:#5B6862;"><a href="${esc(url)}" style="color:#0C9463;">Event details</a></p>`
+        );
+        await sendEmail(resendKey, {
+          to: r.email,
+          subject: `Tomorrow: ${ev.title} — Brimwood Innovation`,
+          html,
+          text:
+            `Hello ${r.name || "there"},\n\nA reminder that ${ev.title} starts tomorrow — ${when}` +
+            `${ev.location ? ` at ${ev.location}` : ""}.\n\nEvent details: ${url}\n\n` +
+            `Build a business. Build yourself.\n— Brimwood Innovation`,
+        })
+          .then(() =>
+            DB.prepare(
+              "INSERT INTO email_log (id, kind, to_email, subject, status) VALUES (?, 'rsvp-reminder', ?, ?, 'sent')"
+            )
+              .bind(crypto.randomUUID(), r.email, `Tomorrow: ${ev.title}`)
+              .run()
+              .catch(() => {})
+          )
+          .catch(() => {});
+      }
+    }
+
+    await DB.prepare("UPDATE events SET reminder_sent_at = ? WHERE id = ?")
+      .bind(nowIso, ev.id)
+      .run();
+    reminded++;
+    console.log(`event reminder sent for: ${ev.slug}`);
+  }
+  return reminded;
+}
+
+/**
+ * Poll close notifications (social-UX reconciliation): for polls whose
+ * closes_at has passed and which have not been notified yet, drop a
+ * `poll_closed` in-app notification on every voter, then mark the poll.
+ * Idempotent via polls.notified_closed_at (0021): at-least-once cron
+ * retries cannot re-notify.
+ */
+export async function sendPollCloseNotifications(DB: D1Database): Promise<number> {
+  const nowIso = new Date().toISOString();
+  const polls = await DB.prepare(
+    `SELECT id, post_id, question FROM polls
+     WHERE closes_at <= ? AND notified_closed_at IS NULL`
+  )
+    .bind(nowIso)
+    .all();
+  let notified = 0;
+  for (const poll of (polls.results as any[])) {
+    const voters = await DB.prepare(
+      "SELECT DISTINCT voter_id FROM poll_votes WHERE poll_id = ?"
+    )
+      .bind(poll.id)
+      .all();
+    for (const v of (voters.results as any[])) {
+      await emitNotification(DB, {
+        userId: v.voter_id,
+        kind: "poll_closed",
+        actorId: null,
+        targetType: "poll",
+        targetId: poll.post_id,
+        preview: `Results are in: ${(poll.question || "").slice(0, 200)}`,
+      }).catch(() => {});
+    }
+    await DB.prepare("UPDATE polls SET notified_closed_at = ? WHERE id = ?")
+      .bind(nowIso, poll.id)
+      .run();
+    notified++;
+  }
+  return notified;
+}
+
+/** Digest body for one subscriber — unsubUrl is fully built by the caller. */
+export function digestBody(
+  postItems: string,
+  lessonItems: string,
+  unsubUrl: string,
+  items: { posts: { title: string; url: string }[]; lessons: { title: string; url: string }[] }
+): { html: string; text: string } {
+  const html = shell(
+    "This week at Brimwood",
+    "New posts and lessons.",
+    (postItems ? "<h2 style='font-size:18px;color:#121A16;'>New posts</h2>" + postItems : "") +
+      (lessonItems ? "<h2 style='font-size:18px;color:#121A16;margin-top:24px;'>New lessons</h2>" + lessonItems : "") +
+      '<p style="font-size:13px;color:#5B6862;margin-top:24px;"><a href="' + esc(unsubUrl) + '" style="color:#5B6862;">Unsubscribe</a></p>'
+  );
+  const lines: string[] = ["This week at Brimwood"];
+  if (items.posts.length) {
+    lines.push("", "New posts:");
+    for (const p of items.posts) lines.push(" - " + p.title + "\n   " + p.url);
+  }
+  if (items.lessons.length) {
+    lines.push("", "New lessons:");
+    for (const l of items.lessons) lines.push(" - " + l.title + "\n   " + l.url);
+  }
+  lines.push("", "Unsubscribe: " + unsubUrl);
+  return { html, text: lines.join("\n") };
+}
 
 export async function handleScheduled(event: ScheduledEvent, env: any) {
   const { DB, RESEND_API_KEY } = env;
@@ -17,6 +191,11 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
   // Job 3: health monitoring (runs every 5 min).
   if (cron === "*/5 * * * *") {
     await runHealthCheck(DB, RESEND_API_KEY, env);
+    // Hygiene: expired sessions and stale rate-limit rows would otherwise
+    // accumulate forever (rate-limit keys are attacker-controlled), so prune
+    // both on the same cadence.
+    await pruneSessions(env);
+    await pruneRateLimits(DB);
     return;
   }
 
@@ -32,15 +211,37 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
         .run();
       console.log(`published scheduled post: ${p.slug}`);
     }
+    // Event reminders ride the same 15-minute cadence (audit/social/wiring):
+    // RSVP → reminder, 24h before each published event. Idempotent.
+    await sendEventReminders(
+      DB,
+      RESEND_API_KEY,
+      env.SITE_URL || "https://brimwoodinnovation.com"
+    ).catch((e) => console.error("event reminders failed:", e));
+    // Poll close notifications (social-UX reconciliation): voters of newly
+    // closed polls get one `poll_closed` notification each. Idempotent.
+    await sendPollCloseNotifications(DB).catch((e) =>
+      console.error("poll close notifications failed:", e)
+    );
     return;
   }
 
   // Job 2: weekly digest (Monday 09:00 UTC).
+  // Idempotency: cron triggers are at-least-once. One row per subscriber per
+  // digest run is INSERT OR IGNOREd into digest_sends BEFORE sending; a retry
+  // after a partial send skips rows already recorded (see 0012_digest_sends.sql).
   if (cron === "0 9 * * 1") {
     if (!RESEND_API_KEY) {
       console.error("digest: RESEND_API_KEY not set");
       return;
     }
+    // Digest id = the Monday (UTC) of this week, e.g. 'digest-2026-10-05'.
+    const nowUtc = new Date();
+    const mondayOffset = (nowUtc.getUTCDay() + 6) % 7; // 0 = Monday
+    const monday = new Date(
+      Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth(), nowUtc.getUTCDate() - mondayOffset)
+    );
+    const digestId = "digest-" + monday.toISOString().slice(0, 10);
     // Posts published in the last 7 days.
     const posts = await DB.prepare(
       `SELECT slug, title, excerpt FROM posts
@@ -51,7 +252,7 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
 
     // Lessons published in the last 7 days.
     const lessons = await DB.prepare(
-      `SELECT l.slug, l.title, co.slug AS course_slug FROM lessons l
+      `SELECT l.id, l.slug, l.title, co.slug AS course_slug FROM lessons l
        JOIN modules m ON m.id = l.module_id
        JOIN courses co ON co.id = m.course_id
        WHERE l.status = 'published'
@@ -60,31 +261,30 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
     ).all();
 
     const site = env.SITE_URL || "https://brimwoodinnovation.com";
-    const postItems = (posts.results as any[])
+    const postRows = posts.results as any[];
+    const lessonRows = lessons.results as any[];
+    const postItems = postRows
       .map(
         (p) =>
           `<p style="margin:0 0 12px;"><a href="${site}/blog/${esc(p.slug)}" style="color:#0C9463;font-weight:600;">${esc(p.title)}</a><br><span style="color:#5B6862;font-size:14px;">${esc(p.excerpt)}</span></p>`
       )
       .join("");
-    const lessonItems = (lessons.results as any[])
+    const lessonItems = lessonRows
       .map(
         (l) =>
-          `<p style="margin:0 0 12px;"><a href="${site}/academy/${esc(l.course_slug)}" style="color:#0C9463;font-weight:600;">${esc(l.title)}</a></p>`
+          `<p style="margin:0 0 12px;"><a href="${site}/academy/${esc(l.course_slug)}/${esc(l.id)}" style="color:#0C9463;font-weight:600;">${esc(l.title)}</a></p>`
       )
       .join("");
+    const postList = postRows.map((p) => ({ title: p.title, url: `${site}/blog/${p.slug}` }));
+    const lessonList = lessonRows.map((l) => ({
+      title: l.title,
+      url: `${site}/academy/${l.course_slug}#${l.slug}`,
+    }));
 
     if (!postItems && !lessonItems) {
       console.log("digest: nothing new this week, skipping");
       return;
     }
-
-    const html = shell(
-      "This week at Brimwood",
-      "New posts and lessons.",
-      (postItems ? "<h2 style='font-size:18px;color:#121A16;'>New posts</h2>" + postItems : "") +
-        (lessonItems ? "<h2 style='font-size:18px;color:#121A16;margin-top:24px;'>New lessons</h2>" + lessonItems : "") +
-        `<p style="font-size:13px;color:#5B6862;margin-top:24px;"><a href="${site}/api/newsletter/unsubscribe?email={{email}}&token={{token}}" style="color:#5B6862;">Unsubscribe</a></p>`
-    );
 
     // Active subscribers only.
     const subs = await DB.prepare(
@@ -93,21 +293,30 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
 
     let sent = 0;
     for (const s of (subs.results as any[])) {
+      // Dedupe first: if this subscriber already got this digest run (a retry
+      // after a partial send), skip. INSERT OR IGNORE + changes is atomic.
+      const claimed = await DB.prepare(
+        "INSERT OR IGNORE INTO digest_sends (digest_id, email) VALUES (?, ?)"
+      )
+        .bind(digestId, s.email)
+        .run();
+      if (claimed.meta.changes === 0) continue;
+
       const unsubUrl =
         `${site}/api/newsletter/unsubscribe?email=${encodeURIComponent(s.email)}&token=${encodeURIComponent(s.unsub_token)}`;
-      const personalHtml = html
-        .replace("{{email}}", encodeURIComponent(s.email))
-        .replace("{{token}}", encodeURIComponent(s.unsub_token))
-        .replace(
-          `${site}/api/newsletter/unsubscribe?email={{email}}&token={{token}}`,
-          unsubUrl
-        );
+      const { html, text } = digestBody(postItems, lessonItems, unsubUrl, {
+        posts: postList,
+        lessons: lessonList,
+      });
       try {
         await sendEmail(RESEND_API_KEY, {
           to: s.email,
           subject: "This week at Brimwood",
-          html: personalHtml,
-          text: "This week at Brimwood — new posts and lessons. Unsubscribe: " + unsubUrl,
+          html,
+          text,
+          // Bulk mail header (RFC 2369). One-click POST (RFC 8058) needs a
+          // POST unsubscribe endpoint — flagged for the api-core agent.
+          headers: { "List-Unsubscribe": "<" + unsubUrl + ">" },
         });
         sent++;
       } catch (e) {
@@ -118,11 +327,11 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
     }
     console.log(`digest: sent to ${sent} subscribers`);
 
-    // Log to audit.
+    // Log to audit (tagged with the digest run id for traceability).
     await DB.prepare(
       "INSERT INTO email_log (id, kind, to_email, subject, status) VALUES (?, 'digest', ?, ?, 'sent')"
     )
-      .bind(crypto.randomUUID(), `${sent} subscribers`, "This week at Brimwood")
+      .bind(crypto.randomUUID(), `${sent} subscribers (${digestId})`, "This week at Brimwood")
       .run();
   }
 }
@@ -205,7 +414,7 @@ async function runHealthCheck(DB: D1Database, resendKey: string | undefined, env
   try {
     await sendEmail(resendKey, {
       to: INBOX,
-      subject: "⚠ Brimwood health alert — " + failures.length + " check(s) failing",
+      subject: "Brimwood health alert — " + failures.length + " check(s) failing",
       html,
       text: "Brimwood health alert\n\nFailures:\n" + failures.join("\n"),
     });

@@ -3,6 +3,7 @@
  * POST /api/enrol/:courseSlug          → enrol the signed-in user (idempotent)
  * POST /api/progress/:lessonId        → mark lesson complete
  * GET  /api/progress                  → my enrolments + progress summary
+ * GET  /api/progress/detail           → completed lesson IDs (drives checkmarks)
  */
 import { Hono } from "hono";
 import { readSession } from "../lib/auth";
@@ -10,23 +11,18 @@ import type { Bindings } from "../index";
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-async function sessionUser(c: any): Promise<{ id: string; role: string } | null> {
+type AuthedUser = { id: string; role: string };
+
+/** Single session lookup per request (was: two D1 reads via requireAuth + sessionUser). */
+async function authUser(c: any): Promise<AuthedUser | null> {
   const s = await readSession(c);
   return s && s.userId ? { id: s.userId, role: s.role } : null;
 }
 
-function requireAuth(c: any) {
-  return sessionUser(c).then((u) => {
-    if (!u) return c.json({ ok: false, error: "Sign in required" }, 401);
-    return null;
-  });
-}
-
-/** Enrol in a course. Idempotent. */
+/** Enrol in a course. Idempotent (INSERT OR IGNORE on UNIQUE(user_id, course_id)). */
 app.post("/enrol/:courseSlug", async (c) => {
-  const no = await requireAuth(c);
-  if (no) return no;
-  const user = (await sessionUser(c))!;
+  const user = await authUser(c);
+  if (!user) return c.json({ ok: false, error: "Sign in required" }, 401);
   const { DB } = c.env;
   const slug = c.req.param("courseSlug");
 
@@ -48,17 +44,19 @@ app.post("/enrol/:courseSlug", async (c) => {
 
 /** Mark a lesson complete. */
 app.post("/progress/:lessonId", async (c) => {
-  const no = await requireAuth(c);
-  if (no) return no;
-  const user = (await sessionUser(c))!;
+  const user = await authUser(c);
+  if (!user) return c.json({ ok: false, error: "Sign in required" }, 401);
   const { DB } = c.env;
   const lessonId = c.req.param("lessonId");
 
-  // Verify the lesson exists and the user can access it.
+  // Verify the lesson exists, is published, AND its course is published —
+  // matches the gating on GET /api/courses/lessons/:id (no completing
+  // lessons from draft courses).
   const lesson = await DB.prepare(
     `SELECT l.id, m.course_id FROM lessons l
      JOIN modules m ON m.id = l.module_id
-     WHERE l.id = ? AND l.status = 'published'`
+     JOIN courses co ON co.id = m.course_id
+     WHERE l.id = ? AND l.status = 'published' AND co.status = 'published'`
   )
     .bind(lessonId)
     .first<{ id: string; course_id: string }>();
@@ -84,9 +82,8 @@ app.post("/progress/:lessonId", async (c) => {
 
 /** Completed lesson IDs for the signed-in user (drives checkmarks). */
 app.get("/progress/detail", async (c) => {
-  const no = await requireAuth(c);
-  if (no) return no;
-  const user = (await sessionUser(c))!;
+  const user = await authUser(c);
+  if (!user) return c.json({ ok: false, error: "Sign in required" }, 401);
   const { DB } = c.env;
   const rows = await DB.prepare(
     "SELECT lesson_id FROM lesson_progress WHERE user_id = ? AND status = 'completed'"
@@ -96,11 +93,12 @@ app.get("/progress/detail", async (c) => {
   return c.json({ ok: true, done: (rows.results as any[]).map((r) => r.lesson_id) });
 });
 
-/** My enrolments + progress. */
+/** My enrolments + progress. done_lessons counts completed rows for lessons
+ *  that are still published; `completed` is derived (enrollments.completed_at
+ *  is never written, so the flag is computed, not read). */
 app.get("/progress", async (c) => {
-  const no = await requireAuth(c);
-  if (no) return no;
-  const user = (await sessionUser(c))!;
+  const user = await authUser(c);
+  if (!user) return c.json({ ok: false, error: "Sign in required" }, 401);
   const { DB } = c.env;
 
   const enrolments = await DB.prepare(
@@ -109,14 +107,19 @@ app.get("/progress", async (c) => {
              WHERE m.course_id = e.course_id AND l.status = 'published') AS total_lessons,
             (SELECT COUNT(*) FROM lesson_progress lp JOIN lessons l ON l.id = lp.lesson_id
              JOIN modules m ON m.id = l.module_id
-             WHERE lp.user_id = e.user_id AND m.course_id = e.course_id) AS done_lessons
+             WHERE lp.user_id = e.user_id AND m.course_id = e.course_id
+               AND lp.status = 'completed' AND l.status = 'published') AS done_lessons
      FROM enrollments e JOIN courses co ON co.id = e.course_id
-     WHERE e.user_id = ?`
+     WHERE e.user_id = ? AND co.status = 'published'`
   )
     .bind(user.id)
     .all();
 
-  return c.json({ ok: true, enrolments: enrolments.results });
+  const rows = (enrolments.results as any[]).map((e) => ({
+    ...e,
+    completed: e.total_lessons > 0 && e.done_lessons >= e.total_lessons,
+  }));
+  return c.json({ ok: true, enrolments: rows });
 });
 
 export default app;

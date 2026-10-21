@@ -9,6 +9,7 @@ import {
   mailStub,
   mailFailStub,
   postJSON,
+  postRaw,
 } from "../test/helpers";
 
 const EV = {
@@ -92,6 +93,20 @@ describe("RSVP validation", () => {
       r();
     }
   });
+
+  it("rejects malformed JSON with 400 and an error message", async () => {
+    const { env } = rsvpEnv();
+    const res = await postRaw(app, "/events/x/rsvp", "{{{", env);
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as any).error).toBeTruthy();
+  });
+
+  it("rejects valid-JSON non-object bodies with 400", async () => {
+    const { env } = rsvpEnv();
+    const res = await postRaw(app, "/events/x/rsvp", "null", env);
+    expect(res.status).toBe(400);
+    expect(env.DB.inserts.get("event_rsvps")).toBeUndefined();
+  });
 });
 
 describe("capacity logic", () => {
@@ -146,6 +161,51 @@ describe("capacity logic", () => {
     try {
       const res = await postJSON(app, "/events/x/rsvp", rsvpBody, env);
       expect(res.status).toBe(200);
+    } finally {
+      r();
+    }
+  });
+});
+
+describe("capacity race (check-then-insert)", () => {
+  // Simulates a concurrent RSVP landing between our pre-check and our write:
+  // the pre-check sum passes, but the post-write sum sees the oversell.
+  function raceEnv(withPrior: boolean) {
+    const env = mockEnv();
+    env.DB.handler = (sql) => {
+      if (/from\s+events\s+where\s+slug/i.test(sql)) return { row: { ...EV, capacity: 10 } };
+      if (/where\s+event_id\s*=\s*\?\s+and\s+email\s*=\s*\?/i.test(sql)) {
+        return { row: withPrior ? { id: "r1", name: "Ada", guests: 2, status: "confirmed" } : null };
+      }
+      if (/sum\(guests\)/i.test(sql)) {
+        if (/email\s*!=\s*\?/i.test(sql)) return { row: { n: 0 } }; // pre-check: empty
+        return { row: { n: 11 } }; // post-write: oversold
+      }
+    };
+    return env;
+  }
+
+  it("post-write oversell is deleted and rejected", async () => {
+    const env = raceEnv(false);
+    const r = await turnstileStub(true);
+    try {
+      const res = await postJSON(app, "/events/x/rsvp", rsvpBody, env);
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as any).error).toMatch(/capacity/i);
+      expect(env.DB.calls.some((c) => /delete\s+from\s+event_rsvps/i.test(c.sql))).toBe(true);
+    } finally {
+      r();
+    }
+  });
+
+  it("post-write oversell restores the prior RSVP instead of deleting", async () => {
+    const env = raceEnv(true);
+    const r = await turnstileStub(true);
+    try {
+      const res = await postJSON(app, "/events/x/rsvp", rsvpBody, env);
+      expect(res.status).toBe(400);
+      expect(env.DB.calls.some((c) => /update\s+event_rsvps\s+set/i.test(c.sql))).toBe(true);
+      expect(env.DB.calls.some((c) => /delete\s+from\s+event_rsvps/i.test(c.sql))).toBe(false);
     } finally {
       r();
     }
@@ -253,5 +313,45 @@ describe("admin gates", () => {
     );
     expect(res.status).toBe(400);
     expect(((await res.json()) as any).error).toMatch(/already exists/i);
+  });
+
+  it("POST /admin/events rejects valid-JSON non-object bodies with 400", async () => {
+    const env = mockEnv();
+    const h = adminSession(env);
+    const res = await postRaw(app, "/admin/events", "null", env, h);
+    expect(res.status).toBe(400);
+    expect(env.DB.inserts.get("events")).toBeUndefined();
+  });
+});
+
+describe("DELETE /admin/events/:id", () => {
+  it("rejects anonymous (403)", async () => {
+    expect((await app.request("/admin/events/e1", { method: "DELETE" }, mockEnv() as any)).status).toBe(403);
+  });
+
+  it("rejects members (403)", async () => {
+    const env = mockEnv();
+    const h = memberSession(env);
+    expect((await app.request("/admin/events/e1", { method: "DELETE", headers: h }, env as any)).status).toBe(403);
+  });
+
+  it("deletes as admin and writes an audit entry", async () => {
+    const env = mockEnv();
+    const h = adminSession(env);
+    const res = await app.request("/admin/events/e1", { method: "DELETE", headers: h }, env as any);
+    expect(res.status).toBe(200);
+    expect(env.DB.inserts.get("audit_log")!.some((l) => l.action === "event.delete")).toBe(true);
+  });
+
+  it("404s on unknown id", async () => {
+    const env = mockEnv();
+    const h = adminSession(env);
+    const prev = env.DB.handler;
+    env.DB.handler = (sql, params) => {
+      if (/delete\s+from\s+events/i.test(sql)) return { changes: 0 };
+      return prev?.(sql, params);
+    };
+    const res = await app.request("/admin/events/nope", { method: "DELETE", headers: h }, env as any);
+    expect(res.status).toBe(404);
   });
 });
