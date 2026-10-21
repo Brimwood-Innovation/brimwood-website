@@ -112,7 +112,66 @@ const siteTitle = siteSettings.site_title || "Brimwood Innovation";
       <script type="application/ld+json" set:html={JSON.stringify(jsonld)} />
     )}
     {turnstile && (
-      <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+      <script is:inline>
+        /* Lazy Turnstile: api.js (~40 KB plus its iframe) used to load in the
+           head of every page carrying a form, which alone pushed the home
+           page over its 200 KB Lighthouse budget. Load it only when a
+           cf-turnstile widget is near the viewport, when the user first
+           interacts with its form, or when a widget is added to the DOM
+           (dynamic forms). Implicit rendering is unchanged: api.js still
+           renders every .cf-turnstile element once it arrives, and the
+           cf-turnstile-response field is populated before any submit. */
+        (function () {
+          var loaded = false;
+          var io = null;
+          var mo = null;
+          function load() {
+            if (loaded) return;
+            loaded = true;
+            if (io) io.disconnect();
+            if (mo) mo.disconnect();
+            document.removeEventListener('focusin', onInteract, true);
+            document.removeEventListener('pointerdown', onInteract, true);
+            var s = document.createElement('script');
+            s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+            s.async = true;
+            s.defer = true;
+            document.head.appendChild(s);
+          }
+          function onInteract(e) {
+            var t = e.target;
+            var form = t && t.closest ? t.closest('form') : null;
+            if ((form && form.querySelector('.cf-turnstile')) || (t && t.closest && t.closest('.cf-turnstile'))) load();
+          }
+          function arm() {
+            var widgets = document.querySelectorAll('.cf-turnstile');
+            if (!widgets.length) return;
+            if (!('IntersectionObserver' in window)) { load(); return; }
+            io = new IntersectionObserver(function (entries) {
+              for (var i = 0; i < entries.length; i++) {
+                if (entries[i].isIntersecting) { load(); return; }
+              }
+            }, { rootMargin: '800px' });
+            widgets.forEach(function (w) { io.observe(w); });
+            document.addEventListener('focusin', onInteract, true);
+            document.addEventListener('pointerdown', onInteract, true);
+          }
+          function start() {
+            arm();
+            mo = new MutationObserver(function (mutations) {
+              for (var i = 0; i < mutations.length; i++) {
+                for (var j = 0; j < mutations[i].addedNodes.length; j++) {
+                  var n = mutations[i].addedNodes[j];
+                  if (n.nodeType === 1 && (n.classList.contains('cf-turnstile') || n.querySelector('.cf-turnstile'))) { load(); return; }
+                }
+              }
+            });
+            mo.observe(document.body, { childList: true, subtree: true });
+          }
+          if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+          else start();
+        })();
+      </script>
     )}
   </head>
   <body>
