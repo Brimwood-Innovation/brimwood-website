@@ -25,13 +25,19 @@
       });
       var d = await r.json();
       var comments = (d.ok && d.comments) || [];
+      // @mentions render as profile links (audit/social/wiring); each comment
+      // carries an anchor so notification deep links can target it.
+      var renderMentions =
+        (window.Brimwood && window.Brimwood.renderMentions) ||
+        function (t) { return esc(t); };
       listEl.innerHTML = comments.length === 0
         ? "<p class='sec-lede'>No comments yet — be the first.</p>"
         : comments.map(function (cm) {
-            return "\n            <div class=\"admin-card\" style=\"margin-bottom:12px;\">" +
+            var anchor = cm.id ? " id=\"comment-" + esc(cm.id) + "\"" : "";
+            return "\n            <div class=\"admin-card\"" + anchor + " style=\"margin-bottom:12px;\">" +
               "\n              <p style=\"margin:0 0 8px;\"><strong>" + esc(cm.name) + "</strong>" +
               "\n                <span class=\"admin-muted\"> · " + esc(fmtDate(cm.created_at)) + "</span></p>" +
-              "\n              <p style=\"margin:0;white-space:pre-wrap;\">" + esc(cm.body) + "</p>" +
+              "\n              <p style=\"margin:0;white-space:pre-wrap;\">" + renderMentions(cm.body) + "</p>" +
               "\n            </div>";
           }).join("");
     } catch (e) {

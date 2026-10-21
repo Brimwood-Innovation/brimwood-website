@@ -1,0 +1,38 @@
+---
+/* Notifications inbox (audit/social/wiring): the bell's "View all".
+ * Client-rendered — always fresh, no rebuild needed. Signed-in members only;
+ * anonymous visitors get the sign-in prompt. */
+import Base from "../layouts/Base.astro";
+---
+
+<Base
+  title="Notifications — Brimwood Innovation"
+  description="Your Brimwood activity: mentions, replies, follows, reminders."
+  path="/notifications"
+>
+  <section class="block" id="notif-loading">
+    <div class="kicker">Activity</div>
+    <p class="sec-lede">Loading…</p>
+  </section>
+
+  <section class="block" id="notif-login" style="display:none;text-align:center;padding:48px 0;">
+    <div class="kicker">Activity</div>
+    <h1 class="sec" style="font-size:clamp(28px,4vw,40px);margin-bottom:18px;">Sign in to see your notifications.</h1>
+    <p class="sec-lede" style="margin-inline:auto;"><a href="/members">Sign in</a> first.</p>
+  </section>
+
+  <section class="block" id="notif-home" style="display:none;max-width:720px;">
+    <div class="kicker">Activity</div>
+    <h1 class="sec" style="font-size:clamp(28px,4vw,40px);margin-bottom:8px;">Notifications</h1>
+    <p class="sec-lede" style="margin-bottom:24px;">
+      Mentions, replies, follows, and reminders.
+      <button id="pageMarkAll" class="btn btn-ghost small" style="margin-left:12px;display:none;">Mark all read</button>
+    </p>
+    <div id="notifPageList"></div>
+    <p style="margin-top:24px;text-align:center;">
+      <button id="notifMore" class="btn btn-ghost" style="display:none;">Load more</button>
+    </p>
+  </section>
+
+  <script is:inline src="/js/notifications-page.js"></script>
+</Base>

@@ -13,9 +13,13 @@ import sync from "./routes/sync";
 import media from "./routes/media";
 import search from "./routes/search";
 import comments from "./routes/comments";
+import stories from "./routes/stories";
 import events from "./routes/events";
 import forms from "./routes/forms";
+import notifications from "./routes/notifications";
 import profiles from "./routes/profiles";
+import chat from "./routes/chat";
+import feed from "./routes/feed";
 import studio from "./routes/studio";
 import { handleScheduled } from "./cron";
 import { csrfGuard } from "./lib/csrf";
@@ -104,10 +108,14 @@ app.route("/api/oauth", oauth);
 app.route("/api", media);
 app.route("/api/search", search);
 app.route("/api", comments);
+app.route("/api/stories", stories);
 app.route("/api", events);
 app.route("/api/forms", forms);
+app.route("/api", notifications);
 app.route("/api/studio", studio);
 app.route("/api", profiles);
+app.route("/api/chat", chat);
+app.route("/api", feed);
 
 app.notFound((c) => c.json({ ok: false, error: "Not found" }, 404));
 app.onError((err, c) => {
