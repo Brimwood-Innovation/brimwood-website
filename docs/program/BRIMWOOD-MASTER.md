@@ -208,8 +208,8 @@ from the self-chaining loop's first run on 2026-10-21.
   594 API tests pass (42 feed tests, 6 new covering the like-to-thanks
   mapping, both proactive 403s, both trigger-fallback 403s, and
   take-back-while-blocked), tsc clean, site build clean (24 pages).
-  Shipped in PR #26 (into develop; merges when build, secrets, audit,
-  analyze, CodeQL are all green). Grade (dimensions this cycle touched, scored from
+  Shipped in PR #26 (merged to develop; build, secrets, audit, analyze,
+  lighthouse, CodeQL all green). Grade (dimensions this cycle touched, scored from
   evidence): functional 2,500/2,500; schema and API 2,000/2,000; security
   1,250/1,250; code quality 1,000/1,000; brand and copy 750/750.
   Accessibility and performance untouched (API + label cycle). Pro-rated
