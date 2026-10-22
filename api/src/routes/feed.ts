@@ -6,7 +6,7 @@
  *                                 → { key, url, kind: photo|video|reel, duration_s }
  *   POST /api/posts               member post: text + media refs + optional poll
  *   GET  /api/feed?limit=&cursor= chronological feed, embeds media + poll state
- *   POST /api/polls/:id/vote      { option_id } — one vote per member, changeable
+ *   POST /api/polls/:id/vote      { option_id } - one vote per member, changeable
  *                                 until the poll closes
  *   GET  /api/polls/:id/results   counts always; voter list only when the poll's
  *                                 show_voters flag is on
@@ -81,6 +81,24 @@ function publicAuthor(row: any, c: any) {
 function closedOf(closesAt: string): boolean {
   return closesAt <= nowIso();
 }
+
+/* Phase 1 item 1: feed reads run against feed_posts (0022) with the v5
+ * visibility rule. Published and not deleted; the viewer may see the
+ * audience (members, their own only_me posts, or groups they actively
+ * belong to); and neither side has blocked the other (block_pairs is the
+ * both-ways view from 0025). Binds the viewer id three times. */
+const FEED_VISIBILITY = `
+  AND p.status = 'published'
+  AND p.deleted_at IS NULL
+  AND (
+    p.audience = 'members'
+    OR (p.audience = 'only_me' AND p.author_id = ?)
+    OR (p.audience = 'group' AND EXISTS (
+      SELECT 1 FROM group_members gm
+      WHERE gm.group_id = p.group_id AND gm.user_id = ? AND gm.state = 'active'))
+  )
+  AND NOT EXISTS (SELECT 1 FROM block_pairs WHERE a = ? AND b = p.author_id)
+`;
 
 /* --- Member: upload a photo or video for a post --- */
 
@@ -180,7 +198,7 @@ app.post("/posts", async (c) => {
     return c.json({ ok: false, error: `Posts can carry at most ${MAX_MEDIA_PER_POST} photos or videos.` }, 400);
   }
 
-  // A post is text, media, or a poll — never empty.
+  // A post is text, media, or a poll - never empty.
   if (!body && mediaIn.length === 0 && !pollIn) {
     return c.json({ ok: false, error: "Write something, add media, or add a poll." }, 400);
   }
@@ -251,7 +269,9 @@ app.post("/posts", async (c) => {
   const createdAt = nowIso();
 
   const stmts: any[] = [
-    DB.prepare("INSERT INTO posts (id, author_id, body, created_at) VALUES (?, ?, ?, ?)").bind(
+    // Phase 1 item 1: the feed table is feed_posts (0022 fixed the P0
+    // collision with the blog "posts" table from 0002).
+    DB.prepare("INSERT INTO feed_posts (id, author_id, body, created_at) VALUES (?, ?, ?, ?)").bind(
       postId,
       userId,
       body,
@@ -449,10 +469,10 @@ app.get("/posts/:id", async (c) => {
     `SELECT p.id, p.body, p.created_at,
             u.id AS author_id, u.name AS author_name, u.display_name, u.username AS author_username,
             u.avatar_key, u.avatar_r2_key
-     FROM posts p JOIN users u ON u.id = p.author_id
-     WHERE p.id = ?`
+     FROM feed_posts p JOIN users u ON u.id = p.author_id
+     WHERE p.id = ?${FEED_VISIBILITY}`
   )
-    .bind(id)
+    .bind(id, userId, userId, userId)
     .first();
   if (!row) return c.json({ ok: false, error: "Not found." }, 404);
   const posts = await enrichPosts(c, userId, [row]);
@@ -473,12 +493,12 @@ app.get("/feed", async (c) => {
     `SELECT p.id, p.body, p.created_at,
             u.id AS author_id, u.name AS author_name, u.display_name, u.username AS author_username,
             u.avatar_key, u.avatar_r2_key
-     FROM posts p
+     FROM feed_posts p
      JOIN users u ON u.id = p.author_id
-     WHERE (? = '' OR p.created_at < ?)
+     WHERE (? = '' OR p.created_at < ?)${FEED_VISIBILITY}
      ORDER BY p.created_at DESC LIMIT ?`
   )
-    .bind(cursor, cursor, limit + 1)
+    .bind(cursor, cursor, userId, userId, userId, limit + 1)
     .all();
 
   const page = rows.results.slice(0, limit);
@@ -562,7 +582,7 @@ app.post("/posts/:id/react", async (c) => {
     return c.json({ ok: false, error: "Pick one of the four reactions." }, 400);
   }
 
-  const post: any = await DB.prepare("SELECT id FROM posts WHERE id = ?").bind(postId).first();
+  const post: any = await DB.prepare("SELECT id FROM feed_posts WHERE id = ?").bind(postId).first();
   if (!post) return c.json({ ok: false, error: "Post not found." }, 404);
 
   const existing: any = await DB.prepare(
@@ -572,7 +592,7 @@ app.post("/posts/:id/react", async (c) => {
     .first();
 
   if (existing && existing.kind === kind) {
-    // Same reaction again removes it — the calm way to take it back.
+    // Same reaction again removes it - the calm way to take it back.
     await DB.prepare("DELETE FROM post_reactions WHERE post_id = ? AND member_id = ?")
       .bind(postId, userId)
       .run();
