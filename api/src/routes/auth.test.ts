@@ -1,9 +1,11 @@
-/* Magic-code auth tests (audit/auth): strict expiresAt enforcement, single-use,
- * per-email throttling, hardened session cookie on verify.
- * Mocks D1/KV/fetch — no network. */
+/* Magic-code auth tests (Phase 1 item 6): email codes in D1 auth_email_codes
+ * with HMAC storage, atomic guarded attempts, browser binding, supersede,
+ * and strict expiry; sessions carry the S6 sign-in context.
+ * Mocks D1/KV/fetch, no network. */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import app from "./auth";
 import { sha256Hex } from "../lib/validate";
+import { codeHmac } from "../lib/hmac";
 import {
   mockEnv,
   mailStub,
@@ -31,10 +33,6 @@ afterEach(() => {
 
 const EMAIL = "user@example.com";
 
-async function kvKey(email: string): Promise<string> {
-  return "authcode:" + (await sha256Hex("authcode:" + email.toLowerCase()));
-}
-
 /** Seed an active user for the request-code / verify-code lookups. */
 function seedActiveUser() {
   const prev = env.DB.handler;
@@ -46,68 +44,164 @@ function seedActiveUser() {
   };
 }
 
+/** Seed a live code row in D1 auth_email_codes, mirroring what the
+ * request-code route stores (HMAC code, binding hash, 10-minute expiry).
+ * Returns the row id and the browser-binding secret (presented in the
+ * __Host-brimwood-cbind cookie at verify time). */
 async function putCode(
   email: string,
   code: string,
   overrides: { attempts?: number; expiresAt?: number } = {}
 ) {
-  const key = await kvKey(email);
-  const rec = {
-    email,
-    codeHash: await sha256Hex("code:" + code),
-    attempts: overrides.attempts ?? 0,
-    expiresAt: overrides.expiresAt ?? Date.now() + 600_000,
-  };
-  await env.SESSIONS_KV.put(key, JSON.stringify(rec));
-  return key;
+  const id = crypto.randomUUID();
+  const binding = "bind-" + id;
+  const expiresAt = new Date(overrides.expiresAt ?? Date.now() + 600_000).toISOString();
+  await env.DB.prepare(
+    `INSERT INTO auth_email_codes
+       (id, email, user_id, purpose, code_hmac, browser_binding_hash, expires_at, ip_hmac)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  )
+    .bind(
+      id,
+      email,
+      "user-1",
+      "sign_in",
+      await codeHmac(env as any, "email-code", code),
+      await sha256Hex(binding),
+      expiresAt,
+      null
+    )
+    .run();
+  if (overrides.attempts !== undefined) env.DB.codeStore.get(id)!.attempts = overrides.attempts;
+  return { id, binding };
+}
+
+const CBIND = "__Host-brimwood-cbind";
+
+function withBinding(binding: string): Record<string, string> {
+  return { cookie: `${CBIND}=${binding}` };
 }
 
 describe("POST /verify-code", () => {
-  it("rejects an expired code even when the KV record still exists", async () => {
+  it("rejects an expired code and consumes the row", async () => {
     seedActiveUser();
-    const key = await putCode(EMAIL, "123456", { expiresAt: Date.now() - 1000 });
-    const res = await postJSON(app, "/verify-code", { email: EMAIL, code: "123456" }, env);
+    const { id, binding } = await putCode(EMAIL, "123456", { expiresAt: Date.now() - 1000 });
+    const res = await postJSON(
+      app,
+      "/verify-code",
+      { email: EMAIL, code: "123456" },
+      env,
+      withBinding(binding)
+    );
     expect(res.status).toBe(401);
     expect((await res.json()).error).toMatch(/expired/i);
-    // Expired records are cleaned up.
-    expect(await env.SESSIONS_KV.get(key)).toBeNull();
+    // Expired rows are consumed (retention keeps the row; the live slot is freed).
+    expect(env.DB.codeStore.get(id)!.consumed_at).not.toBeNull();
   });
 
   it("does not extend the code's life on a failed attempt", async () => {
     seedActiveUser();
     const expiresAt = Date.now() + 600_000;
-    const key = await putCode(EMAIL, "123456", { expiresAt });
-    const res = await postJSON(app, "/verify-code", { email: EMAIL, code: "000000" }, env);
+    const { id, binding } = await putCode(EMAIL, "123456", { expiresAt });
+    const res = await postJSON(
+      app,
+      "/verify-code",
+      { email: EMAIL, code: "000000" },
+      env,
+      withBinding(binding)
+    );
     expect(res.status).toBe(401);
-    const rec = JSON.parse((await env.SESSIONS_KV.get(key))!);
-    expect(rec.attempts).toBe(1);
-    expect(rec.expiresAt).toBe(expiresAt);
+    const row = env.DB.codeStore.get(id)!;
+    expect(row.attempts).toBe(1);
+    expect(row.expires_at).toBe(new Date(expiresAt).toISOString());
   });
 
-  it("is single-use: success deletes the code and sets the hardened cookie", async () => {
+  it("is single-use: success consumes the code, sets the hardened cookie, and writes the S6 session context", async () => {
     seedActiveUser();
-    const key = await putCode(EMAIL, "123456");
-    const res = await postJSON(app, "/verify-code", { email: EMAIL, code: "123456" }, env);
+    const { id, binding } = await putCode(EMAIL, "123456");
+    const ua =
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+    const res = await postJSON(app, "/verify-code", { email: EMAIL, code: "123456" }, env, {
+      ...withBinding(binding),
+      "user-agent": ua,
+    });
     expect(res.status).toBe(200);
     expect((await res.json()).ok).toBe(true);
-    expect(await env.SESSIONS_KV.get(key)).toBeNull();
+    // Single-use: the code row is consumed, so a replay fails.
+    expect(env.DB.codeStore.get(id)!.consumed_at).not.toBeNull();
+    const replay = await postJSON(
+      app,
+      "/verify-code",
+      { email: EMAIL, code: "123456" },
+      env,
+      withBinding(binding)
+    );
+    expect(replay.status).toBe(401);
     const setCookie = res.headers.get("set-cookie") || "";
     expect(setCookie).toMatch(/^__Host-brimwood-sess=[^;]+; Path=\/; HttpOnly; Secure; SameSite=Lax$/);
-    // Session landed in D1.
+    // Session landed in D1 with the S6 sign-in context (amr, auth_time,
+    // is_staff, ua_summary, city, device_id).
     expect(env.DB.sessionStore.size).toBe(1);
+    const sess = [...env.DB.sessionStore.values()][0];
+    expect(sess.amr).toBe(JSON.stringify(["email_code"]));
+    expect(sess.auth_time).toBe(sess.created_at);
+    expect(sess.is_staff).toBe(0);
+    expect(sess.ua_summary).toBe("iPhone, Safari");
+    expect(sess.city).toBeNull();
+    expect(sess.device_id).toBeNull();
+    expect(sess.expires_at - sess.created_at).toBe(30 * 24 * 3600 * 1000);
   });
 
-  it("locks out after 5 attempts and deletes the code", async () => {
+  it("rejects a correct code presented without its browser binding", async () => {
     seedActiveUser();
-    const key = await putCode(EMAIL, "123456");
-    for (let i = 0; i < 5; i++) {
-      const r = await postJSON(app, "/verify-code", { email: EMAIL, code: "000000" }, env);
-      expect(r.status).toBe(401);
-    }
+    const { id } = await putCode(EMAIL, "123456");
+    // No binding cookie: a code phished from the inbox is useless.
     const res = await postJSON(app, "/verify-code", { email: EMAIL, code: "123456" }, env);
     expect(res.status).toBe(401);
+    expect((await res.json()).error).toBe("Invalid code.");
+    // The failure is indistinguishable from a wrong code: attempts tick up.
+    expect(env.DB.codeStore.get(id)!.attempts).toBe(1);
+  });
+
+  it("locks out after 5 attempts and consumes the code", async () => {
+    seedActiveUser();
+    const { id, binding } = await putCode(EMAIL, "123456");
+    for (let i = 0; i < 5; i++) {
+      const r = await postJSON(
+        app,
+        "/verify-code",
+        { email: EMAIL, code: "000000" },
+        env,
+        withBinding(binding)
+      );
+      expect(r.status).toBe(401);
+    }
+    expect(env.DB.codeStore.get(id)!.attempts).toBe(5);
+    // The 6th guess, even correct, hits the lockout and consumes the code.
+    const res = await postJSON(
+      app,
+      "/verify-code",
+      { email: EMAIL, code: "123456" },
+      env,
+      withBinding(binding)
+    );
+    expect(res.status).toBe(401);
     expect((await res.json()).error).toMatch(/too many attempts/i);
-    expect(await env.SESSIONS_KV.get(key)).toBeNull();
+    expect(env.DB.codeStore.get(id)!.consumed_at).not.toBeNull();
+  });
+
+  it("the attempts increment is atomic: the guard blocks a racer past the cap", async () => {
+    seedActiveUser();
+    const { id } = await putCode(EMAIL, "123456", { attempts: 5 });
+    // A concurrent wrong guess runs the guarded UPDATE directly: the
+    // attempts < ? clause matches nothing, so attempts cannot reach 6.
+    const r = await env.DB.prepare(
+      "UPDATE auth_email_codes SET attempts = attempts + 1 WHERE id = ? AND attempts < ?"
+    )
+      .bind(id, 5)
+      .run();
+    expect(r.meta.changes).toBe(0);
+    expect(env.DB.codeStore.get(id)!.attempts).toBe(5);
   });
 });
 
@@ -125,18 +219,37 @@ describe("POST /request-code", () => {
     expect(sent).toHaveLength(5);
   });
 
-  it("stores a strict expiry with the code record", async () => {
+  it("stores a strict expiry with the code record in D1 and binds it to the browser", async () => {
     seedActiveUser();
     const sent: { to: string; subject: string }[] = [];
     restoreFetch = mailStub(sent);
     const res = await postJSON(app, "/request-code", { email: EMAIL }, env);
     expect(res.status).toBe(200);
-    const raw = await env.SESSIONS_KV.get(await kvKey(EMAIL));
-    expect(raw).not.toBeNull();
-    const rec = JSON.parse(raw!);
-    expect(rec.expiresAt).toBe(Date.now() + 600_000);
-    expect(rec.attempts).toBe(0);
-    expect(rec.codeHash).toMatch(/^[0-9a-f]{64}$/);
+    const rows = env.DB.inserts.get("auth_email_codes")!;
+    expect(rows).toHaveLength(1);
+    const row = rows[0];
+    expect(row.expires_at).toBe(new Date(Date.now() + 600_000).toISOString());
+    expect(row.purpose).toBe("sign_in");
+    expect(String(row.code_hmac)).toMatch(/^[0-9a-f]{64}$/);
+    // No attempts column on insert: the table default (0) applies.
+    expect(row).not.toHaveProperty("attempts");
+    // The browser-binding secret travels only in this cookie.
+    const setCookie = res.headers.get("set-cookie") || "";
+    expect(setCookie).toMatch(/__Host-brimwood-cbind=[^;]+; Path=\/; HttpOnly; Secure; SameSite=Lax/);
+  });
+
+  it("supersedes the older live code when a fresh code is requested", async () => {
+    seedActiveUser();
+    const sent: { to: string; subject: string }[] = [];
+    restoreFetch = mailStub(sent);
+    await postJSON(app, "/request-code", { email: EMAIL }, env);
+    await postJSON(app, "/request-code", { email: EMAIL }, env);
+    const rows = [...env.DB.codeStore.values()];
+    expect(rows).toHaveLength(2);
+    // Exactly one live code survives: the first was superseded.
+    expect(rows[0].superseded_at).not.toBeNull();
+    expect(rows[1].superseded_at).toBeNull();
+    expect(rows[1].consumed_at).toBeNull();
   });
 
   it("never reveals whether an email is registered", async () => {
@@ -153,8 +266,12 @@ describe("POST /request-code", () => {
 describe("POST /logout", () => {
   it("invalidates the session server-side", async () => {
     seedActiveUser();
-    const key = await putCode(EMAIL, "123456");
-    const verify = await postJSON(app, "/verify-code", { email: EMAIL, code: "123456" }, env);
+    const { binding } = await putCode(EMAIL, "123456");
+    const verify = await postJSON(app, "/verify-code", { email: EMAIL, code: "123456" }, env, {
+      ...withBinding(binding),
+      "user-agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    });
     expect(verify.status).toBe(200);
     expect(env.DB.sessionStore.size).toBe(1);
     const setCookie = verify.headers.get("set-cookie") || "";
@@ -170,7 +287,6 @@ describe("POST /logout", () => {
     );
     expect(res.status).toBe(200);
     expect(env.DB.sessionStore.size).toBe(0);
-    expect(key).toBeTruthy();
   });
 });
 

@@ -125,3 +125,40 @@ Accept rule: 9,500 or higher, no dimension at zero, no open P0. Below that, the 
 ## 10. Standing constraints
 
 C$0 (domain and hosting already owned; no paid tiers without founder approval). Fully open source. Lightweight and fast. Responsive. SEO, AEO, and GEO friendly. Brand Kit v1.0 exact (never redraw, recolour, stretch, or add effects). Canadian spelling. No em dash in any deliverable. Short sentences. No income promises, no hype, no competitor criticism. Members anonymous by default: share the what, never the how; written permission plus draft review before naming anyone.
+
+## 11. Continuous loop state
+
+The 24/7 improvement loop: each cycle ships one work-order item (or the
+named next improvement), self-grades the merged output against the
+10,000-point rubric, records grade, verdict, and the next improvement here,
+and chains the next cycle immediately. The 6-hour safety schedule only
+retries when the chain pauses on a repeated blocker. Cycles are numbered
+from the self-chaining loop's first run on 2026-10-21.
+
+- Cycle 1, 2026-10-21 21:42 EDT: first self-chaining cycle. Synced origin,
+  confirmed no open loop PR, and started Phase 1 item 6 (email codes into
+  D1 with atomic attempts, sessions S6 fields) in a dedicated worktree.
+  Hit the 2-hour execution cap with nothing shipped. Blocker: the cycle
+  budget was too small for the item's scope. Fix applied the same night:
+  6-hour interval and per-cycle budget, plus a guard that each cycle
+  commits and pushes its branch before its budget runs out.
+- Cycle 2, 2026-10-21 22:34 EDT (safety run, still on the old 2-hour
+  budget): continued item 6 in the worktree, timed out on it again with no
+  PR. The WIP was committed and pushed to origin/phase1/item6-emailcodes
+  at 01:45 EDT. The blocker repeated across cycles 1 and 2, so the chain
+  paused per the two-cycle rule and resumed 2026-10-22 06:00 EDT with the
+  full 6-hour budget.
+- Cycle 3, 2026-10-22: continued in ~/workspace/company/wt-item6-emailcodes
+  on branch phase1/item6-emailcodes (already current with develop). Item 6
+  is complete: email codes live in D1 auth_email_codes (HMAC storage,
+  atomic guarded attempts increment, browser binding, one live code per
+  (email, purpose) via supersede, single-use consume), sessions carry the
+  S6 context (amr, auth_time, is_staff, ua_summary, city, device_id),
+  staff sessions are capped at 12 hours (app logic plus the
+  trg_sessions_staff_ttl trigger), and readSession rejects revoked
+  sessions. Also scrubbed em dashes from every touched file (hard
+  constraint). Verification before the PR: 584 API tests pass (the 6
+  stale KV-era tests were rewritten for D1, 12 new item 6 tests added),
+  tsc clean, site build clean. Shipped in PR #N. Grade: finalized in the
+  docs follow-up after the merge. Next improvement: Phase 1 work order
+  item 1 (feed foundation).

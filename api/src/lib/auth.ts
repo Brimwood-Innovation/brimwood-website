@@ -2,9 +2,16 @@
  * Sessions are keyed by SHA-256 of the token, never the raw token.
  * Since F9, sessions live in D1 (not KV): atomic, indexed per user,
  * zero KV writes per login.
+ * Since Phase 1 item 6, sessions also carry the sign-in context (S6):
+ * amr (factors used), auth_time (epoch ms of the real sign-in), is_staff,
+ * ua_summary ("iPhone, Safari", never the full UA string), city (from
+ * request.cf.city, no raw IP), device_id, and revoked_at/revoked_reason.
+ * Staff sessions expire within 12 hours (P1-7, enforced by the
+ * trg_sessions_staff_ttl trigger); everyone else keeps the 30-day TTL.
  * readSession JOINs users on every read: suspended/deleted users are locked
  * out immediately and the role is always live (never the login-time cache),
  * so demotion takes effect on the very next request everywhere.
+ * Revoked sessions (revoked_at set) are rejected by readSession.
  */
 import { getCookie, deleteCookie } from "hono/cookie";
 import type { Bindings } from "../index";
@@ -34,6 +41,48 @@ export interface Session {
   createdAt: number;
 }
 
+/** Optional sign-in context written by createSession (SCHEMA S6).
+ * amr lists the factors used, for example ["email_code"] or ["passkey"].
+ * deviceId is a devices.id row; null until the trusted-device flow lands. */
+export interface SessionOptions {
+  amr?: string[];
+  uaSummary?: string | null;
+  city?: string | null;
+  deviceId?: string | null;
+}
+
+/** Twelve hours in milliseconds: the staff session cap (P1-7). The
+ * trg_sessions_staff_ttl trigger aborts any staff insert past this. */
+export const STAFF_SESS_TTL_MS = 12 * 3600 * 1000;
+
+/** Summarize a User-Agent as "OS, Browser" (S6). The full UA string is
+ * never stored: it is a fingerprinting-grade identifier. Unknown parts
+ * fall back to "Unknown OS" / "Unknown browser"; a missing UA is null. */
+export function summarizeUa(ua: string | null | undefined): string | null {
+  if (!ua || !ua.trim()) return null;
+  const s = ua;
+  let os = "Unknown OS";
+  if (/iPhone|iPad|iPod/i.test(s)) os = /iPad/i.test(s) ? "iPad" : "iPhone";
+  else if (/Android/i.test(s)) os = "Android";
+  else if (/Windows/i.test(s)) os = "Windows";
+  else if (/Macintosh|Mac OS X/i.test(s)) os = "Mac";
+  else if (/Linux/i.test(s)) os = "Linux";
+  let browser = "Unknown browser";
+  if (/EdgA?\/|EdgiOS/i.test(s)) browser = "Edge";
+  else if (/OPR\/|Opera/i.test(s)) browser = "Opera";
+  else if (/FxiOS|Firefox/i.test(s)) browser = "Firefox";
+  else if (/CriOS|CrOS|Chrome/i.test(s)) browser = "Chrome";
+  else if (/Version\/.*Safari/i.test(s)) browser = "Safari";
+  return `${os}, ${browser}`;
+}
+
+/** City from the Cloudflare request properties (S6). No raw IP is stored. */
+export function cfCity(c: any): string | null {
+  const city = c?.req?.raw?.cf?.city;
+  if (typeof city !== "string" || !city.trim()) return null;
+  return city.trim().slice(0, 120);
+}
+
 /** Context variables set by requireUser / requireAdmin. */
 export type AuthVariables = {
   user: Session;
@@ -51,19 +100,42 @@ export async function hashToken(token: string): Promise<string> {
     .join("");
 }
 
-/** Create a session, return the raw token (set as cookie by the caller). */
+/** Create a session, return the raw token (set as cookie by the caller).
+ *
+ * Writes the S6 sign-in context: amr (factors used), auth_time (epoch ms of
+ * this real sign-in), is_staff (1 for admin role), ua_summary, city,
+ * device_id. Staff sessions expire within 12 hours (P1-7); the
+ * trg_sessions_staff_ttl trigger aborts anything longer, so the cap is
+ * enforced in the database as well as here. */
 export async function createSession(
   env: Bindings,
   userId: string,
-  role: string
+  role: string,
+  opts: SessionOptions = {}
 ): Promise<string> {
   const token = crypto.randomUUID();
   const key = PREFIX + (await hashToken(token));
   const now = Date.now();
+  const isStaff = role === "admin" ? 1 : 0;
+  const ttlMs = isStaff === 1 ? STAFF_SESS_TTL_MS : SESS_TTL * 1000;
   await env.DB.prepare(
-    "INSERT INTO sessions (key, user_id, role, created_at, expires_at) VALUES (?, ?, ?, ?, ?)"
+    `INSERT INTO sessions (key, user_id, role, created_at, expires_at,
+      amr, auth_time, is_staff, ua_summary, city, device_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
-    .bind(key, userId, role, now, now + SESS_TTL * 1000)
+    .bind(
+      key,
+      userId,
+      role,
+      now,
+      now + ttlMs,
+      JSON.stringify(opts.amr ?? []),
+      now,
+      isStaff,
+      opts.uaSummary ?? null,
+      opts.city ?? null,
+      opts.deviceId ?? null
+    )
     .run();
   return token;
 }
@@ -72,9 +144,11 @@ export async function createSession(
  *
  * Joins users in the same query so that:
  * - suspended or deleted users lose access immediately (no waiting for the
- *   30-day session TTL), and
- * - the returned role is always live — never the value cached in the
+ *   session TTL), and
+ * - the returned role is always live, never the value cached in the
  *   session row at login.
+ * Revoked sessions (s.revoked_at set, S6) are rejected here: sign-out-all,
+ * lockdown, suspension and friends take effect on the very next request.
  * One indexed query; no extra round trip. */
 export async function readSession(c: any): Promise<Session | null> {
   const token = getCookie(c, COOKIE);
@@ -82,7 +156,8 @@ export async function readSession(c: any): Promise<Session | null> {
   const row = (await c.env.DB.prepare(
     `SELECT s.user_id, u.role, s.created_at FROM sessions s
      JOIN users u ON u.id = s.user_id
-     WHERE s.key = ? AND s.expires_at > ? AND u.status = 'active'`
+     WHERE s.key = ? AND s.expires_at > ? AND s.revoked_at IS NULL
+       AND u.status = 'active'`
   )
     .bind(PREFIX + (await hashToken(token)), Date.now())
     .first()) as { user_id: string; role: string; created_at: number } | null;
@@ -126,7 +201,7 @@ export async function destroyOtherUserSessions(
 }
 
 /** Re-read the user's role from D1 and return true iff they are an active
- * admin. Authorization decisions MUST use this — never the role cached in
+ * admin. Authorization decisions MUST use this, never the role cached in
  * the session row, which can be stale for up to SESS_TTL after a demotion. */
 export async function isAdminUser(c: any, userId: string): Promise<boolean> {
   const u: any = await c.env.DB.prepare(

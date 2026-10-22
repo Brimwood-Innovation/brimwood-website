@@ -156,9 +156,9 @@ describe("email templates render with all variables supplied", () => {
       const html = shell(
         "Your Brimwood sign-in code",
         "Welcome to Brimwood.",
-        "<p style=\"margin:0 0 8px;\">Welcome" + (name ? ", " + esc(name) : "") + ". Your invite code worked — here is your sign-in code:</p>"
+        "<p style=\"margin:0 0 8px;\">Welcome" + (name ? ", " + esc(name) : "") + ". Your invite code worked, and here is your sign-in code:</p>"
       );
-      checkRendered("Welcome to Brimwood — your sign-in code", html, greeting);
+      checkRendered("Welcome to Brimwood: your sign-in code", html, greeting);
     }
   });
 
