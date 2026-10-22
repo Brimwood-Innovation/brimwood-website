@@ -190,3 +190,28 @@ from the self-chaining loop's first run on 2026-10-21.
   no open P0. Verdict: ACCEPT. Next improvement: Phase 1 work order
   item 2 (feed reactions: write thanks for the first calm reaction,
   map blocked and posting-paused to 403).
+- Cycle 5, 2026-10-22: Phase 1 work order item 2 (feed reactions), in
+  ~/workspace/company/wt-item2-reactions on branch phase1/item2-reactions
+  (no open loop PR; develop CI green; #22 is the founder-tapped README PR,
+  not loop work). Thanks mapping: REACTIONS is now the program-canon four
+  (thanks, celebrate, insightful, support; R4). The legacy "like" is kept
+  as a client alias and normalized to "thanks" everywhere: on write, on
+  the toggle-off comparison, on my_reaction, and in the counts query (a
+  CASE maps old rows, so no migration is needed). The site reaction buttons
+  now read Thanks. 403s: reacting adds a proactive block_pairs check
+  (mirrors trg_post_reactions_block; the view is bidirectional) and an
+  active_write_bans check (mirrors trg_gate_post_reactions) before the
+  upsert; the trigger RAISE messages are also caught as a race fallback and
+  mapped to 403 instead of 500. A blocked reactor can still take back
+  their own reaction (the delete path is untouched, matching the triggers).
+  Em dashes scrubbed from the touched files. Verification before the PR:
+  594 API tests pass (42 feed tests, 6 new covering the like-to-thanks
+  mapping, both proactive 403s, both trigger-fallback 403s, and
+  take-back-while-blocked), tsc clean, site build clean (24 pages).
+  Shipped in PR #26 (into develop; merges when build, secrets, audit,
+  analyze, CodeQL are all green). Grade (dimensions this cycle touched, scored from
+  evidence): functional 2,500/2,500; schema and API 2,000/2,000; security
+  1,250/1,250; code quality 1,000/1,000; brand and copy 750/750.
+  Accessibility and performance untouched (API + label cycle). Pro-rated
+  total 10,000/10,000, no zero dimension, no open P0. Verdict: ACCEPT.
+  Next improvement: academy items 10 and 19 together.

@@ -398,8 +398,10 @@ async function enrichPosts(c: any, userId: string, page: any[]): Promise<any[]> 
     if (postIds.length > 0) {
       const inList = postIds.map(() => "?").join(",");
       const rc = await DB.prepare(
-        `SELECT post_id, kind, COUNT(*) AS n FROM post_reactions
-         WHERE post_id IN (${inList}) GROUP BY post_id, kind`
+        `SELECT post_id,
+                CASE WHEN kind = 'like' THEN 'thanks' ELSE kind END AS kind,
+                COUNT(*) AS n FROM post_reactions
+         WHERE post_id IN (${inList}) GROUP BY post_id, 2`
       )
         .bind(...postIds)
         .all();
@@ -411,7 +413,7 @@ async function enrichPosts(c: any, userId: string, page: any[]): Promise<any[]> 
       )
         .bind(...postIds, userId)
         .all();
-      for (const r of mr.results as any[]) myReacts[r.post_id] = r.kind;
+      for (const r of mr.results as any[]) myReacts[r.post_id] = normalizeReaction(r.kind);
     }
 
     const pollsByPost: Record<string, any> = {};
@@ -561,7 +563,15 @@ app.post("/polls/:id/vote", async (c) => {
   return c.json({ ok: true, option_id: optionId });
 });
 
-const REACTIONS = ["like", "celebrate", "insightful", "support"] as const;
+const REACTIONS = ["thanks", "celebrate", "insightful", "support"] as const;
+
+/* Legacy client alias: the first calm reaction shipped as "like" and is now
+ * the brand-canon "Thanks" (program R4). Normalize on the way in and out so
+ * old clients and old rows keep working with the canonical key. */
+const REACTION_ALIASES: Record<string, string> = { like: "thanks" };
+function normalizeReaction(kind: string): string {
+  return REACTION_ALIASES[kind] ?? kind;
+}
 
 /* --- Member: toggle a calm reaction on a post --- */
 
@@ -577,12 +587,15 @@ app.post("/posts/:id/react", async (c) => {
   } catch {
     return c.json({ ok: false, error: "Invalid reaction." }, 400);
   }
-  const kind = typeof data.kind === "string" ? data.kind : "";
+  const rawKind = typeof data.kind === "string" ? data.kind : "";
+  const kind = normalizeReaction(rawKind);
   if (!(REACTIONS as readonly string[]).includes(kind)) {
     return c.json({ ok: false, error: "Pick one of the four reactions." }, 400);
   }
 
-  const post: any = await DB.prepare("SELECT id FROM feed_posts WHERE id = ?").bind(postId).first();
+  const post: any = await DB.prepare("SELECT id, author_id FROM feed_posts WHERE id = ?")
+    .bind(postId)
+    .first();
   if (!post) return c.json({ ok: false, error: "Post not found." }, 404);
 
   const existing: any = await DB.prepare(
@@ -590,23 +603,60 @@ app.post("/posts/:id/react", async (c) => {
   )
     .bind(postId, userId)
     .first();
+  const existingKind = existing ? normalizeReaction(existing.kind) : null;
 
-  if (existing && existing.kind === kind) {
+  if (existingKind === kind) {
     // Same reaction again removes it - the calm way to take it back.
     await DB.prepare("DELETE FROM post_reactions WHERE post_id = ? AND member_id = ?")
       .bind(postId, userId)
       .run();
     return c.json({ ok: true, my_reaction: null });
   }
-  // Upsert: one reaction per member per post; re-reacting changes it.
-  await DB.prepare(
-    `INSERT INTO post_reactions (post_id, member_id, kind, reacted_at)
-     VALUES (?, ?, ?, ?)
-     ON CONFLICT (post_id, member_id)
-     DO UPDATE SET kind = excluded.kind, reacted_at = excluded.reacted_at`
+
+  // A block between the reactor and the post author forbids new or changed
+  // reactions (403; the trg_post_reactions_block triggers enforce this too).
+  const blocked: any = await DB.prepare(
+    "SELECT 1 FROM block_pairs WHERE a = ? AND b = ? LIMIT 1"
   )
-    .bind(postId, userId, kind, nowIso())
-    .run();
+    .bind(userId, post.author_id)
+    .first();
+  if (blocked) {
+    return c.json({ ok: false, error: "You cannot react to this post." }, 403);
+  }
+
+  // Members whose posting is paused (an active write ban) may not react
+  // (403; trg_gate_post_reactions enforces this at the write gate too).
+  const paused: any = await DB.prepare(
+    "SELECT 1 FROM active_write_bans WHERE user_id = ? LIMIT 1"
+  )
+    .bind(userId)
+    .first();
+  if (paused) {
+    return c.json({ ok: false, error: "Posting is paused for your account." }, 403);
+  }
+
+  // Upsert: one reaction per member per post; re-reacting changes it.
+  try {
+    await DB.prepare(
+      `INSERT INTO post_reactions (post_id, member_id, kind, reacted_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT (post_id, member_id)
+       DO UPDATE SET kind = excluded.kind, reacted_at = excluded.reacted_at`
+    )
+      .bind(postId, userId, kind, nowIso())
+      .run();
+  } catch (err) {
+    // The triggers stay the final guard for the race between the checks
+    // above and the write; map their errors to 403 instead of 500.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/blocked/.test(msg)) {
+      return c.json({ ok: false, error: "You cannot react to this post." }, 403);
+    }
+    if (/posting is paused/.test(msg)) {
+      return c.json({ ok: false, error: "Posting is paused for your account." }, 403);
+    }
+    throw err;
+  }
   return c.json({ ok: true, my_reaction: kind });
 });
 
