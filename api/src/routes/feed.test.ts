@@ -1,4 +1,4 @@
-/* Route tests: feed — posts, media posts, polls, reels, voting, results. */
+/* Route tests: feed - posts, media posts, polls, reels, voting, results. */
 import { describe, it, expect } from "vitest";
 import app from "./feed";
 import { mockEnv, memberSession, postJSON, type MockEnv } from "../test/helpers";
@@ -115,7 +115,7 @@ describe("POST /posts", () => {
     const d: any = await res.json();
     expect(d.ok).toBe(true);
     expect(d.post_id).toBeTruthy();
-    const ins = env.DB.inserts.get("posts");
+    const ins = env.DB.inserts.get("feed_posts");
     expect(ins?.length).toBe(1);
     expect(ins?.[0].author_id).toBe("member-1");
     expect(ins?.[0].body).toBe("Demo day went well.");
@@ -150,7 +150,7 @@ describe("POST /posts", () => {
       h
     );
     expect(res.status).toBe(400);
-    expect(env.DB.inserts.get("posts")?.length || 0).toBe(0);
+    expect(env.DB.inserts.get("feed_posts")?.length || 0).toBe(0);
   });
 
   it("re-derives kind from R2 metadata on attach", async () => {
@@ -255,7 +255,7 @@ describe("GET /posts/:id (permalink)", () => {
   function permalinkEnv() {
     const env = envWithMedia();
     env.DB.handler = (sql) => {
-      if (/FROM posts p/i.test(sql) && /p\.id = \?/i.test(sql)) {
+      if (/FROM feed_posts p/i.test(sql) && /p\.id = \?/i.test(sql)) {
         return {
           results: [
             {
@@ -300,11 +300,33 @@ describe("GET /posts/:id (permalink)", () => {
     const h = memberSession(env);
     const prev = env.DB.handler;
     env.DB.handler = (sql, params) => {
-      if (/FROM posts p/i.test(sql)) return { results: [] };
+      if (/FROM feed_posts p/i.test(sql)) return { results: [] };
       return prev?.(sql, params);
     };
     const res = await app.request("/posts/nope", { headers: h }, env);
     expect(res.status).toBe(404);
+  });
+
+  it("reads from feed_posts with the published, audience, and block filters", async () => {
+    const env = permalinkEnv();
+    const h = memberSession(env);
+    const res = await app.request("/posts/p9", { headers: h }, env);
+    expect(res.status).toBe(200);
+    const call = env.DB.calls.find(
+      (c) => /FROM feed_posts p/i.test(c.sql) && /p\.id = \?/i.test(c.sql)
+    );
+    expect(call).toBeTruthy();
+    const sql = call!.sql;
+    // Never the blog "posts" table.
+    expect(sql).not.toMatch(/FROM posts p/i);
+    expect(sql).toMatch(/p\.status = 'published'/);
+    expect(sql).toMatch(/p\.deleted_at IS NULL/);
+    expect(sql).toMatch(/p\.audience/);
+    expect(sql).toMatch(/group_members/);
+    expect(sql).toMatch(/NOT EXISTS \(SELECT 1 FROM block_pairs WHERE a = \? AND b = p\.author_id\)/);
+    // The viewer id is bound for only_me, group membership, and the block check.
+    const viewerBinds = call!.params.filter((p) => p === "member-1");
+    expect(viewerBinds.length).toBe(3);
   });
 });
 
@@ -313,7 +335,7 @@ describe("GET /feed", () => {
     const env = envWithMedia({ "feed-a.jpg": { contentType: "image/jpeg" } });
     const future = new Date(Date.now() + 86400000).toISOString();
     env.DB.handler = (sql, params) => {
-      if (/from\s+posts/i.test(sql)) {
+      if (/from\s+feed_posts/i.test(sql)) {
         return {
           results: [
             {
@@ -375,6 +397,26 @@ describe("GET /feed", () => {
     expect(p.poll.closed).toBe(false);
     expect(p.poll.show_voters).toBe(false);
   });
+
+  it("lists from feed_posts with the published, audience, and block filters", async () => {
+    const env = feedEnv();
+    const h = memberSession(env);
+    const res = await app.request("/feed?limit=10", { headers: h }, env);
+    expect(res.status).toBe(200);
+    const call = env.DB.calls.find(
+      (c) => /FROM feed_posts p/i.test(c.sql) && /ORDER BY p\.created_at DESC/i.test(c.sql)
+    );
+    expect(call).toBeTruthy();
+    const sql = call!.sql;
+    expect(sql).not.toMatch(/FROM posts p/i);
+    expect(sql).toMatch(/p\.status = 'published'/);
+    expect(sql).toMatch(/p\.deleted_at IS NULL/);
+    expect(sql).toMatch(/p\.audience/);
+    expect(sql).toMatch(/group_members/);
+    expect(sql).toMatch(/NOT EXISTS \(SELECT 1 FROM block_pairs WHERE a = \? AND b = p\.author_id\)/);
+    const viewerBinds = call!.params.filter((p) => p === "member-1");
+    expect(viewerBinds.length).toBe(3);
+  });
 });
 
 describe("POST /polls/:id/vote", () => {
@@ -433,7 +475,7 @@ describe("POST /posts/:id/react", () => {
   function reactEnv(existingKind: string | null) {
     const env = envWithMedia();
     env.DB.handler = (sql) => {
-      if (/from\s+posts/i.test(sql)) return { row: { id: "p1" } };
+      if (/from\s+feed_posts/i.test(sql)) return { row: { id: "p1" } };
       if (/from\s+post_reactions/i.test(sql)) {
         return existingKind ? { row: { kind: existingKind } } : { row: null };
       }
@@ -478,12 +520,23 @@ describe("POST /posts/:id/react", () => {
   it("404s for unknown posts", async () => {
     const env = envWithMedia();
     env.DB.handler = (sql) => {
-      if (/from\s+posts/i.test(sql)) return { row: null };
+      if (/from\s+feed_posts/i.test(sql)) return { row: null };
       return undefined;
     };
     const h = memberSession(env);
     const res = await postJSON(app, "/posts/nope/react", { kind: "like" }, env, h);
     expect(res.status).toBe(404);
+  });
+
+  it("checks post existence against feed_posts, not the blog posts table", async () => {
+    const env = reactEnv(null);
+    const h = memberSession(env);
+    const res = await postJSON(app, "/posts/p1/react", { kind: "celebrate" }, env, h);
+    expect(res.status).toBe(200);
+    const call = env.DB.calls.find((c) => /SELECT id FROM/i.test(c.sql));
+    expect(call).toBeTruthy();
+    expect(call!.sql).toMatch(/FROM feed_posts/i);
+    expect(call!.sql).not.toMatch(/FROM posts /i);
   });
 });
 describe("GET /polls/:id/results", () => {

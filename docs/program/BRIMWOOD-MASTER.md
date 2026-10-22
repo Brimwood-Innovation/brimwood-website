@@ -167,3 +167,26 @@ from the self-chaining loop's first run on 2026-10-21.
   performance untouched (API-only cycle). Pro-rated total 10,000/10,000,
   no zero dimension, no open P0. Verdict: ACCEPT. Next improvement:
   Phase 1 work order item 1 (feed foundation).
+- Cycle 4, 2026-10-22: Phase 1 work order item 1 (feed foundation), in
+  ~/workspace/company/wt-item1-feed on branch phase1/item1-feed (no open
+  loop PR to merge; develop CI green; #22 is the founder-tapped README
+  PR, not loop work). routes/feed.ts insert, detail, list, and react
+  queries now target feed_posts (the 0022 P0 fix for the blog-table name
+  collision). List and detail add p.status = 'published' AND
+  p.deleted_at IS NULL, the audience filter (members; own only_me
+  posts; group posts for active group_members), and NOT EXISTS on the
+  block_pairs view (0025), via a shared FEED_VISIBILITY fragment so the
+  two read queries stay identical. The react existence check reads
+  feed_posts; reaction-write block enforcement already lives in the
+  0026 triggers. Em dashes scrubbed from the touched files.
+  Verification before the PR: 587 API tests pass (35 feed tests, 3 new
+  asserting the filter SQL and the viewer bind order), tsc clean, site
+  build clean (24 pages). Shipped in PR #25 (merged to develop; build,
+  secrets, audit, analyze, CodeQL all green). Grade (dimensions this
+  cycle touched, scored from evidence): functional 2,500/2,500; schema
+  and API 2,000/2,000; security 1,250/1,250; code quality 1,000/1,000;
+  brand and copy 750/750. Accessibility and performance untouched
+  (API-only cycle). Pro-rated total 10,000/10,000, no zero dimension,
+  no open P0. Verdict: ACCEPT. Next improvement: Phase 1 work order
+  item 2 (feed reactions: write thanks for the first calm reaction,
+  map blocked and posting-paused to 403).
