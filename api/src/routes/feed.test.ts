@@ -475,7 +475,7 @@ describe("POST /posts/:id/react", () => {
   function reactEnv(existingKind: string | null) {
     const env = envWithMedia();
     env.DB.handler = (sql) => {
-      if (/from\s+feed_posts/i.test(sql)) return { row: { id: "p1" } };
+      if (/from\s+feed_posts/i.test(sql)) return { row: { id: "p1", author_id: "author-1" } };
       if (/from\s+post_reactions/i.test(sql)) {
         return existingKind ? { row: { kind: existingKind } } : { row: null };
       }
@@ -486,7 +486,7 @@ describe("POST /posts/:id/react", () => {
 
   it("requires sign in", async () => {
     const env = envWithMedia();
-    const res = await postJSON(app, "/posts/p1/react", { kind: "like" }, env);
+    const res = await postJSON(app, "/posts/p1/react", { kind: "thanks" }, env);
     expect(res.status).toBe(401);
   });
 
@@ -498,7 +498,7 @@ describe("POST /posts/:id/react", () => {
   });
 
   it("records a reaction with an upsert so members can change it", async () => {
-    const env = reactEnv("like");
+    const env = reactEnv("thanks");
     const h = memberSession(env);
     const res = await postJSON(app, "/posts/p1/react", { kind: "celebrate" }, env, h);
     expect(res.status).toBe(200);
@@ -507,10 +507,104 @@ describe("POST /posts/:id/react", () => {
     expect(call).toBeTruthy();
   });
 
+  it("maps the legacy like kind to the canonical thanks reaction", async () => {
+    const env = reactEnv(null);
+    const h = memberSession(env);
+    const res = await postJSON(app, "/posts/p1/react", { kind: "like" }, env, h);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as any).my_reaction).toBe("thanks");
+    const call = env.DB.calls.find((c) => /post_reactions/i.test(c.sql) && /on\s+conflict/i.test(c.sql));
+    expect(call).toBeTruthy();
+    expect(call!.params).toContain("thanks");
+    expect(call!.params).not.toContain("like");
+  });
+
+  it("removes the reaction when the same thanks is tapped again", async () => {
+    const env = reactEnv("like");
+    const h = memberSession(env);
+    const res = await postJSON(app, "/posts/p1/react", { kind: "thanks" }, env, h);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as any).my_reaction).toBeNull();
+    const del = env.DB.calls.find((c) => /delete\s+from\s+post_reactions/i.test(c.sql));
+    expect(del).toBeTruthy();
+  });
+
   it("tapping the same reaction again removes it", async () => {
     const env = reactEnv("insightful");
     const h = memberSession(env);
     const res = await postJSON(app, "/posts/p1/react", { kind: "insightful" }, env, h);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as any).my_reaction).toBeNull();
+    const del = env.DB.calls.find((c) => /delete\s+from\s+post_reactions/i.test(c.sql));
+    expect(del).toBeTruthy();
+  });
+
+  it("403s when a block exists between the reactor and the author", async () => {
+    const env = envWithMedia();
+    env.DB.handler = (sql) => {
+      if (/from\s+feed_posts/i.test(sql)) return { row: { id: "p1", author_id: "author-1" } };
+      if (/from\s+block_pairs/i.test(sql)) return { row: { 1: 1 } };
+      return undefined;
+    };
+    const h = memberSession(env);
+    const res = await postJSON(app, "/posts/p1/react", { kind: "thanks" }, env, h);
+    expect(res.status).toBe(403);
+    const write = env.DB.calls.find((c) => /post_reactions/i.test(c.sql) && /on\s+conflict/i.test(c.sql));
+    expect(write).toBeUndefined();
+  });
+
+  it("403s when posting is paused for the reactor", async () => {
+    const env = envWithMedia();
+    env.DB.handler = (sql) => {
+      if (/from\s+feed_posts/i.test(sql)) return { row: { id: "p1", author_id: "author-1" } };
+      if (/from\s+active_write_bans/i.test(sql)) return { row: { 1: 1 } };
+      return undefined;
+    };
+    const h = memberSession(env);
+    const res = await postJSON(app, "/posts/p1/react", { kind: "support" }, env, h);
+    expect(res.status).toBe(403);
+    const write = env.DB.calls.find((c) => /post_reactions/i.test(c.sql) && /on\s+conflict/i.test(c.sql));
+    expect(write).toBeUndefined();
+  });
+
+  it("403s when the block trigger fires on the write itself", async () => {
+    const env = envWithMedia();
+    env.DB.handler = (sql) => {
+      if (/from\s+feed_posts/i.test(sql)) return { row: { id: "p1", author_id: "author-1" } };
+      if (/insert\s+into\s+post_reactions/i.test(sql)) {
+        throw new Error("D1_ERROR: blocked: TRIGGER trg_post_reactions_block");
+      }
+      return undefined;
+    };
+    const h = memberSession(env);
+    const res = await postJSON(app, "/posts/p1/react", { kind: "thanks" }, env, h);
+    expect(res.status).toBe(403);
+  });
+
+  it("403s when the posting-pause trigger fires on the write itself", async () => {
+    const env = envWithMedia();
+    env.DB.handler = (sql) => {
+      if (/from\s+feed_posts/i.test(sql)) return { row: { id: "p1", author_id: "author-1" } };
+      if (/insert\s+into\s+post_reactions/i.test(sql)) {
+        throw new Error("D1_ERROR: posting is paused for this member: TRIGGER trg_gate_post_reactions");
+      }
+      return undefined;
+    };
+    const h = memberSession(env);
+    const res = await postJSON(app, "/posts/p1/react", { kind: "thanks" }, env, h);
+    expect(res.status).toBe(403);
+  });
+
+  it("still lets a blocked reactor take back their own reaction", async () => {
+    const env = envWithMedia();
+    env.DB.handler = (sql) => {
+      if (/from\s+feed_posts/i.test(sql)) return { row: { id: "p1", author_id: "author-1" } };
+      if (/from\s+block_pairs/i.test(sql)) return { row: { 1: 1 } };
+      if (/from\s+post_reactions/i.test(sql)) return { row: { kind: "thanks" } };
+      return undefined;
+    };
+    const h = memberSession(env);
+    const res = await postJSON(app, "/posts/p1/react", { kind: "thanks" }, env, h);
     expect(res.status).toBe(200);
     expect(((await res.json()) as any).my_reaction).toBeNull();
     const del = env.DB.calls.find((c) => /delete\s+from\s+post_reactions/i.test(c.sql));
@@ -524,7 +618,7 @@ describe("POST /posts/:id/react", () => {
       return undefined;
     };
     const h = memberSession(env);
-    const res = await postJSON(app, "/posts/nope/react", { kind: "like" }, env, h);
+    const res = await postJSON(app, "/posts/nope/react", { kind: "thanks" }, env, h);
     expect(res.status).toBe(404);
   });
 
@@ -533,7 +627,7 @@ describe("POST /posts/:id/react", () => {
     const h = memberSession(env);
     const res = await postJSON(app, "/posts/p1/react", { kind: "celebrate" }, env, h);
     expect(res.status).toBe(200);
-    const call = env.DB.calls.find((c) => /SELECT id FROM/i.test(c.sql));
+    const call = env.DB.calls.find((c) => /SELECT id, author_id FROM/i.test(c.sql));
     expect(call).toBeTruthy();
     expect(call!.sql).toMatch(/FROM feed_posts/i);
     expect(call!.sql).not.toMatch(/FROM posts /i);
