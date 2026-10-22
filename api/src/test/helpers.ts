@@ -1,5 +1,5 @@
 /* Shared test fakes for the Brimwood API suite (Phase C).
- * In-memory stand-ins for Cloudflare bindings — no network, no real D1/KV.
+ * In-memory stand-ins for Cloudflare bindings, no network, no real D1/KV.
  * Deterministic: tests drive behaviour through the programmable handler. */
 
 export type SqlHandler = (
@@ -14,6 +14,36 @@ export interface MockStatement {
   first<T = any>(): Promise<T | null>;
 }
 
+/** Built-in auth_email_codes row (Phase 1 item 6): full live-code lifecycle. */
+export interface CodeRow {
+  id: string;
+  email: string;
+  user_id: string | null;
+  purpose: string;
+  code_hmac: string;
+  browser_binding_hash: string;
+  attempts: number;
+  expires_at: string;
+  consumed_at: string | null;
+  superseded_at: string | null;
+  ip_hmac: string | null;
+}
+
+/** Built-in sessions row (F9, extended with the Phase 1 item 6 S6 columns). */
+export interface SessionRow {
+  user_id: string;
+  role: string;
+  created_at: number;
+  expires_at: number;
+  revoked_at?: number | null;
+  amr?: string;
+  auth_time?: number;
+  is_staff?: number;
+  ua_summary?: string | null;
+  city?: string | null;
+  device_id?: string | null;
+}
+
 export interface MockD1 {
   prepare(sql: string): MockStatement;
   batch(stmts: MockStatement[]): Promise<unknown[]>;
@@ -23,7 +53,9 @@ export interface MockD1 {
   /** captured INSERT rows per table (table name -> rows) */
   inserts: Map<string, Record<string, unknown>[]>;
   /** built-in sessions table (F9): key -> session row */
-  sessionStore: Map<string, { user_id: string; role: string; created_at: number; expires_at: number }>;
+  sessionStore: Map<string, SessionRow>;
+  /** built-in auth_email_codes table (Phase 1 item 6): id -> code row */
+  codeStore: Map<string, CodeRow>;
   /** built-in rate_limits table (F9): key -> { count, window_start } */
   rateLimitStore: Map<string, { count: number; window_start: number }>;
 }
@@ -69,6 +101,7 @@ export function mockD1(handler: SqlHandler | null = null): MockD1 {
     calls: [],
     inserts: new Map(),
     sessionStore: new Map(),
+    codeStore: new Map(),
     rateLimitStore: new Map(),
     prepare(sql: string): MockStatement {
       const stmt: MockStatement = {
@@ -93,10 +126,52 @@ export function mockD1(handler: SqlHandler | null = null): MockD1 {
                   for (const [k, v] of db.sessionStore) if (v.expires_at < now) db.sessionStore.delete(k);
                 }
               }
+              // Built-in auth_email_codes lifecycle (Phase 1 item 6): supersede,
+              // atomic guarded attempts increment, and consume. Returned early
+              // so programmable handlers never double-process these rows.
+              if (/^\s*update\s+auth_email_codes/i.test(sql)) {
+                if (/set\s+superseded_at\s*=/i.test(sql)) {
+                  const [iso, email, purpose] = params as [string, string, string];
+                  let n = 0;
+                  for (const r of db.codeStore.values()) {
+                    if (
+                      r.email === email &&
+                      r.purpose === purpose &&
+                      r.consumed_at == null &&
+                      r.superseded_at == null
+                    ) {
+                      r.superseded_at = iso;
+                      n++;
+                    }
+                  }
+                  return { meta: { changes: n } };
+                }
+                if (/set\s+attempts\s*=\s*attempts\s*\+\s*1/i.test(sql)) {
+                  const [id, max] = params as [string, number];
+                  const r = db.codeStore.get(id);
+                  // The attempts < ? guard makes concurrent wrong guesses
+                  // atomic: a racer past the cap changes nothing.
+                  if (r && r.attempts < max) {
+                    r.attempts += 1;
+                    return { meta: { changes: 1 } };
+                  }
+                  return { meta: { changes: 0 } };
+                }
+                if (/set\s+consumed_at\s*=/i.test(sql)) {
+                  const [iso, id] = params as [string, string];
+                  const r = db.codeStore.get(id);
+                  if (r && r.consumed_at == null) {
+                    r.consumed_at = iso;
+                    return { meta: { changes: 1 } };
+                  }
+                  return { meta: { changes: 0 } };
+                }
+              }
               if (/^\s*insert/i.test(sql)) {
                 if (!db.inserts.has(t)) db.inserts.set(t, []);
                 db.inserts.get(t)!.push(rowOf(sql, params));
-                // Built-in sessions INSERT (F9): createSession.
+                // Built-in sessions INSERT (F9): createSession, with the S6
+                // sign-in context columns (Phase 1 item 6).
                 if (t === "sessions") {
                   const r = rowOf(sql, params);
                   db.sessionStore.set(r.key as string, {
@@ -104,6 +179,24 @@ export function mockD1(handler: SqlHandler | null = null): MockD1 {
                     role: r.role as string,
                     created_at: r.created_at as number,
                     expires_at: r.expires_at as number,
+                    revoked_at: null,
+                    amr: r.amr as string | undefined,
+                    auth_time: r.auth_time as number | undefined,
+                    is_staff: r.is_staff as number | undefined,
+                    ua_summary: (r.ua_summary as string | null) ?? null,
+                    city: (r.city as string | null) ?? null,
+                    device_id: (r.device_id as string | null) ?? null,
+                  });
+                }
+                // Built-in auth_email_codes INSERT (Phase 1 item 6): the code
+                // row, attempts starting at 0 per the table default.
+                if (t === "auth_email_codes") {
+                  const r = rowOf(sql, params) as unknown as CodeRow;
+                  db.codeStore.set(String(r.id), {
+                    ...r,
+                    attempts: 0,
+                    consumed_at: null,
+                    superseded_at: null,
                   });
                 }
               }
@@ -126,6 +219,11 @@ export function mockD1(handler: SqlHandler | null = null): MockD1 {
               // Built-in sessions SELECT (F9): readSession.
               if (/from\s+sessions/i.test(sql)) {
                 const s = db.sessionStore.get(params[0] as string);
+                // S6: revoked sessions are rejected when the query filters on
+                // revoked_at (sign-out-all, lockdown, suspension).
+                if (s && /s\.revoked_at\s+is\s+null/i.test(sql) && s.revoked_at) {
+                  return null as T;
+                }
                 if (s && s.expires_at > Date.now()) {
                   if (/join\s+users/i.test(sql)) {
                     // readSession JOINs users: enforce status='active' and
@@ -149,6 +247,30 @@ export function mockD1(handler: SqlHandler | null = null): MockD1 {
                     } as T;
                   }
                   return { user_id: s.user_id, role: s.role, created_at: s.created_at } as T;
+                }
+                return null as T;
+              }
+              // Built-in auth_email_codes SELECT (Phase 1 item 6): liveCode: the
+              // one live row for (email, purpose), or null.
+              if (/from\s+auth_email_codes/i.test(sql)) {
+                const [email, purpose] = params as [string, string];
+                for (const r of db.codeStore.values()) {
+                  if (
+                    r.email === email &&
+                    r.purpose === purpose &&
+                    r.consumed_at == null &&
+                    r.superseded_at == null
+                  ) {
+                    return {
+                      id: r.id,
+                      email: r.email,
+                      user_id: r.user_id,
+                      code_hmac: r.code_hmac,
+                      browser_binding_hash: r.browser_binding_hash,
+                      attempts: r.attempts,
+                      expires_at: r.expires_at,
+                    } as T;
+                  }
                 }
                 return null as T;
               }
@@ -252,7 +374,7 @@ export function mockEnv(overrides: Partial<MockEnv> = {}): MockEnv {
 
 /** Logged-in admin session: cookie + built-in D1 session row (F9). */
 export function adminSession(env: MockEnv, userId = "admin-1", email = "admin@example.com") {
-  // SHA-256("tok-admin") — must match lib/auth hashToken.
+  // SHA-256("tok-admin"), which must match lib/auth hashToken.
   const key = "sess:df6adb0b23fa33235f4aee6a0d62c118b00d71c07c81be87067b4f5892e66dbc";
   const now = Date.now();
   env.DB.sessionStore.set(key, { user_id: userId, role: "admin", created_at: now, expires_at: now + 30 * 24 * 3600 * 1000 });
@@ -266,7 +388,7 @@ export function adminSession(env: MockEnv, userId = "admin-1", email = "admin@ex
 
 /** Logged-in non-admin member session (F9: sessions in D1). */
 export function memberSession(env: MockEnv, userId = "member-1") {
-  // SHA-256("tok-member") — must match lib/auth hashToken.
+  // SHA-256("tok-member"), which must match lib/auth hashToken.
   const key = "sess:1f01ccd79fa83611b7efefef57e9f6fca2f70f5fa6f3fb943c6bf7733dccaea4";
   const now = Date.now();
   env.DB.sessionStore.set(key, { user_id: userId, role: "member", created_at: now, expires_at: now + 30 * 24 * 3600 * 1000 });

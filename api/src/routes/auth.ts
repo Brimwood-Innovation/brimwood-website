@@ -340,7 +340,7 @@ app.post("/redeem-invite", async (c) => {
 
   // Validate the invite code FIRST (hardening: the code gate stands before any
   // email-dependent branch, so this endpoint cannot be used to probe whether
-  // an email is registered — the magic-code endpoint already behaves this way).
+  // an email is registered; the magic-code endpoint already behaves this way).
   // Lookup is by HMAC: invite_codes.code stores HMAC(code), never the code.
   const stored = await inviteCodeHmac(c.env, code);
   type InviteRow = {
@@ -429,13 +429,13 @@ app.post("/redeem-invite", async (c) => {
     const html = shell(
       "Your Brimwood sign-in code",
       "Welcome to Brimwood.",
-      "<p style=\"margin:0 0 8px;\">Welcome" + (name ? ", " + esc(name) : "") + ". Your invite code worked — here is your sign-in code:</p>" +
+      "<p style=\"margin:0 0 8px;\">Welcome" + (name ? ", " + esc(name) : "") + ". Your invite code worked, and here is your sign-in code:</p>" +
         '<p style="font-size:36px;font-weight:700;letter-spacing:0.3em;color:#0C9463;margin:16px 0;">' + magicCode + "</p>" +
         '<p style="font-size:13px;color:#5B6862;margin:16px 0 0;">Use this code within 10 minutes. Build a business. Build yourself.</p>'
     );
     await sendEmail(resendKey, {
       to: email,
-      subject: "Welcome to Brimwood — your sign-in code",
+      subject: "Welcome to Brimwood: your sign-in code",
       html,
       text: "Welcome to Brimwood" + (name ? ", " + name : "") + ".\n\nYour sign-in code is: " + magicCode + "\n\nIt expires in 10 minutes.",
     }).catch(() => {});

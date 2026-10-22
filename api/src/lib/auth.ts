@@ -145,7 +145,7 @@ export async function createSession(
  * Joins users in the same query so that:
  * - suspended or deleted users lose access immediately (no waiting for the
  *   session TTL), and
- * - the returned role is always live — never the value cached in the
+ * - the returned role is always live, never the value cached in the
  *   session row at login.
  * Revoked sessions (s.revoked_at set, S6) are rejected here: sign-out-all,
  * lockdown, suspension and friends take effect on the very next request.
@@ -201,7 +201,7 @@ export async function destroyOtherUserSessions(
 }
 
 /** Re-read the user's role from D1 and return true iff they are an active
- * admin. Authorization decisions MUST use this — never the role cached in
+ * admin. Authorization decisions MUST use this, never the role cached in
  * the session row, which can be stale for up to SESS_TTL after a demotion. */
 export async function isAdminUser(c: any, userId: string): Promise<boolean> {
   const u: any = await c.env.DB.prepare(
