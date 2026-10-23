@@ -1,4 +1,4 @@
-/* Route tests: chat — membership enforcement, DMs/groups, threads, receipts. */
+/* Route tests: chat - membership enforcement, DMs/groups, threads, receipts. */
 import { describe, it, expect } from "vitest";
 import app from "./chat";
 import { mockEnv, memberSession, postJSON } from "../test/helpers";
@@ -17,16 +17,20 @@ interface Fixture {
   me: string;
   users: Record<string, FixtureUser>;
   /** "cid:uid" -> membership row */
-  memberships: Record<string, { role: string; last_read_at: string | null; kind: string; title: string | null }>;
+  memberships: Record<string, { role: string; last_read_at: string | null; kind: string; title: string | null; state?: string }>;
   /** existing DM id for the pair (me, other), or null */
   existingDm: string | null;
   convList: any[];
   participantRows: any[];
   messageRows: any[];
-  receiptRows: { user_id: string; last_read_at: string | null }[];
+  receiptRows: { user_id: string; last_read_at: string | null; state?: string }[];
   peopleRows: any[];
   storyTable: boolean;
   storyReplyRows: any[];
+  /** user_id -> member_settings overrides (item 8: dm_policy, seen_receipts) */
+  memberSettings: Record<string, { dm_policy?: string; seen_receipts?: number }>;
+  /** pending DM request count for the inbox badge (item 8) */
+  requestCount: number;
 }
 
 const USER = (over: Partial<FixtureUser> = {}): FixtureUser => ({
@@ -55,10 +59,15 @@ function chatEnv(f: Partial<Fixture> = {}): { env: MockEnv; cookie: Record<strin
       const u = users[params[0] as string];
       return u ? { row: { id: params[0], role: u.role, status: u.status } } : {};
     }
+    // Pending DM request count (item 8): must come before the membership
+    // and existing-DM checks below, whose patterns also match this query.
+    if (/SELECT COUNT\(\*\) AS n FROM conversation_members/i.test(sql)) {
+      return { row: { n: f.requestCount ?? 0 } };
+    }
     // Conversation membership (every read/write gates on this).
     if (/FROM conversation_members cm\s+JOIN conversations/i.test(sql)) {
       const m = (f.memberships ?? {})[`${params[0]}:${params[1]}`];
-      return m ? { row: m } : {};
+      return m ? { row: { state: "accepted", ...m } } : {};
     }
     // activeUser check.
     if (/SELECT id FROM users WHERE id = \? AND status = 'active'/i.test(sql)) {
@@ -71,6 +80,21 @@ function chatEnv(f: Partial<Fixture> = {}): { env: MockEnv; cookie: Record<strin
         .filter((p) => users[p]?.status === "active")
         .map((p) => ({ id: p }));
       return { results: rows };
+    }
+    // member_settings (item 8): DM policy for starting DMs, seen receipts
+    // for read-receipt hiding. Missing row = schema defaults.
+    if (/FROM member_settings/i.test(sql)) {
+      const ms = f.memberSettings ?? {};
+      if (/WHERE user_id IN/i.test(sql)) {
+        return {
+          results: (params as string[]).map((p) => ({
+            user_id: p,
+            seen_receipts: ms[p]?.seen_receipts ?? 1,
+          })),
+        };
+      }
+      const s = ms[params[0] as string];
+      return s ? { row: s } : {};
     }
     // Existing-DM lookup.
     if (/WHERE c\.kind = 'dm'/i.test(sql)) {
@@ -92,8 +116,8 @@ function chatEnv(f: Partial<Fixture> = {}): { env: MockEnv; cookie: Record<strin
     if (/FROM messages m/i.test(sql)) {
       return { results: f.messageRows ?? [] };
     }
-    // Read receipts.
-    if (/SELECT user_id, last_read_at FROM conversation_members/i.test(sql)) {
+    // Read receipts (item 8): user_id, last_read_at, state per member.
+    if (/SELECT user_id, last_read_at.* FROM conversation_members/i.test(sql)) {
       return { results: f.receiptRows ?? [] };
     }
     // People directory search.
@@ -513,5 +537,288 @@ describe("GET /chat/story-replies", () => {
     expect(d.replies).toHaveLength(1);
     expect(d.replies[0].from.display_name).toBe("Bo");
     expect(d.replies[0]).not.toHaveProperty("email");
+  });
+});
+
+/* Item 8: DM requests. A recipient with dm_policy 'nobody' joins as a
+ * request and gets a dm_request notification; the schema's block and
+ * dm-policy triggers map to 403 / a request fallback instead of a 500. */
+
+describe("POST /chat/conversations DM requests (item 8)", () => {
+  it("creates the recipient as a request when their dm_policy is 'nobody'", async () => {
+    const { env, cookie } = chatEnv({ memberSettings: { "member-2": { dm_policy: "nobody" } } });
+    const res = await postJSON(app, "/conversations", { kind: "dm", user_id: "member-2" }, env, cookie);
+    expect(res.status).toBe(200);
+    const d = await res.json();
+    expect(d.ok).toBe(true);
+    expect(d.conversation.recipient_state).toBe("request");
+    // The two-row INSERT is one statement; the recipient's state is last.
+    const ins = env.DB.calls.find(
+      (cl) => cl.op === "run" && /INSERT INTO conversation_members/i.test(cl.sql)
+    );
+    expect(ins?.params).toContain("member-1");
+    expect(ins?.params).toContain("member-2");
+    expect(ins?.params[ins.params.length - 1]).toBe("request");
+    // A dm_request notification lands in notification_items (a new kind).
+    const items = env.DB.inserts.get("notification_items") || [];
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      user_id: "member-2",
+      kind: "dm_request",
+      actor_id: "member-1",
+      target_type: "conversation",
+      target_id: d.conversation.id,
+    });
+  });
+
+  it("keeps the recipient accepted under the default dm_policy", async () => {
+    const { env, cookie } = chatEnv();
+    const res = await postJSON(app, "/conversations", { kind: "dm", user_id: "member-2" }, env, cookie);
+    const d = await res.json();
+    expect(d.conversation.recipient_state).toBe("accepted");
+    const ins = env.DB.calls.find(
+      (cl) => cl.op === "run" && /INSERT INTO conversation_members/i.test(cl.sql)
+    );
+    expect(ins?.params[ins.params.length - 1]).toBe("accepted");
+    expect(env.DB.inserts.get("notification_items") || []).toHaveLength(0);
+    expect(env.DB.inserts.get("notifications") || []).toHaveLength(0);
+  });
+
+  it("maps the schema 'blocked' trigger to 403 with plain words", async () => {
+    const { env, cookie } = chatEnv();
+    const prev = env.DB.handler;
+    env.DB.handler = (sql, params) => {
+      if (/INSERT INTO conversations/i.test(sql))
+        throw new Error("D1_ERROR: trigger failed: blocked");
+      return prev?.(sql, params);
+    };
+    const res = await postJSON(app, "/conversations", { kind: "dm", user_id: "member-2" }, env, cookie);
+    expect(res.status).toBe(403);
+    const d = await res.json();
+    expect(d.error).toBe("Messaging is not available with this member.");
+  });
+
+  it("falls back to a request when the dm-policy trigger fires (race)", async () => {
+    const { env, cookie } = chatEnv(); // default policy reads 'members'
+    const prev = env.DB.handler;
+    env.DB.handler = (sql, params) => {
+      // Only the first (two-row) insert: the retry has three params.
+      if (/INSERT INTO conversation_members/i.test(sql) && params.length === 5)
+        throw new Error("D1_ERROR: trigger failed: this member takes DMs as requests only");
+      return prev?.(sql, params);
+    };
+    const res = await postJSON(app, "/conversations", { kind: "dm", user_id: "member-2" }, env, cookie);
+    expect(res.status).toBe(200);
+    const d = await res.json();
+    expect(d.conversation.recipient_state).toBe("request");
+    const ins = env.DB.calls.filter(
+      (cl) => cl.op === "run" && /INSERT INTO conversation_members/i.test(cl.sql)
+    );
+    expect(ins).toHaveLength(2);
+    // The retry lands the recipient as a request ('request' is a SQL literal
+    // in the retry statement).
+    expect(ins[1].params).toContain("member-2");
+    expect(ins[1].sql).toContain("'request'");
+    // The request still notifies the recipient.
+    expect(env.DB.inserts.get("notification_items") || []).toHaveLength(1);
+  });
+});
+
+describe("POST /chat/conversations/:id/accept and :id/decline (item 8)", () => {
+  const reqMem = {
+    "c1:member-1": { role: "member", last_read_at: null, state: "request", kind: "dm", title: null },
+  };
+
+  it("accept flips the caller's own state to accepted", async () => {
+    const { env, cookie } = chatEnv({ memberships: reqMem });
+    const res = await postJSON(app, "/conversations/c1/accept", {}, env, cookie);
+    expect(res.status).toBe(200);
+    const d = await res.json();
+    expect(d.state).toBe("accepted");
+    const upd = env.DB.calls.find(
+      (cl) => cl.op === "run" && /UPDATE conversation_members SET state = 'accepted'/i.test(cl.sql)
+    );
+    expect(upd?.params).toEqual(["c1", "member-1"]);
+  });
+
+  it("decline flips the caller's own state to declined", async () => {
+    const { env, cookie } = chatEnv({ memberships: reqMem });
+    const res = await postJSON(app, "/conversations/c1/decline", {}, env, cookie);
+    expect(res.status).toBe(200);
+    const d = await res.json();
+    expect(d.state).toBe("declined");
+    const upd = env.DB.calls.find(
+      (cl) => cl.op === "run" && /UPDATE conversation_members SET state = 'declined'/i.test(cl.sql)
+    );
+    expect(upd?.params).toEqual(["c1", "member-1"]);
+  });
+
+  it("returns 404 for a non-member", async () => {
+    const { env, cookie } = chatEnv();
+    for (const path of ["/conversations/c1/accept", "/conversations/c1/decline"]) {
+      const res = await postJSON(app, path, {}, env, cookie);
+      expect(res.status).toBe(404);
+    }
+  });
+
+  it("returns 400 when the caller has no pending request", async () => {
+    const mem = {
+      "c1:member-1": { role: "member", last_read_at: null, state: "accepted", kind: "dm", title: null },
+    };
+    const { env, cookie } = chatEnv({ memberships: mem });
+    const res = await postJSON(app, "/conversations/c1/accept", {}, env, cookie);
+    expect(res.status).toBe(400);
+    const d = await res.json();
+    expect(d.error).toBe("There is no message request to accept here.");
+  });
+
+  it("returns 400 on a group conversation", async () => {
+    const mem = {
+      "g1:member-1": { role: "member", last_read_at: null, state: "request", kind: "group", title: "Forge crew" },
+    };
+    const { env, cookie } = chatEnv({ memberships: mem });
+    const res = await postJSON(app, "/conversations/g1/accept", {}, env, cookie);
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("GET /chat/conversations inbox (item 8)", () => {
+  const convList = [
+    {
+      id: "c1",
+      kind: "dm",
+      title: null,
+      my_state: "request",
+      last_body: null,
+      last_r2: null,
+      last_at: null,
+      last_sender_name: null,
+      last_sender_real: null,
+      unread: 0,
+    },
+  ];
+  const participantRows = [
+    { cid: "c1", id: "member-1", display_name: "Ada", name: "Ada Lovelace", username: "ada", avatar_key: null },
+    { cid: "c1", id: "member-2", display_name: "Bo", name: "Bo Chen", username: "bo", avatar_key: null },
+  ];
+
+  it("filters by ?state=request and reports my_state and request_count", async () => {
+    const { env, cookie } = chatEnv({ convList, participantRows, requestCount: 1 });
+    const res = await getJSON(app, "/conversations?state=request", env, cookie);
+    expect(res.status).toBe(200);
+    const d = await res.json();
+    const listSql = env.DB.calls.find(
+      (cl) => cl.op === "all" && /SELECT c\.id, c\.kind/i.test(cl.sql)
+    )!.sql;
+    expect(listSql).toContain("cm.state = ?");
+    expect(d.conversations).toHaveLength(1);
+    expect(d.conversations[0].my_state).toBe("request");
+    expect(d.request_count).toBe(1);
+  });
+
+  it("keeps existing behaviour with no state param", async () => {
+    const { env, cookie } = chatEnv({ convList, participantRows });
+    const res = await getJSON(app, "/conversations", env, cookie);
+    const d = await res.json();
+    expect(d.conversations).toHaveLength(1);
+    expect(d.request_count).toBe(0);
+    const listSql = env.DB.calls.find(
+      (cl) => cl.op === "all" && /SELECT c\.id, c\.kind/i.test(cl.sql)
+    )!.sql;
+    expect(listSql).not.toContain("cm.state = ?");
+  });
+
+  it("ignores an invalid state param", async () => {
+    const { env, cookie } = chatEnv({ convList, participantRows });
+    const res = await getJSON(app, "/conversations?state=bogus", env, cookie);
+    expect(res.status).toBe(200);
+    const listSql = env.DB.calls.find(
+      (cl) => cl.op === "all" && /SELECT c\.id, c\.kind/i.test(cl.sql)
+    )!.sql;
+    expect(listSql).not.toContain("cm.state = ?");
+  });
+});
+
+describe("read receipts (item 8)", () => {
+  const mem = {
+    "c1:member-1": { role: "member", last_read_at: "2026-10-08T13:00:00.000Z", state: "accepted", kind: "dm", title: null },
+  };
+
+  it("hides the receipt when the other member turned seen receipts off", async () => {
+    const receiptRows = [
+      { user_id: "member-1", last_read_at: "2026-10-08T13:00:00.000Z", state: "accepted" },
+      { user_id: "member-2", last_read_at: "2026-10-08T13:40:00.000Z", state: "accepted" },
+    ];
+    const { env, cookie } = chatEnv({
+      memberships: mem,
+      messageRows: [],
+      receiptRows,
+      memberSettings: { "member-2": { seen_receipts: 0 } },
+    });
+    const res = await getJSON(app, "/conversations/c1/messages", env, cookie);
+    expect(res.status).toBe(200);
+    const d = await res.json();
+    expect(d.read_receipts["member-2"]).toBeNull();
+    // The caller's own receipt always shows.
+    expect(d.read_receipts["member-1"]).toBe("2026-10-08T13:00:00.000Z");
+  });
+
+  it("returns no read state while the DM is still a request", async () => {
+    const reqMem = {
+      "c1:member-1": { role: "member", last_read_at: null, state: "request", kind: "dm", title: null },
+    };
+    const receiptRows = [
+      { user_id: "member-1", last_read_at: null, state: "request" },
+      { user_id: "member-2", last_read_at: "2026-10-08T13:40:00.000Z", state: "accepted" },
+    ];
+    const { env, cookie } = chatEnv({ memberships: reqMem, messageRows: [], receiptRows });
+    const res = await getJSON(app, "/conversations/c1/messages", env, cookie);
+    expect(res.status).toBe(200);
+    const d = await res.json();
+    expect(d.read_receipts).toEqual({});
+  });
+
+  it("shows receipts once the request is accepted", async () => {
+    const receiptRows = [
+      { user_id: "member-1", last_read_at: "2026-10-08T13:00:00.000Z", state: "accepted" },
+      { user_id: "member-2", last_read_at: "2026-10-08T13:40:00.000Z", state: "accepted" },
+    ];
+    const { env, cookie } = chatEnv({ memberships: mem, messageRows: [], receiptRows });
+    const res = await getJSON(app, "/conversations/c1/messages", env, cookie);
+    const d = await res.json();
+    expect(d.read_receipts["member-2"]).toBe("2026-10-08T13:40:00.000Z");
+  });
+});
+
+describe("POST /chat/conversations/:id/messages trigger mapping (item 8)", () => {
+  const mem = {
+    "c1:member-1": { role: "member", last_read_at: null, state: "accepted", kind: "dm", title: null },
+  };
+
+  it("maps the schema 'blocked' trigger to 403 on send", async () => {
+    const { env, cookie } = chatEnv({ memberships: mem });
+    const prev = env.DB.handler;
+    env.DB.handler = (sql, params) => {
+      if (/INSERT INTO messages/i.test(sql)) throw new Error("D1_ERROR: trigger failed: blocked");
+      return prev?.(sql, params);
+    };
+    const res = await postJSON(app, "/conversations/c1/messages", { body: "Hi" }, env, cookie);
+    expect(res.status).toBe(403);
+    const d = await res.json();
+    expect(d.error).toBe("Messaging is not available with this member.");
+  });
+
+  it("maps 'sender cannot post in this conversation' to 400 on send", async () => {
+    const { env, cookie } = chatEnv({ memberships: mem });
+    const prev = env.DB.handler;
+    env.DB.handler = (sql, params) => {
+      if (/INSERT INTO messages/i.test(sql))
+        throw new Error("D1_ERROR: trigger failed: sender cannot post in this conversation");
+      return prev?.(sql, params);
+    };
+    const res = await postJSON(app, "/conversations/c1/messages", { body: "Hi" }, env, cookie);
+    expect(res.status).toBe(400);
+    const d = await res.json();
+    expect(d.error).toBe("You cannot post in this conversation.");
   });
 });

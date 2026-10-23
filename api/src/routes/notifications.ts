@@ -5,15 +5,19 @@
  * row marks it read and follows its deep link (same-origin only).
  *
  * Routes (mounted at /api):
- *   GET  /notifications?limit=&offset=&unread=1 — auth; latest first.
- *   POST /notifications/:id/read                — auth; ownership-checked.
- *   POST /notifications/read-all                — auth; marks all read.
+ *   GET  /notifications?limit=&offset=&unread=1 - auth; latest first, reads
+ *          the notification_feed view (legacy `notifications` UNION ALL the
+ *          new `notification_items`); each row carries `source`.
+ *   POST /notifications/:id/read                - auth; ownership-checked;
+ *          `source` (query or JSON body) names the table.
+ *   POST /notifications/read-all                - auth; marks all read in
+ *          both tables.
  *
- * Shared helpers — sibling agents (feed, stories, profiles, chat) MUST import
+ * Shared helpers - sibling agents (feed, stories, profiles, chat) MUST import
  * these instead of reimplementing:
- *   emitNotification(DB, n) — insert (deduped while unread) one notification.
- *   parseMentions(text)     — extract @handles per the username rules.
- *   deepLinkFor(n)          — canonical in-app URL for a notification row.
+ *   emitNotification(DB, n) - insert (deduped while unread) one notification.
+ *   parseMentions(text)     - extract @handles per the username rules.
+ *   deepLinkFor(n)          - canonical in-app URL for a notification row.
  *
  * Emission contract (called from the owning route at write time):
  *   mention:        parse @handles from a post/comment body, resolve to active
@@ -33,7 +37,7 @@
 import { Hono } from "hono";
 import type { Bindings } from "../index";
 import { readSession } from "../lib/auth";
-import { cleanStr, clientIp } from "../lib/validate";
+import { cleanStr, clientIp, isRecord } from "../lib/validate";
 import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -44,7 +48,27 @@ export type NotificationKind =
   | "follow"
   | "story_reply"
   | "poll_closed"
-  | "event_reminder";
+  | "event_reminder"
+  | "dm"
+  | "dm_request"
+  | "answer"
+  | "helpful_marked"
+  | "group_join_request"
+  | "group_join_approved"
+  | "invite_redeemed"
+  | "booking_confirmed"
+  | "booking_cancelled"
+  | "guest_arrived"
+  | "demo_feedback"
+  | "demo_slot"
+  | "reflection_shared"
+  | "certificate_issued"
+  | "new_course"
+  | "report_outcome"
+  | "sanction_notice"
+  | "appeal_decided"
+  | "digest_ready"
+  | "security_alert";
 
 export interface NotificationInput {
   userId: string;
@@ -86,8 +110,17 @@ export async function resolveMentionedUsers(
 }
 
 /**
- * Insert one notification. Deduped while unread by the partial unique index
- * in 0020 (same user/kind/actor/target) — repeat emissions are a no-op.
+ * Insert one notification. The notification_kinds registry (0033) decides the
+ * table: the six legacy kinds keep using `notifications` (0020), every new
+ * kind goes into `notification_items`. Both tables dedupe while unread via
+ * their partial unique index (same user/kind/actor/target) - repeat
+ * emissions are a no-op. Unknown kinds are dropped quietly.
+ *
+ * An explicit notification_preferences row (kind, channel 'in_app',
+ * enabled = 0) suppresses emission; a missing row means the registry
+ * default. Transactional kinds cannot be switched off - the 0033 trigger
+ * rejects those preference rows, so this check never fires for them.
+ *
  * Never notifies the actor about their own action. Best-effort by design:
  * a failed notification must not fail the write that triggered it.
  */
@@ -97,27 +130,49 @@ export async function emitNotification(
 ): Promise<void> {
   if (!n.userId || !n.kind || !n.targetType || !n.targetId) return;
   if (n.actorId && n.actorId === n.userId) return;
-  const preview = (n.preview || "").replace(/\s+/g, " ").trim().slice(0, 200);
-  await DB.prepare(
-    `INSERT INTO notifications
-       (id, user_id, kind, actor_id, target_type, target_id, preview)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT DO NOTHING`
-  )
-    .bind(
-      crypto.randomUUID(),
-      n.userId,
-      n.kind,
-      n.actorId || null,
-      cleanStr(n.targetType, 40),
-      cleanStr(n.targetId, 200),
-      preview || null
+  try {
+    const reg = await DB.prepare(
+      "SELECT legacy FROM notification_kinds WHERE kind = ?"
     )
-    .run()
-    .catch(() => {});
+      .bind(n.kind)
+      .first<{ legacy: number }>();
+    if (!reg) return; // Unknown kind: drop quietly.
+    const pref = await DB.prepare(
+      `SELECT enabled FROM notification_preferences
+       WHERE user_id = ? AND kind = ? AND channel = 'in_app'`
+    )
+      .bind(n.userId, n.kind)
+      .first<{ enabled: number }>();
+    if (pref && pref.enabled === 0) return; // Explicit opt-out.
+    const preview = (n.preview || "").replace(/\s+/g, " ").trim().slice(0, 200);
+    // Two static statements - the table is never chosen from input.
+    const sql =
+      reg.legacy === 1
+        ? `INSERT INTO notifications
+             (id, user_id, kind, actor_id, target_type, target_id, preview)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT DO NOTHING`
+        : `INSERT INTO notification_items
+             (id, user_id, kind, actor_id, target_type, target_id, preview)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT DO NOTHING`;
+    await DB.prepare(sql)
+      .bind(
+        crypto.randomUUID(),
+        n.userId,
+        n.kind,
+        n.actorId || null,
+        cleanStr(n.targetType, 40),
+        cleanStr(n.targetId, 200),
+        preview || null
+      )
+      .run();
+  } catch {
+    // Best-effort: swallow everything.
+  }
 }
 
-/** Canonical in-app URL for a notification. Same-origin only — the bell never
+/** Canonical in-app URL for a notification. Same-origin only - the bell never
  *  navigates anywhere these builders do not produce. */
 export function deepLinkFor(n: {
   kind: string;
@@ -137,6 +192,12 @@ export function deepLinkFor(n: {
       return `/hub/post/?id=${encodeURIComponent(tid)}`;
     case "event_reminder":
       return `/events/${encodeURIComponent(tid)}`;
+    case "dm":
+    case "dm_request":
+      return "/messages";
+    case "certificate_issued":
+    case "new_course":
+      return "/academy";
     case "mention":
     case "reply":
     default: {
@@ -154,6 +215,15 @@ export function deepLinkFor(n: {
       }
       if (n.target_type === "event") {
         return `/events/${encodeURIComponent(tid)}`;
+      }
+      if (n.target_type === "conversation") {
+        return "/messages";
+      }
+      if (n.target_type === "course") {
+        return "/academy";
+      }
+      if (n.target_type === "booking") {
+        return "/dashboard";
       }
       return "/";
     }
@@ -179,6 +249,46 @@ export function titleFor(n: {
       return "Poll results are in";
     case "event_reminder":
       return "Event reminder";
+    case "dm":
+      return `${who} sent you a message`;
+    case "dm_request":
+      return `Message request from ${who}`;
+    case "answer":
+      return `${who} answered your question`;
+    case "helpful_marked":
+      return `${who} marked your answer helpful`;
+    case "group_join_request":
+      return `${who} asked to join your group`;
+    case "group_join_approved":
+      return "Your group request was approved";
+    case "invite_redeemed":
+      return `${who} joined with your invite`;
+    case "booking_confirmed":
+      return "Your room booking is confirmed";
+    case "booking_cancelled":
+      return "Your room booking was cancelled";
+    case "guest_arrived":
+      return "Your guest arrived";
+    case "demo_feedback":
+      return `${who} left feedback on your demo`;
+    case "demo_slot":
+      return "Your demo slot is confirmed";
+    case "reflection_shared":
+      return `${who} shared a reflection`;
+    case "certificate_issued":
+      return "Your certificate is ready";
+    case "new_course":
+      return "A new course is available";
+    case "report_outcome":
+      return "An update on your report";
+    case "sanction_notice":
+      return "A notice about your account";
+    case "appeal_decided":
+      return "A decision on your appeal";
+    case "digest_ready":
+      return "Your weekly digest is ready";
+    case "security_alert":
+      return "Security alert for your account";
     default:
       return "New activity";
   }
@@ -203,7 +313,12 @@ async function needUser(c: any) {
   return { err: null as Response | null, userId: s.userId as string };
 }
 
-/* --- GET /notifications — latest first, unread count included --- */
+/* --- GET /notifications - latest first, unread count included ---
+ *
+ * Reads the notification_feed view (0033): the UNION ALL of the legacy
+ * `notifications` table and the new `notification_items` table. `source`
+ * names the table each row came from, so the client can mark it read in
+ * the right place. */
 
 app.get("/notifications", async (c) => {
   const { err, userId } = await needUser(c);
@@ -221,11 +336,11 @@ app.get("/notifications", async (c) => {
   const where = unreadOnly ? "AND n.read_at IS NULL" : "";
   const rows = await DB.prepare(
     `SELECT n.id, n.kind, n.actor_id, n.target_type, n.target_id, n.preview,
-            n.created_at, n.read_at,
+            n.created_at, n.read_at, n.source,
             u.username AS actor_username, u.display_name AS actor_display_name,
             u.name AS actor_name, u.avatar_key AS actor_avatar_key,
             cm.post_slug AS post_slug
-     FROM notifications n
+     FROM notification_feed n
      LEFT JOIN users u ON u.id = n.actor_id
      LEFT JOIN comments cm
        ON n.target_type = 'blog_comment' AND cm.id = n.target_id
@@ -237,12 +352,12 @@ app.get("/notifications", async (c) => {
     .all();
 
   const totalRow = await DB.prepare(
-    `SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? ${unreadOnly ? "AND read_at IS NULL" : ""}`
+    `SELECT COUNT(*) AS n FROM notification_feed WHERE user_id = ? ${unreadOnly ? "AND read_at IS NULL" : ""}`
   )
     .bind(userId)
     .first<{ n: number }>();
   const unreadRow = await DB.prepare(
-    `SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read_at IS NULL`
+    `SELECT COUNT(*) AS n FROM notification_feed WHERE user_id = ? AND read_at IS NULL`
   )
     .bind(userId)
     .first<{ n: number }>();
@@ -258,6 +373,7 @@ app.get("/notifications", async (c) => {
     return {
       id: r.id,
       kind: r.kind,
+      source: r.source,
       title: titleFor({ kind: r.kind, actor_display_name: actor?.display_name || null }),
       actor,
       target_type: r.target_type,
@@ -288,7 +404,28 @@ app.get("/notifications", async (c) => {
   });
 });
 
-/* --- POST /notifications/:id/read — ownership-checked --- */
+/* --- POST /notifications/:id/read - ownership-checked ---
+ *
+ * `source` (query or JSON body) names the table: exactly 'notifications' or
+ * 'notification_items', never interpolated - two static statements. When it
+ * is missing, both tables are tried (older clients predate `source`).
+ * Either unknown, not yours, or already read - same answer for all three. */
+
+const READ_SOURCES = ["notifications", "notification_items"] as const;
+
+function readStatement(table: "notifications" | "notification_items"): string {
+  return table === "notifications"
+    ? `UPDATE notifications SET read_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+       WHERE id = ? AND user_id = ? AND read_at IS NULL`
+    : `UPDATE notification_items SET read_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+       WHERE id = ? AND user_id = ? AND read_at IS NULL`;
+}
+
+function existsStatement(table: "notifications" | "notification_items"): string {
+  return table === "notifications"
+    ? "SELECT id FROM notifications WHERE id = ? AND user_id = ?"
+    : "SELECT id FROM notification_items WHERE id = ? AND user_id = ?";
+}
 
 app.post("/notifications/:id/read", async (c) => {
   const { err, userId } = await needUser(c);
@@ -298,20 +435,44 @@ app.post("/notifications/:id/read", async (c) => {
   const id = cleanStr(c.req.param("id"), 50);
   if (!id) return c.json({ ok: false }, 400);
 
-  const row = await DB.prepare(
-    `UPDATE notifications SET read_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-     WHERE id = ? AND user_id = ? AND read_at IS NULL`
-  )
-    .bind(id, userId)
-    .run();
+  let source: "notifications" | "notification_items" | null = null;
+  const qSource = cleanStr(c.req.query("source"), 20);
+  if (qSource === "notifications" || qSource === "notification_items") {
+    source = qSource;
+  } else {
+    try {
+      const raw = await c.req.text();
+      if (raw) {
+        const parsed: unknown = JSON.parse(raw);
+        const bSource = isRecord(parsed) ? cleanStr(parsed.source, 20) : "";
+        if (bSource === "notifications" || bSource === "notification_items") {
+          source = bSource;
+        }
+      }
+    } catch {
+      // No usable body; fall through to both tables below.
+    }
+  }
 
-  if ((row.meta.changes || 0) === 0) {
-    // Either unknown, not yours, or already read — same answer for all three.
-    const exists = await DB.prepare(
-      "SELECT id FROM notifications WHERE id = ? AND user_id = ?"
-    )
-      .bind(id, userId)
-      .first();
+  const tables = source ? [source] : [...READ_SOURCES];
+  let updated = false;
+  for (const table of tables) {
+    const row = await DB.prepare(readStatement(table)).bind(id, userId).run();
+    if ((row.meta.changes || 0) > 0) {
+      updated = true;
+      break;
+    }
+  }
+
+  if (!updated) {
+    let exists = false;
+    for (const table of tables) {
+      const hit = await DB.prepare(existsStatement(table)).bind(id, userId).first();
+      if (hit) {
+        exists = true;
+        break;
+      }
+    }
     if (!exists) return c.json({ ok: false, error: "Not found." }, 404);
   }
   return c.json({ ok: true });
@@ -328,12 +489,18 @@ app.post("/notifications/read-all", async (c) => {
     return c.json({ ok: false, error: "Too many requests. Please try again shortly." }, 429);
   }
 
-  await DB.prepare(
-    `UPDATE notifications SET read_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-     WHERE user_id = ? AND read_at IS NULL`
-  )
-    .bind(userId)
-    .run();
+  // Both tables: the bell reads the union, so "mark all read" clears both.
+  for (const table of READ_SOURCES) {
+    await DB.prepare(
+      table === "notifications"
+        ? `UPDATE notifications SET read_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+           WHERE user_id = ? AND read_at IS NULL`
+        : `UPDATE notification_items SET read_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+           WHERE user_id = ? AND read_at IS NULL`
+    )
+      .bind(userId)
+      .run();
+  }
 
   return c.json({ ok: true });
 });

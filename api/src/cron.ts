@@ -1,12 +1,21 @@
-/* Scheduled tasks (T25, T33): publish scheduled posts + weekly digest + health monitoring.
+/* Scheduled tasks (T25, T33): publish scheduled posts + the publish queue +
+ * event reminders (old path + event_reminders) + weekly digest + health
+ * monitoring.
  *
  * Runs on Cloudflare Cron Triggers. Three jobs:
  * 1. Every 15 min: publish posts where status='scheduled' AND published_at <= now,
- *    plus event reminders (RSVP → 24h-before reminder email + in-app notification).
+ *    run the publish queue (staff-scheduled page/event/course/lesson publishes
+ *    and ritual runs; newsletter sends stay failed until item 13), event
+ *    reminders (RSVP → 24h-before reminder email + in-app notification, and
+ *    due event_reminders rows with quiet-hours suppression), and poll-close
+ *    notifications.
  * 2. Weekly (Monday 09:00 UTC): digest email to active subscribers with
  *    the week's new published posts + lessons.
- * 3. Every 5 min: health check — ping key endpoints, log to D1,
+ * 3. Every 5 min: health check - ping key endpoints, log to D1,
  *    email the founder on failure.
+ *
+ * Item 12, messaging half only: the retention purge and the deletion
+ * completion job are the compliance cycle's, not this job's.
  */
 import { sendEmail, shell, esc } from "./lib/email";
 import { INBOX } from "./lib/email";
@@ -73,28 +82,28 @@ export async function sendEventReminders(
             kind: "event_reminder",
             targetType: "event",
             targetId: ev.slug,
-            preview: `Reminder: ${ev.title} starts tomorrow — ${when}.`,
+            preview: `Reminder: ${ev.title} starts tomorrow - ${when}.`,
           });
         }
       } catch {}
-      // Reminder email (best effort — the in-app row above stands alone).
+      // Reminder email (best effort - the in-app row above stands alone).
       if (resendKey) {
         const html = shell(
           "See you tomorrow",
           `Reminder: ${ev.title}`,
           `<p style="margin:0 0 16px;">Hello ${esc(r.name || "there")},</p>` +
-            `<p style="margin:0 0 16px;">A reminder that <strong>${esc(ev.title)}</strong> starts tomorrow — ` +
+            `<p style="margin:0 0 16px;">A reminder that <strong>${esc(ev.title)}</strong> starts tomorrow - ` +
             `${esc(when)}${ev.location ? ` at ${esc(ev.location)}` : ""}.</p>` +
             `<p style="margin:0;font-size:13px;color:#5B6862;"><a href="${esc(url)}" style="color:#0C9463;">Event details</a></p>`
         );
         await sendEmail(resendKey, {
           to: r.email,
-          subject: `Tomorrow: ${ev.title} — Brimwood Innovation`,
+          subject: `Tomorrow: ${ev.title} - Brimwood Innovation`,
           html,
           text:
-            `Hello ${r.name || "there"},\n\nA reminder that ${ev.title} starts tomorrow — ${when}` +
+            `Hello ${r.name || "there"},\n\nA reminder that ${ev.title} starts tomorrow - ${when}` +
             `${ev.location ? ` at ${ev.location}` : ""}.\n\nEvent details: ${url}\n\n` +
-            `Build a business. Build yourself.\n— Brimwood Innovation`,
+            `Build a business. Build yourself.\n- Brimwood Innovation`,
         })
           .then(() =>
             DB.prepare(
@@ -115,6 +124,258 @@ export async function sendEventReminders(
     console.log(`event reminder sent for: ${ev.slug}`);
   }
   return reminded;
+}
+
+/**
+ * True when `now` falls inside the [start, end) wall-clock window in `tz`.
+ * Wrap-around aware: a window like 22:00-08:00 spans midnight. start/end are
+ * 'HH:MM' strings (member_settings quiet_start/quiet_end). An unknown
+ * timezone never suppresses - better a reminder than a guess.
+ */
+export function inQuietHours(now: Date, start: string, end: string, tz: string): boolean {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(now);
+    let hh = parts.find((p) => p.type === "hour")?.value ?? "00";
+    const mm = parts.find((p) => p.type === "minute")?.value ?? "00";
+    if (hh === "24") hh = "00"; // midnight in some hour cycles
+    const cur = `${hh}:${mm}`;
+    if (start <= end) return cur >= start && cur < end;
+    return cur >= start || cur < end;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Event reminders, messaging half of item 12 (audit/social/wiring): rows in
+ * `event_reminders` whose due_at has passed get one reminder email plus one
+ * in-app `event_reminder` notification each. Quiet hours (C23) live in
+ * member_settings: a due reminder inside the member's quiet window is marked
+ * suppressed ('quiet_hours') instead of sent. 'opted_out' and 'cancelled'
+ * reasons are written by the RSVP/events code, never here. Rows whose member
+ * or event is gone are marked sent so they stop being due.
+ * Best-effort per row; never throws out of the loop.
+ */
+export async function sendDueReminders(
+  DB: D1Database,
+  resendKey: string | undefined,
+  siteUrl: string
+): Promise<number> {
+  const nowIso = new Date().toISOString();
+  const due = await DB.prepare(
+    `SELECT id, event_id, user_id, offset_minutes FROM event_reminders
+     WHERE sent_at IS NULL AND suppressed_reason IS NULL AND due_at <= ?
+     ORDER BY due_at ASC LIMIT 50`
+  )
+    .bind(nowIso)
+    .all();
+  let sent = 0;
+
+  for (const row of ((due.results as any[]) || [])) {
+    try {
+      const ev = await DB.prepare(
+        "SELECT id, slug, title, starts_at, location FROM events WHERE id = ?"
+      )
+        .bind(row.event_id)
+        .first<any>();
+      const user = await DB.prepare(
+        "SELECT id, email, name FROM users WHERE id = ? AND status = 'active'"
+      )
+        .bind(row.user_id)
+        .first<any>();
+      if (!ev || !user) {
+        await DB.prepare("UPDATE event_reminders SET sent_at = ? WHERE id = ?")
+          .bind(nowIso, row.id)
+          .run();
+        continue;
+      }
+      // Schema defaults (0025) when the member never opened settings.
+      const settings =
+        (await DB.prepare(
+          "SELECT quiet_enabled, quiet_start, quiet_end, tz FROM member_settings WHERE user_id = ?"
+        )
+          .bind(row.user_id)
+          .first<any>()) || {
+          quiet_enabled: 1,
+          quiet_start: "22:00",
+          quiet_end: "08:00",
+          tz: "America/Toronto",
+        };
+      if (
+        settings.quiet_enabled === 1 &&
+        inQuietHours(new Date(), settings.quiet_start, settings.quiet_end, settings.tz)
+      ) {
+        await DB.prepare("UPDATE event_reminders SET suppressed_reason = 'quiet_hours' WHERE id = ?")
+          .bind(row.id)
+          .run();
+        console.log(`event reminder suppressed (quiet hours): ${row.id}`);
+        continue;
+      }
+
+      const soon = row.offset_minutes === 60 ? "in one hour" : "tomorrow";
+      const when = new Date(ev.starts_at).toLocaleString("en-CA", {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: "America/Toronto",
+      });
+      const url = `${siteUrl}/events/${ev.slug}`;
+
+      if (resendKey) {
+        const html = shell(
+          "Event reminder",
+          `Reminder: ${ev.title}`,
+          `<p style="margin:0 0 16px;">Hello ${esc(user.name || "there")},</p>` +
+            `<p style="margin:0 0 16px;">A reminder that <strong>${esc(ev.title)}</strong> starts ${esc(soon)} - ` +
+            `${esc(when)}${ev.location ? ` at ${esc(ev.location)}` : ""}.</p>` +
+            `<p style="margin:0;font-size:13px;color:#5B6862;"><a href="${esc(url)}" style="color:#0C9463;">Event details</a></p>`
+        );
+        await sendEmail(resendKey, {
+          to: user.email,
+          subject: `Reminder: ${ev.title} - Brimwood Innovation`,
+          html,
+          text:
+            `Hello ${user.name || "there"},\n\nA reminder that ${ev.title} starts ${soon} - ${when}` +
+            `${ev.location ? ` at ${ev.location}` : ""}.\n\nEvent details: ${url}\n\n` +
+            `Build a business. Build yourself.\n- Brimwood Innovation`,
+        })
+          .then(() =>
+            DB.prepare(
+              "INSERT INTO email_log (id, kind, to_email, subject, status) VALUES (?, 'event-reminder', ?, ?, 'sent')"
+            )
+              .bind(crypto.randomUUID(), user.email, `Reminder: ${ev.title}`)
+              .run()
+              .catch(() => {})
+          )
+          .catch(() => {});
+      }
+
+      await emitNotification(DB, {
+        userId: user.id,
+        kind: "event_reminder",
+        targetType: "event",
+        targetId: ev.slug,
+        preview: `Reminder: ${ev.title} starts ${soon} - ${when}.`,
+      });
+
+      await DB.prepare("UPDATE event_reminders SET sent_at = ? WHERE id = ?")
+        .bind(nowIso, row.id)
+        .run();
+      sent++;
+      console.log(`event reminder sent: ${row.id}`);
+    } catch (e) {
+      console.error("event reminder row failed:", row?.id, e);
+    }
+  }
+  return sent;
+}
+
+/** One claimed publish_queue row. Throws on failure; the caller records it. */
+async function dispatchPublishRow(DB: D1Database, row: any): Promise<void> {
+  const { item_type, item_id, action } = row;
+
+  // The newsletter send machinery is item 13 (compliance cycle): never fake
+  // a send. The row fails with a requeue note for the item-13 cycle.
+  if (item_type === "newsletter_issue" && action === "send") {
+    throw new Error("Newsletter send lands with item 13; requeue after that item ships.");
+  }
+
+  // D9: each ritual run inserts one feed post from the ritual's own copy.
+  if (item_type === "ritual_run") {
+    if (action !== "publish") throw new Error(`Unsupported action '${action}' for ritual_run.`);
+    const ritual = await DB.prepare(
+      "SELECT id, title, body_template, group_id, author_id FROM rituals WHERE id = ?"
+    )
+      .bind(item_id)
+      .first<any>();
+    if (!ritual) throw new Error(`Ritual ${item_id} not found.`);
+    await DB.prepare(
+      `INSERT INTO feed_posts (id, author_id, body, intent, audience, group_id, ritual_id)
+       VALUES (?, ?, ?, 'ritual', ?, ?, ?)`
+    )
+      .bind(
+        crypto.randomUUID(),
+        ritual.author_id,
+        `${ritual.title}\n\n${ritual.body_template}`,
+        ritual.group_id ? "group" : "members",
+        ritual.group_id || null,
+        ritual.id
+      )
+      .run();
+    return;
+  }
+
+  // Closed map: page/event/course/lesson -> their table. Only the status
+  // value is bound; the table name never comes from input.
+  const tables: Record<string, string> = {
+    page: "pages",
+    event: "events",
+    course: "courses",
+    lesson: "lessons",
+  };
+  const table = tables[item_type];
+  if (!table) throw new Error(`Unknown item_type '${item_type}'.`);
+  let status: string;
+  if (action === "publish") status = "published";
+  else if (action === "unpublish") status = "draft";
+  else throw new Error(`Unknown action '${action}' for ${item_type}.`);
+  const upd = await DB.prepare(`UPDATE ${table} SET status = ? WHERE id = ?`)
+    .bind(status, item_id)
+    .run();
+  if ((upd.meta.changes || 0) === 0) throw new Error(`${item_type} ${item_id} not found.`);
+}
+
+/**
+ * Publish queue, messaging half of item 12 (D9): staff-scheduled publishes
+ * go live here. Each row is claimed atomically (status pending -> running
+ * with attempts + 1), so at-least-once cron retries cannot double-publish.
+ * Success marks the row done; any failure marks it failed with the reason
+ * (trimmed to 200 chars). Best-effort per row; never throws out of the loop.
+ *
+ * Explicitly out of scope this cycle: the retention purge and the deletion
+ * completion job (compliance cycle).
+ */
+export async function runPublishQueue(DB: D1Database): Promise<number> {
+  const nowIso = new Date().toISOString();
+  const due = await DB.prepare(
+    `SELECT id, item_type, item_id, action, attempts FROM publish_queue
+     WHERE status = 'pending' AND run_at <= ? ORDER BY run_at ASC LIMIT 20`
+  )
+    .bind(nowIso)
+    .all();
+  let done = 0;
+
+  for (const row of ((due.results as any[]) || [])) {
+    try {
+      const claimed = await DB.prepare(
+        "UPDATE publish_queue SET status = 'running', attempts = attempts + 1 WHERE id = ? AND status = 'pending'"
+      )
+        .bind(row.id)
+        .run();
+      if ((claimed.meta.changes || 0) === 0) continue; // taken by another worker
+      await dispatchPublishRow(DB, row);
+      await DB.prepare("UPDATE publish_queue SET status = 'done', finished_at = ? WHERE id = ?")
+        .bind(nowIso, row.id)
+        .run();
+      done++;
+      console.log(`publish queue done: ${row.item_type}/${row.action} ${row.item_id}`);
+    } catch (e) {
+      const msg = String((e as Error)?.message || e).slice(0, 200);
+      await DB.prepare("UPDATE publish_queue SET status = 'failed', last_error = ? WHERE id = ?")
+        .bind(msg, row.id)
+        .run()
+        .catch(() => {});
+      console.error("publish queue row failed:", row?.id, msg);
+    }
+  }
+  return done;
 }
 
 /**
@@ -157,7 +418,7 @@ export async function sendPollCloseNotifications(DB: D1Database): Promise<number
   return notified;
 }
 
-/** Digest body for one subscriber — unsubUrl is fully built by the caller. */
+/** Digest body for one subscriber - unsubUrl is fully built by the caller. */
 export function digestBody(
   postItems: string,
   lessonItems: string,
@@ -213,11 +474,24 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
     }
     // Event reminders ride the same 15-minute cadence (audit/social/wiring):
     // RSVP → reminder, 24h before each published event. Idempotent.
+    // events.reminder_sent_at is in the merged schema (0020), so this older
+    // path stays alongside the event_reminders-based job below.
     await sendEventReminders(
       DB,
       RESEND_API_KEY,
       env.SITE_URL || "https://brimwoodinnovation.com"
     ).catch((e) => console.error("event reminders failed:", e));
+    // Event reminders, new path (item 12, messaging half): due
+    // event_reminders rows get one email + one in-app notification each,
+    // honouring quiet hours. Best-effort per row.
+    await sendDueReminders(
+      DB,
+      RESEND_API_KEY,
+      env.SITE_URL || "https://brimwoodinnovation.com"
+    ).catch((e) => console.error("due event reminders failed:", e));
+    // Publish queue (item 12, messaging half): staff-scheduled publishes go
+    // live. Rows record their own failures; this never throws.
+    await runPublishQueue(DB).catch((e) => console.error("publish queue failed:", e));
     // Poll close notifications (social-UX reconciliation): voters of newly
     // closed polls get one `poll_closed` notification each. Idempotent.
     await sendPollCloseNotifications(DB).catch((e) =>
@@ -315,7 +589,7 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
           html,
           text,
           // Bulk mail header (RFC 2369). One-click POST (RFC 8058) needs a
-          // POST unsubscribe endpoint — flagged for the api-core agent.
+          // POST unsubscribe endpoint - flagged for the api-core agent.
           headers: { "List-Unsubscribe": "<" + unsubUrl + ">" },
         });
         sent++;
@@ -414,7 +688,7 @@ async function runHealthCheck(DB: D1Database, resendKey: string | undefined, env
   try {
     await sendEmail(resendKey, {
       to: INBOX,
-      subject: "Brimwood health alert — " + failures.length + " check(s) failing",
+      subject: "Brimwood health alert - " + failures.length + " check(s) failing",
       html,
       text: "Brimwood health alert\n\nFailures:\n" + failures.join("\n"),
     });
