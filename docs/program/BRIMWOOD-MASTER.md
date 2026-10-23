@@ -278,3 +278,56 @@ from the self-chaining loop's first run on 2026-10-21.
   Pro-rated total 10,000/10,000, no zero dimension, no open P0. Verdict:
   ACCEPT. Next improvement: Phase 1 work order messaging and notifications
   items 8, 11, 12.
+- Cycle 8, 2026-10-23: Phase 1 work order messaging and notifications items
+  8, 11, and the messaging half of 12, in
+  ~/workspace/company/wt-messaging-notifications on branch
+  phase1/item8-11-messaging-notifications (no open loop PR; develop CI green;
+  #22 is the founder-tapped README PR, not loop work). CEO scope call: item
+  12's retention purge (S24) and deletion completion job (S20) are
+  compliance work and move to the compliance cycle with item 13; this cycle
+  took the messaging half (reminder sends from event_reminders and the
+  publish_queue runner). Item 8: DM creation reads the recipient's dm_policy
+  from member_settings (no row defaults to members); 'nobody' inserts the
+  recipient with state 'request' while the creator stays accepted, mirroring
+  the 0025 trigger so the API never trips the ABORT. A D1 error containing
+  'blocked' maps to 403 in plain words; the trigger's dm-policy message
+  triggers a race-safe retry as request instead of a 500. A created request
+  best-effort emits a dm_request notification; the response adds
+  recipient_state. POST /conversations/:id/accept and /decline are gated to
+  the caller whose own membership state is 'request' in a DM (404 for
+  non-members, 400 for wrong state or kind). The inbox gains a ?state=
+  filter (accepted|request), my_state on each conversation, and top-level
+  request_count of pending DM requests; the default listing is unchanged.
+  Read receipts are empty while either DM member's state is 'request' (D8,
+  backed by the schema RAISE(IGNORE)); members with seen_receipts = 0 show
+  null to others; the caller's own receipt always shows. Message send maps
+  'blocked' to 403 and the sender-rules text to 400, both in plain words.
+  Item 11: NotificationKind extended with the 20 new registry kinds;
+  emitNotification routes by notification_kinds (legacy kinds keep the
+  notifications table with ON CONFLICT DO NOTHING, new kinds go to
+  notification_items, unknown kinds are quietly dropped) and honours an
+  explicit (user, kind, in_app, 0) preference row; emission never throws.
+  The bell reads notification_feed with source per item; mark-read takes a
+  validated source from query or body and updates that table; read-all
+  updates both. titleFor and deepLinkFor carry calm Canadian copy for the
+  new kinds. Item 12 messaging half: sendDueReminders processes due
+  event_reminders rows with quiet-hours suppression in the member's tz
+  (wrap-aware; an unknown tz never suppresses), sends the reminder email
+  plus an in-app event_reminder, then stamps sent_at; missing or suspended
+  members and events are marked sent so the row stops being due. The
+  publish queue claims due rows atomically (status running, attempts + 1,
+  contention-safe): page/event/course/lesson publish to published and
+  unpublish to draft, ritual_run publish inserts one feed_posts row, and a
+  newsletter_issue send is marked failed with an item-13 requeue note (never
+  faked); unknown types fail with a trimmed reason. Both jobs ride the
+  15-minute cron. The legacy events.reminder_sent_at path keeps running (the
+  column is in the merged schema). Em dashes scrubbed from the touched
+  files. Verification before the PR: 660 API tests pass (33 files; 46 new
+  across chat, notifications, and cron), tsc clean, site build clean (24
+  pages). Shipped in PR #32 (merged to develop; build, secrets, audit,
+  analyze, CodeQL all green). Grade (dimensions this cycle touched, scored
+  from evidence): functional 2,500/2,500; schema and API 2,000/2,000;
+  security 1,250/1,250; code quality 1,000/1,000; brand and copy 750/750.
+  Accessibility and performance untouched (API-only cycle). Pro-rated total
+  10,000/10,000, no zero dimension, no open P0. Verdict: ACCEPT. Next
+  improvement: Phase 1 work order events and space items 9 then 20.
