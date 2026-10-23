@@ -44,6 +44,38 @@ export interface SessionRow {
   device_id?: string | null;
 }
 
+/** Built-in notification_kinds registry (migration 0033, Phase 1 item 11):
+ *  kind -> legacy flag (1 = the six legacy kinds in `notifications`,
+ *  0 = new kinds in `notification_items`). */
+const NOTIF_KIND_LEGACY: Record<string, number> = {
+  mention: 1,
+  reply: 1,
+  follow: 1,
+  story_reply: 1,
+  poll_closed: 1,
+  event_reminder: 1,
+  dm: 0,
+  dm_request: 0,
+  answer: 0,
+  helpful_marked: 0,
+  group_join_request: 0,
+  group_join_approved: 0,
+  invite_redeemed: 0,
+  booking_confirmed: 0,
+  booking_cancelled: 0,
+  guest_arrived: 0,
+  demo_feedback: 0,
+  demo_slot: 0,
+  reflection_shared: 0,
+  certificate_issued: 0,
+  new_course: 0,
+  report_outcome: 0,
+  sanction_notice: 0,
+  appeal_decided: 0,
+  digest_ready: 0,
+  security_alert: 0,
+};
+
 export interface MockD1 {
   prepare(sql: string): MockStatement;
   batch(stmts: MockStatement[]): Promise<unknown[]>;
@@ -210,7 +242,21 @@ export function mockD1(handler: SqlHandler | null = null): MockD1 {
               db.calls.push({ sql, params, op: "all" });
               if (db.handler) {
                 const r = (db.handler(sql, params) as { results?: any[] } | void) || {};
-                return { results: r.results ?? [] };
+                if (r.results !== undefined) return { results: r.results };
+              }
+              // Built-in notification_feed view (0033, Phase 1 item 11): the
+              // UNION ALL of both tables' captured inserts, with `source` set.
+              // Tests that need shaped rows serve them via the handler above.
+              if (/from\s+notification_feed/i.test(sql)) {
+                const legacy = (db.inserts.get("notifications") || []).map((r) => ({
+                  ...r,
+                  source: "notifications",
+                }));
+                const items = (db.inserts.get("notification_items") || []).map((r) => ({
+                  ...r,
+                  source: "notification_items",
+                }));
+                return { results: [...legacy, ...items] };
               }
               return { results: [] };
             },
@@ -285,6 +331,14 @@ export function mockD1(handler: SqlHandler | null = null): MockD1 {
                 }
                 db.rateLimitStore.set(key, row);
                 return { count: row.count } as T;
+              }
+              // Built-in notification_kinds registry (0033, Phase 1 item 11):
+              // emitNotification's kind lookup. Unknown kinds -> null (the
+              // caller drops them quietly).
+              if (/from\s+notification_kinds/i.test(sql)) {
+                const kind = String(params[0]);
+                const legacy = NOTIF_KIND_LEGACY[kind];
+                return (legacy === undefined ? null : { kind, legacy }) as T;
               }
               if (db.handler) {
                 const r = (db.handler(sql, params) as { row?: any; results?: any[] } | void) || {};

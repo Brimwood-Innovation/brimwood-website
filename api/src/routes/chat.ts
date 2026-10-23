@@ -1,41 +1,54 @@
 /* Member chat (DMs + groups), audit/social/chat.
  *
  * Mounted by the first mate at "/api/chat". Every route is behind requireUser
- * (members only); every read/write also enforces conversation membership —
+ * (members only); every read/write also enforces conversation membership -
  * a non-member gets 404, never a leak about whether the conversation exists.
  * Mutating routes are covered by the global CSRF guard.
  *
  * Read receipts are derived from conversation_members.last_read_at, so there
- * is no per-message receipt table to write to on every view.
+ * is no per-message receipt table to write to on every view. Receipts are
+ * hidden while a DM is a request (D8) and for members with seen_receipts off.
  *
  * Routes:
- *   GET  /chat/conversations?q=              — list (participants, last-message
+ *   GET  /chat/conversations?q=&state=  - list (participants, last-message
  *                                              preview, unread count, activity
- *                                              order)
- *   POST /chat/conversations                 — start a DM ({kind:'dm',
+ *                                              order); state= filters to the
+ *                                              caller's membership state
+ *                                              ('accepted'|'request'); each
+ *                                              row carries my_state and the
+ *                                              top level carries
+ *                                              request_count (pending DM
+ *                                              requests)
+ *   POST /chat/conversations                 - start a DM ({kind:'dm',
  *                                              user_id}) or a group
  *                                              ({kind:'group', user_ids:[...],
- *                                              title?}); DMs are idempotent
+ *                                              title?}); DMs are idempotent.
+ *                                              A dm_policy='nobody' recipient
+ *                                              joins as a request and gets a
+ *                                              dm_request notification.
+ *   POST /chat/conversations/:id/accept      - accept your own DM request
+ *   POST /chat/conversations/:id/decline     - decline your own DM request
  *   GET  /chat/conversations/:id/messages?cursor=&limit=
- *   POST /chat/conversations/:id/messages    — JSON {body} or multipart
+ *   POST /chat/conversations/:id/messages    - JSON {body} or multipart
  *                                              {body, file}; media uploads to
  *                                              the brimwood-media R2 bucket
- *   POST /chat/conversations/:id/read        — bump last_read_at
- *   POST /chat/conversations/:id/members     — group admins add/remove
- *   GET  /chat/people?q=                     — member directory search
+ *   POST /chat/conversations/:id/read        - bump last_read_at
+ *   POST /chat/conversations/:id/members     - group admins add/remove
+ *   GET  /chat/people?q=                     - member directory search
  *                                              (anonymous-safe: display_name /
  *                                              username / avatar only)
- *   GET  /chat/story-replies                 — replies to the caller's stories;
+ *   GET  /chat/story-replies                 - replies to the caller's stories;
  *                                              feature-detected (see below)
  *
  * Brand rule: anonymous by default. Participant cards expose display_name
- * (initials fallback) and username — never email or real name.
+ * (initials fallback) and username - never email or real name.
  */
 import { Hono } from "hono";
 import { requireUser, type Session } from "../lib/auth";
 import type { Bindings } from "../index";
 import { cleanStr, isRecord } from "../lib/validate";
 import { checkRateLimitD1 } from "../lib/ratelimit-d1";
+import { emitNotification } from "./notifications";
 import { initialsFor } from "./profiles";
 
 const app = new Hono<{ Bindings: Bindings; Variables: { user: Session } }>();
@@ -84,14 +97,14 @@ function participantCard(u: {
   };
 }
 
-/** Membership row + conversation kind/title, or null (→ 404, no leak). */
+/** Membership row + conversation kind/title/state, or null (→ 404, no leak). */
 async function membership(
   DB: D1Database,
   conversationId: string,
   userId: string
-): Promise<{ role: string; last_read_at: string | null; kind: string; title: string | null } | null> {
+): Promise<{ role: string; last_read_at: string | null; state: string; kind: string; title: string | null } | null> {
   return (await DB.prepare(
-    `SELECT cm.role, cm.last_read_at, c.kind, c.title
+    `SELECT cm.role, cm.last_read_at, cm.state, c.kind, c.title
      FROM conversation_members cm
      JOIN conversations c ON c.id = cm.conversation_id
      WHERE cm.conversation_id = ? AND cm.user_id = ?`
@@ -100,6 +113,7 @@ async function membership(
     .first()) as {
     role: string;
     last_read_at: string | null;
+    state: string;
     kind: string;
     title: string | null;
   } | null;
@@ -134,9 +148,17 @@ app.get("/conversations", async (c) => {
   const { DB } = c.env;
   const me = c.get("user").userId as string;
   const q = cleanStr(c.req.query("q"), 60);
+  const stateFilter = cleanStr(c.req.query("state"), 10);
+  const stateOk = stateFilter === "accepted" || stateFilter === "request";
 
   const where: string[] = [];
   const binds: unknown[] = [me, me]; // unread subquery, membership join
+  if (stateOk) {
+    // DM request inbox: show only conversations where the caller is waiting
+    // on the other side (state='request') or fully in (state='accepted').
+    where.push("cm.state = ?");
+    binds.push(stateFilter);
+  }
   if (q) {
     const like = `%${q}%`;
     where.push(
@@ -150,7 +172,7 @@ app.get("/conversations", async (c) => {
 
   const rows = (
     await DB.prepare(
-      `SELECT c.id, c.kind, c.title,
+      `SELECT c.id, c.kind, c.title, cm.state AS my_state,
         (SELECT m.body FROM messages m WHERE m.conversation_id = c.id
          ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_body,
         (SELECT m.r2_key FROM messages m WHERE m.conversation_id = c.id
@@ -217,6 +239,7 @@ app.get("/conversations", async (c) => {
       id: r.id,
       kind: r.kind,
       title,
+      my_state: r.my_state ?? "accepted",
       participants,
       member_count: participants.length,
       last_message: r.last_at
@@ -226,7 +249,17 @@ app.get("/conversations", async (c) => {
     };
   });
 
-  return c.json({ ok: true, conversations });
+  // Pending DM requests for the inbox badge: kind='dm' rows where the
+  // caller's own membership state is 'request'.
+  const reqRow = (await DB.prepare(
+    `SELECT COUNT(*) AS n FROM conversation_members cm
+     JOIN conversations c ON c.id = cm.conversation_id
+     WHERE cm.user_id = ? AND cm.state = 'request' AND c.kind = 'dm'`
+  )
+    .bind(me)
+    .first()) as { n: number } | null;
+
+  return c.json({ ok: true, conversations, request_count: reqRow?.n || 0 });
 });
 
 /* --- Start a conversation --- */
@@ -279,17 +312,64 @@ app.post("/conversations", async (c) => {
     if (existing) return c.json({ ok: true, conversation: { id: existing.id }, existing: true });
 
     const id = crypto.randomUUID();
-    await DB.prepare(
-      "INSERT INTO conversations (id, kind, title, created_by) VALUES (?, 'dm', NULL, ?)"
+    // DM requests (P1-13, D8): honour the recipient's dm_policy. A member
+    // with dm_policy 'nobody' (no member_settings row means the default
+    // 'members') gets the DM as a request; the creator is always accepted.
+    const settings = (await DB.prepare(
+      "SELECT dm_policy FROM member_settings WHERE user_id = ?"
     )
-      .bind(id, me)
-      .run();
-    await DB.prepare(
-      "INSERT INTO conversation_members (conversation_id, user_id, role) VALUES (?, ?, 'member'), (?, ?, 'member')"
-    )
-      .bind(id, me, id, ids[0])
-      .run();
-    return c.json({ ok: true, conversation: { id, kind: "dm" } });
+      .bind(ids[0])
+      .first()) as { dm_policy: string } | null;
+    let recipientState = settings?.dm_policy === "nobody" ? "request" : "accepted";
+    try {
+      await DB.prepare(
+        "INSERT INTO conversations (id, kind, title, created_by) VALUES (?, 'dm', NULL, ?)"
+      )
+        .bind(id, me)
+        .run();
+      await DB.prepare(
+        "INSERT INTO conversation_members (conversation_id, user_id, role, state) VALUES (?, ?, 'member', 'accepted'), (?, ?, 'member', ?)"
+      )
+        .bind(id, me, id, ids[0], recipientState)
+        .run();
+    } catch (e) {
+      const msg = String((e as Error)?.message || e);
+      if (msg.includes("blocked")) {
+        // S12: the schema blocks DMs across a block, both ways.
+        return c.json(
+          { ok: false, error: "Messaging is not available with this member." },
+          403
+        );
+      }
+      if (msg.includes("this member takes DMs as requests only")) {
+        // Race: the recipient switched to dm_policy 'nobody' between the
+        // settings read and the insert. The conversation row above stands;
+        // land the recipient row as a request instead of failing.
+        recipientState = "request";
+        await DB.prepare(
+          "INSERT INTO conversation_members (conversation_id, user_id, role, state) VALUES (?, ?, 'member', 'request')"
+        )
+          .bind(id, ids[0])
+          .run();
+      } else {
+        throw e;
+      }
+    }
+    if (recipientState === "request") {
+      // Best-effort: the request shows in the recipient's bell too.
+      await emitNotification(DB, {
+        userId: ids[0],
+        kind: "dm_request",
+        actorId: me,
+        targetType: "conversation",
+        targetId: id,
+        preview: "Someone would like to message you.",
+      }).catch(() => {});
+    }
+    return c.json({
+      ok: true,
+      conversation: { id, kind: "dm", recipient_state: recipientState },
+    });
   }
 
   // Group chat: at least two others; creator becomes admin.
@@ -333,6 +413,50 @@ app.post("/conversations", async (c) => {
       .run();
   }
   return c.json({ ok: true, conversation: { id, kind: "group", title } });
+});
+
+/* --- Accept / decline a DM request ---
+ *
+ * Only the member whose OWN membership state is 'request' in a kind='dm'
+ * conversation may call these. Accepting flips them to 'accepted'; declining
+ * flips them to 'declined'. 404 for non-members, 400 for wrong state/kind. */
+
+app.post("/conversations/:id/accept", async (c) => {
+  const { DB } = c.env;
+  const me = c.get("user").userId as string;
+  const cid = cleanStr(c.req.param("id"), 64);
+  if (!cid) return c.json({ ok: false }, 400);
+
+  const mem = await membership(DB, cid, me);
+  if (!mem) return c.json({ ok: false, error: "Conversation not found." }, 404);
+  if (mem.kind !== "dm" || mem.state !== "request") {
+    return c.json({ ok: false, error: "There is no message request to accept here." }, 400);
+  }
+  await DB.prepare(
+    "UPDATE conversation_members SET state = 'accepted' WHERE conversation_id = ? AND user_id = ? AND state = 'request'"
+  )
+    .bind(cid, me)
+    .run();
+  return c.json({ ok: true, state: "accepted" });
+});
+
+app.post("/conversations/:id/decline", async (c) => {
+  const { DB } = c.env;
+  const me = c.get("user").userId as string;
+  const cid = cleanStr(c.req.param("id"), 64);
+  if (!cid) return c.json({ ok: false }, 400);
+
+  const mem = await membership(DB, cid, me);
+  if (!mem) return c.json({ ok: false, error: "Conversation not found." }, 404);
+  if (mem.kind !== "dm" || mem.state !== "request") {
+    return c.json({ ok: false, error: "There is no message request to decline here." }, 400);
+  }
+  await DB.prepare(
+    "UPDATE conversation_members SET state = 'declined' WHERE conversation_id = ? AND user_id = ? AND state = 'request'"
+  )
+    .bind(cid, me)
+    .run();
+  return c.json({ ok: true, state: "declined" });
 });
 
 /* --- Thread: messages with cursor pagination --- */
@@ -397,15 +521,41 @@ app.get("/conversations/:id/messages", async (c) => {
   }));
 
   // Read receipts for the UI ("Seen" / "Seen by N").
-  const receipts = (
+  // No read state while a DM request is pending (D8): when either member's
+  // state is 'request', receipts stay empty. A member with seen_receipts = 0
+  // (member_settings) stays hidden; the caller's own receipt always shows.
+  const members = (
     await DB.prepare(
-      "SELECT user_id, last_read_at FROM conversation_members WHERE conversation_id = ?"
+      "SELECT user_id, last_read_at, state FROM conversation_members WHERE conversation_id = ?"
     )
       .bind(cid)
       .all()
-  ).results as { user_id: string; last_read_at: string | null }[];
+  ).results as { user_id: string; last_read_at: string | null; state: string }[];
   const read_receipts: Record<string, string | null> = {};
-  for (const r of receipts) read_receipts[r.user_id] = r.last_read_at;
+  const pendingRequest =
+    mem.kind === "dm" && members.some((m) => m.state === "request");
+  if (!pendingRequest) {
+    const others = members.filter((m) => m.user_id !== me).map((m) => m.user_id);
+    let hidden = new Set<string>();
+    if (others.length) {
+      const srows = (
+        await DB.prepare(
+          `SELECT user_id, seen_receipts FROM member_settings WHERE user_id IN (${others
+            .map(() => "?")
+            .join(",")})`
+        )
+          .bind(...others)
+          .all()
+      ).results as { user_id: string; seen_receipts: number }[];
+      hidden = new Set(
+        srows.filter((s) => s.seen_receipts === 0).map((s) => s.user_id)
+      );
+    }
+    for (const m of members) {
+      read_receipts[m.user_id] =
+        m.user_id === me ? m.last_read_at : hidden.has(m.user_id) ? null : m.last_read_at;
+    }
+  }
 
   return c.json({
     ok: true,
@@ -472,11 +622,29 @@ app.post("/conversations/:id/messages", async (c) => {
   }
 
   const id = crypto.randomUUID();
-  await DB.prepare(
-    "INSERT INTO messages (id, conversation_id, sender_id, body, r2_key) VALUES (?, ?, ?, ?, ?)"
-  )
-    .bind(id, cid, me, body, r2Key)
-    .run();
+  try {
+    await DB.prepare(
+      "INSERT INTO messages (id, conversation_id, sender_id, body, r2_key) VALUES (?, ?, ?, ?, ?)"
+    )
+      .bind(id, cid, me, body, r2Key)
+      .run();
+  } catch (e) {
+    const msg = String((e as Error)?.message || e);
+    if (msg.includes("blocked")) {
+      // S12: no messages across a block, either way.
+      return c.json(
+        { ok: false, error: "Messaging is not available with this member." },
+        403
+      );
+    }
+    if (msg.includes("sender cannot post in this conversation")) {
+      return c.json(
+        { ok: false, error: "You cannot post in this conversation." },
+        400
+      );
+    }
+    throw e;
+  }
 
   // Sending counts as reading: keep the sender's own unread count honest.
   await DB.prepare(
@@ -602,7 +770,7 @@ app.get("/people", async (c) => {
  * Contract with the stories area (migration 0018, landed mid-task):
  *   stories(id, author_id, r2_key, kind, created_at, expires_at)
  *   story_replies(id, story_id, from_user_id, body, created_at)
- * Replies are NOT DMs themselves — this endpoint is the chat area's side of
+ * Replies are NOT DMs themselves - this endpoint is the chat area's side of
  * the contract: every reply to one of the caller's stories shows up here.
  * The sqlite_master feature-detect stays as cheap insurance for checkouts
  * that predate 0018. */
