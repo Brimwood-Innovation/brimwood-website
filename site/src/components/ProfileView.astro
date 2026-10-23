@@ -1,8 +1,9 @@
 ---
 /* Public member profile view (profiles area, social-UX overhaul).
- * Renders whatever fields the API's server-side visibility filter returned —
- * the page never decides visibility itself. Sections: About, Hobbies,
- * Achievements, Education, Milestones. Empty sections never render. */
+ * Renders whatever fields the API's server-side visibility filter returned -
+ * the page never decides visibility itself. Sections: About, Building now,
+ * Skills, Hobbies, Achievements, Work, Education. D11: date of birth, gender,
+ * and life events are never collected or shown. Empty sections never render. */
 import Avatar from "./Avatar.astro";
 
 interface Props {
@@ -46,11 +47,10 @@ const secStyle = "margin-top:32px;text-align:left;";
   {profile.bio && <p id="uBio" style="margin-top:20px;line-height:1.7;text-align:left;">{profile.bio}</p>}
 
   {
-    (profile.location || profile.gender || profile.website || socialEntries.length > 0) && (
+    (profile.location || profile.website || socialEntries.length > 0) && (
       <div style={secStyle}>
         <div class="kicker">About</div>
         {profile.location && <p>📍 {profile.location}</p>}
-        {profile.gender && <p>🧭 {profile.gender}</p>}
         {profile.website && (
           <p>
             🔗{" "}
@@ -74,6 +74,38 @@ const secStyle = "margin-top:32px;text-align:left;";
             ))}
           </p>
         )}
+      </div>
+    )
+  }
+
+  {
+    (profile.building_now || profile.can_help_with || profile.looking_for) && (
+      <div style={secStyle}>
+        <div class="kicker">Building</div>
+        {profile.building_now && <p>🛠 {profile.building_now}</p>}
+        {profile.can_help_with && (
+          <p>
+            <strong>Can help with:</strong> {profile.can_help_with}
+          </p>
+        )}
+        {profile.looking_for && (
+          <p>
+            <strong>Looking for:</strong> {profile.looking_for}
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  {
+    profile.skills?.length > 0 && (
+      <div style={secStyle}>
+        <div class="kicker">Skills</div>
+        <p>
+          {profile.skills.map((s: any) => (
+            <span style={chip}>{typeof s === "string" ? s : s.label || s.slug}</span>
+          ))}
+        </p>
       </div>
     )
   }
@@ -131,21 +163,6 @@ const secStyle = "margin-top:32px;text-align:left;";
             {e.degree && <> · {e.degree}</>}
             <span class="admin-muted"> · {e.kind === "school" ? "School" : "College"}</span>
             {e.years && <span class="admin-muted"> ({e.years})</span>}
-          </p>
-        ))}
-      </div>
-    )
-  }
-
-  {
-    profile.life_events?.length > 0 && (
-      <div style={secStyle}>
-        <div class="kicker">Milestones</div>
-        {profile.life_events.map((m: any) => (
-          <p>
-            <strong>✦ {m.title}</strong>
-            {m.date && <span class="admin-muted"> · {m.date}</span>}
-            {m.description && <><br /><span class="admin-muted">{m.description}</span></>}
           </p>
         ))}
       </div>

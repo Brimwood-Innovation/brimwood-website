@@ -6,20 +6,28 @@
  * opt-in to a public profile.
  *
  * Routes (mounted at /api):
- *   GET   /users/me           — authenticated; full own profile
- *   PATCH /users/me           — authenticated; identity fields + username (legacy editor)
- *   POST  /users/me/avatar    — authenticated; 5MB image upload to R2, member-scoped key
- *   GET   /users/:id          — relationship-filtered; delegates to the /profiles/:id engine
- *   GET   /profiles/me        — authenticated; full own profile incl. dob, gender, visibility map
- *   PATCH /profiles/me        — authenticated; rich-profile editor (all fields validated)
- *   POST  /profiles/me/avatar — authenticated; avatar upload (canonical; syncs both key columns)
- *   GET   /profiles/:id       — relationship-filtered view: owner/admin see everything,
+ *   GET   /users/me           - authenticated; full own profile
+ *   PATCH /users/me           - authenticated; identity fields + username (legacy editor)
+ *   POST  /users/me/avatar    - authenticated; 5MB image upload to R2, member-scoped key
+ *   GET   /users/:id          - relationship-filtered; delegates to the /profiles/:id engine
+ *   GET   /profiles/me        - authenticated; full own profile incl. member_profiles,
+ *                               skills, and the per-field visibility map
+ *   PATCH /profiles/me        - authenticated; rich-profile editor (all fields validated)
+ *   POST  /profiles/me/avatar - authenticated; avatar upload (canonical; syncs both key columns)
+ *   GET   /profiles/:id       - relationship-filtered view: owner/admin see everything,
  *                               members see public+members fields, anonymous sees public
  *                               fields only when show_profile=1 AND status='active'; else 404
- *   PATCH /admin/users/:id    — admin; role, status, display_name override
+ *   GET   /skill-tags         - public; curated skill tag list for the editor
+ *   PATCH /admin/users/:id    - admin; role, status, display_name override
  * (Admin list lives in admin.ts: GET /api/admin/users with ?q= search + pagination.)
  *
- * NOTE: /users/me is registered BEFORE /users/:id — Hono matches in
+ * D11: date of birth, gender, and life events are no longer collected. The API
+ * never selects or writes those columns; sending new values is rejected at the
+ * boundary with a 400 (the 0025 triggers would ABORT the write as a 500).
+ * Per-field visibility lives in profile_field_visibility (0025); new profile
+ * content lives in member_profiles and member_skills.
+ *
+ * NOTE: /users/me is registered BEFORE /users/:id - Hono matches in
  * registration order, otherwise "me" would be treated as an id.
  */
 import { Hono } from "hono";
@@ -175,23 +183,26 @@ export function initialsFor(name: string): string {
   return ch ? ch.toUpperCase() + "." : "Member";
 }
 
-/* ---------------- Rich profiles: per-field visibility (0016) ----------------
+/* ---------------- Rich profiles: per-field visibility (0025) ----------------
  *
  * Every profile field carries its own audience level:
- *   public   — anyone, including anonymous visitors (only on show_profile=1 profiles)
- *   members  — signed-in members
- *   only-me  — the profile owner (and admins) only
+ *   public   - anyone, including anonymous visitors (only on show_profile=1 profiles)
+ *   members  - signed-in members
+ *   only-me  - the profile owner (and admins) only
  *
- * Brand rule: anonymous by default. dob and gender default to only-me; every
- * other field defaults to public, preserving the pre-0016 public-profile
- * contract for show_profile=1 users. All filtering happens server-side —
- * the API never leaks an only-me field to another viewer.
+ * Brand rule: anonymous by default. The per-field visibility rows live in
+ * profile_field_visibility (0025), the source of truth; a missing row means
+ * the API default, which is public for every field - preserving the
+ * pre-0016 public-profile contract for show_profile=1 users. D11 removed
+ * dob, gender, and life events from the field set entirely. All filtering
+ * happens server-side - the API never leaks an only-me field to another
+ * viewer.
  */
 
 export const VISIBILITY_LEVELS = ["public", "members", "only-me"] as const;
 export type VisibilityLevel = (typeof VISIBILITY_LEVELS)[number];
 
-/** Fields that carry a per-field visibility setting. */
+/** Fields that carry a per-field visibility setting (matches the 0025 CHECK). */
 export const VISIBILITY_FIELDS = [
   "display_name",
   "bio",
@@ -203,12 +214,15 @@ export const VISIBILITY_FIELDS = [
   "education",
   "hobbies",
   "achievements",
-  "life_events",
-  "gender",
-  "dob",
+  "building_now",
+  "can_help_with",
+  "looking_for",
+  "skills",
+  "projects",
+  "badges",
 ] as const;
 
-/** Default visibility per field. */
+/** Default visibility per field: public unless the member overrides it. */
 export const DEFAULT_VISIBILITY: Record<string, VisibilityLevel> = {
   display_name: "public",
   bio: "public",
@@ -220,9 +234,12 @@ export const DEFAULT_VISIBILITY: Record<string, VisibilityLevel> = {
   education: "public",
   hobbies: "public",
   achievements: "public",
-  life_events: "public",
-  gender: "only-me",
-  dob: "only-me",
+  building_now: "public",
+  can_help_with: "public",
+  looking_for: "public",
+  skills: "public",
+  projects: "public",
+  badges: "public",
 };
 
 export type Relationship = "owner" | "admin" | "member" | "anonymous";
@@ -230,7 +247,7 @@ export type Relationship = "owner" | "admin" | "member" | "anonymous";
 const KNOWN_FIELDS = new Set<string>(VISIBILITY_FIELDS);
 const KNOWN_LEVELS = new Set<string>(VISIBILITY_LEVELS);
 
-/** Validate and sanitize a profile_visibility map from user input.
+/** Validate and sanitize a visibility map from user input.
  * Unknown fields are dropped silently; unknown levels are rejected. */
 export function validateVisibility(
   raw: unknown
@@ -263,25 +280,40 @@ export function validateVisibility(
   return { ok: true, value: JSON.stringify(out) };
 }
 
-/** Effective visibility for a row: defaults merged under stored overrides.
- * Corrupt stored JSON falls back to defaults (fail closed). */
-export function effectiveVisibility(row: any): Record<string, VisibilityLevel> {
+/** Effective visibility: defaults merged under a stored override map.
+ * Corrupt or unknown entries are ignored (fail closed to defaults). */
+export function effectiveVisibility(stored?: unknown): Record<string, VisibilityLevel> {
   const vis: Record<string, VisibilityLevel> = { ...DEFAULT_VISIBILITY };
-  if (row?.profile_visibility) {
-    try {
-      const stored = JSON.parse(row.profile_visibility);
-      if (stored && typeof stored === "object" && !Array.isArray(stored)) {
-        for (const [k, v] of Object.entries(stored)) {
-          if (KNOWN_FIELDS.has(k) && KNOWN_LEVELS.has(v as string)) {
-            vis[k] = v as VisibilityLevel;
-          }
-        }
+  if (stored && typeof stored === "object" && !Array.isArray(stored)) {
+    for (const [k, v] of Object.entries(stored as Record<string, unknown>)) {
+      if (KNOWN_FIELDS.has(k) && KNOWN_LEVELS.has(v as string)) {
+        vis[k] = v as VisibilityLevel;
       }
-    } catch {
-      /* ignore corrupt JSON; defaults stand */
     }
   }
   return vis;
+}
+
+/** Load a member's stored visibility rows from profile_field_visibility and
+ * merge them over the defaults. A missing table row or an empty result both
+ * mean defaults. */
+export async function loadVisibility(
+  DB: any,
+  userId: string
+): Promise<Record<string, VisibilityLevel>> {
+  const rows: any = await DB.prepare(
+    "SELECT field, visibility FROM profile_field_visibility WHERE user_id = ?"
+  )
+    .bind(userId)
+    .all()
+    .catch(() => null);
+  const stored: Record<string, string> = {};
+  for (const r of rows?.results || []) {
+    if (r && typeof r.field === "string" && typeof r.visibility === "string") {
+      stored[r.field] = r.visibility;
+    }
+  }
+  return effectiveVisibility(stored);
 }
 
 /** True when a requester with `rel` may see `field` under visibility `vis`. */
@@ -300,7 +332,8 @@ export function fieldVisible(
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Validate an ISO date (YYYY-MM-DD): real calendar date, not in the future. */
+/** Validate an ISO date (YYYY-MM-DD): real calendar date, not in the future.
+ * Used for milestone (achievement) dates. */
 export function validPastDate(s: string): boolean {
   if (!DATE_RE.test(s)) return false;
   const [y, m, d] = s.split("-").map(Number);
@@ -310,21 +343,6 @@ export function validPastDate(s: string): boolean {
     return false;
   }
   return dt.getTime() <= Date.now();
-}
-
-/** Validate dob: empty (clears) or a valid past ISO date. */
-export function validateDob(raw: unknown): { ok: boolean; error?: string; value?: string } {
-  const s = cleanStr(raw, 10);
-  if (!s) return { ok: true, value: "" };
-  if (!validPastDate(s)) {
-    return { ok: false, error: "Date of birth must be a valid past date (YYYY-MM-DD)." };
-  }
-  return { ok: true, value: s };
-}
-
-/** Validate gender: empty (clears) or free text, max 60 chars. */
-export function validateGender(raw: unknown): { ok: boolean; error?: string; value?: string } {
-  return { ok: true, value: cleanStr(raw, 60) };
 }
 
 /** Normalize hobbies to a JSON list: accepts an array of strings, a JSON
@@ -438,55 +456,53 @@ export function educationList(row: any): EducationEntry[] {
   }
 }
 
-/** Achievements and life events share one shape: {title, date, description}. */
+/** Achievements share one shape: {title, date, description}. */
 export interface Milestone {
   title: string;
   date: string;
   description: string;
 }
 
-/** Validate a JSON list of milestones (achievements, life events). */
+/** Validate a JSON list of achievements (D11: life events are gone). */
 export function normalizeMilestones(
-  raw: unknown,
-  kind: "achievements" | "life_events"
+  raw: unknown
 ): { ok: boolean; error?: string; value?: string } {
-  const label = kind === "achievements" ? "Achievements" : "Life events";
   if (raw === null || raw === undefined || raw === "") return { ok: true, value: "" };
   let arr: any;
   if (typeof raw === "string") {
     try {
       arr = JSON.parse(raw);
     } catch {
-      return { ok: false, error: `${label} must be valid JSON.` };
+      return { ok: false, error: "Achievements must be valid JSON." };
     }
   } else {
     arr = raw;
   }
-  if (!Array.isArray(arr)) return { ok: false, error: `${label} must be a list.` };
-  if (arr.length > 10) return { ok: false, error: `Too many ${label.toLowerCase()} (max 10).` };
+  if (!Array.isArray(arr)) return { ok: false, error: "Achievements must be a list." };
+  if (arr.length > 10) return { ok: false, error: "Too many achievements (max 10)." };
   const out: Milestone[] = [];
   for (const e of arr) {
     if (typeof e !== "object" || !e) {
-      return { ok: false, error: `Invalid ${label.toLowerCase().slice(0, -1)} entry.` };
+      return { ok: false, error: "Invalid achievement entry." };
     }
     const title = cleanStr(e.title, 100);
     const date = cleanStr(e.date, 10);
     const description = cleanStr(e.description, 300);
     if (!title && !description) continue; // skip empties
-    if (!title) return { ok: false, error: `${label} entries need a title.` };
+    if (!title) return { ok: false, error: "Achievements entries need a title." };
     if (date && !validPastDate(date)) {
-      return { ok: false, error: `${label} dates must be valid past dates (YYYY-MM-DD).` };
+      return { ok: false, error: "Achievement dates must be valid past dates (YYYY-MM-DD)." };
     }
     out.push({ title, date, description });
   }
   return { ok: true, value: JSON.stringify(out) };
 }
 
-/** Read a milestone column as a list of {title, date, description}. */
-export function milestoneList(row: any, col: "achievements" | "life_events"): Milestone[] {
-  if (!row?.[col]) return [];
+/** Read the achievements column as a list of {title, date, description}. */
+export function milestoneList(row: any): Milestone[] {
+  if (!row?.achievements) return [];
   try {
-    const arr = JSON.parse(row[col]);
+    const arr = JSON.parse(row.achievements);
     if (!Array.isArray(arr)) return [];
     return arr
       .filter((e: any) => e && typeof e === "object" && (e.title || e.description))
@@ -534,11 +550,13 @@ export function avatarUrlOf(row: any): string | null {
   return key ? `/api/media/${encodeURIComponent(key)}` : null;
 }
 
-/** Columns selected for a full profile row (0010 + 0016). */
+/** Columns selected for a full profile row (0010; 0016 achievements; D11
+ * removed dob, gender, life_events, and profile_visibility is superseded by
+ * the profile_field_visibility table). */
 const PROFILE_COLUMNS = `id, email, name, role, status, display_name, bio,
   avatar_key, avatar_r2_key, show_profile, username, username_changed_at,
   location, website, social_links, work_history, education, hobbies,
-  dob, gender, achievements, life_events, profile_visibility, created_at`;
+  achievements, created_at`;
 
 async function fetchProfileRow(DB: any, idOrUsername: string): Promise<any> {
   const id = cleanStr(idOrUsername, 64);
@@ -549,13 +567,115 @@ async function fetchProfileRow(DB: any, idOrUsername: string): Promise<any> {
     .first();
 }
 
-/** Build the API-facing profile for `rel`. Owner/admin get everything
- * (including email and the visibility map); everyone else gets only the
- * fields their relationship allows. Email and real name NEVER leave the
- * server for non-owner/non-admin viewers. */
-export function richProfileShape(row: any, rel: Relationship): any {
-  const vis = effectiveVisibility(row);
-  const can = (field: string) => fieldVisible(field, vis, rel);
+/* ---------------- member_profiles and member_skills (0025) ----------------
+ * New profile content lives in side tables, not users: building_now,
+ * can_help_with, looking_for, pinned_post_id, directory_opt_in, and
+ * activity_broadcast in member_profiles; curated skill tags in member_skills.
+ * Skills reference the curated skill_tags list so the directory filter stays
+ * clean; the trg_member_skills_max_12 trigger caps a member at 12. */
+
+/** Curated skill tag: {slug, label}. */
+export interface SkillTag {
+  slug: string;
+  label: string;
+}
+
+const SKILL_SLUG_RE = /^[a-z0-9-]{2,40}$/;
+export const MAX_SKILLS = 12;
+
+/** Normalize a raw skills value to a deduped slug list. Accepts an array of
+ * strings, a JSON array string, or a comma-separated string. */
+export function normalizeSkills(
+  raw: unknown
+): { ok: boolean; error?: string; value?: string[] } {
+  if (raw === null || raw === undefined || raw === "") return { ok: true, value: [] };
+  let arr: string[];
+  if (Array.isArray(raw)) {
+    arr = raw.map((s) => String(s || "").trim().toLowerCase()).filter(Boolean);
+  } else if (typeof raw === "string") {
+    let parsed: unknown = null;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = null;
+    }
+    if (Array.isArray(parsed)) {
+      arr = parsed.map((s) => String(s || "").trim().toLowerCase()).filter(Boolean);
+    } else {
+      arr = raw.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+    }
+  } else {
+    return { ok: false, error: "Skills must be a list." };
+  }
+  const seen = new Set<string>();
+  const slugs: string[] = [];
+  for (const s of arr) {
+    if (!SKILL_SLUG_RE.test(s)) {
+      return { ok: false, error: `Invalid skill "${s}".` };
+    }
+    if (!seen.has(s)) {
+      seen.add(s);
+      slugs.push(s);
+    }
+  }
+  if (slugs.length > MAX_SKILLS) {
+    return { ok: false, error: `Too many skills (max ${MAX_SKILLS}).` };
+  }
+  return { ok: true, value: slugs };
+}
+
+/** Fetch the member_profiles row for a user (null when never set). */
+async function fetchMemberProfileRow(DB: any, userId: string): Promise<any> {
+  return DB.prepare(
+    `SELECT user_id, building_now, can_help_with, looking_for, pinned_post_id,
+            directory_opt_in, activity_broadcast, updated_at
+     FROM member_profiles WHERE user_id = ?`
+  )
+    .bind(userId)
+    .first()
+    .catch(() => null);
+}
+
+/** Fetch a member's skills with labels: [{slug, label}]. */
+export async function fetchMemberSkills(DB: any, userId: string): Promise<SkillTag[]> {
+  const rows: any = await DB.prepare(
+    `SELECT ms.skill_slug AS slug, st.label AS label
+     FROM member_skills ms JOIN skill_tags st ON st.slug = ms.skill_slug
+     WHERE ms.user_id = ? ORDER BY st.label`
+  )
+    .bind(userId)
+    .all()
+    .catch(() => null);
+  return (rows?.results || [])
+    .filter((r: any) => r && r.slug)
+    .map((r: any) => ({ slug: r.slug, label: r.label || r.slug }));
+}
+
+/** Attach member_profiles fields and skills onto a users row for shaping.
+ * Missing side rows leave the extras null/empty. */
+async function attachProfileExtras(DB: any, row: any): Promise<void> {
+  const mp = await fetchMemberProfileRow(DB, row.id);
+  row.building_now = mp?.building_now ?? null;
+  row.can_help_with = mp?.can_help_with ?? null;
+  row.looking_for = mp?.looking_for ?? null;
+  row.pinned_post_id = mp?.pinned_post_id ?? null;
+  row.directory_opt_in = mp ? Number(mp.directory_opt_in) : 0;
+  row.activity_broadcast = mp ? Number(mp.activity_broadcast) : 0;
+  row.skills = await fetchMemberSkills(DB, row.id);
+}
+
+/** Build the API-facing profile for `rel` under visibility `vis`.
+ * Owner/admin get everything (including email and the visibility map);
+ * everyone else gets only the fields their relationship allows. Email and
+ * real name NEVER leave the server for non-owner/non-admin viewers.
+ * directory_opt_in and activity_broadcast are settings: owner/admin only. */
+export function richProfileShape(
+  row: any,
+  rel: Relationship,
+  vis?: Record<string, VisibilityLevel>
+): any {
+  const v = vis || { ...DEFAULT_VISIBILITY };
+  const can = (field: string) => fieldVisible(field, v, rel);
   const user: any = {
     id: row.id,
     username: row.username || null,
@@ -570,10 +690,12 @@ export function richProfileShape(row: any, rel: Relationship): any {
   if (can("work_history")) user.work_history = parseJsonList(row.work_history);
   if (can("education")) user.education = educationList(row);
   if (can("hobbies")) user.hobbies = hobbyList(row);
-  if (can("achievements")) user.achievements = milestoneList(row, "achievements");
-  if (can("life_events")) user.life_events = milestoneList(row, "life_events");
-  if (can("gender")) user.gender = row.gender || "";
-  if (can("dob")) user.dob = row.dob || "";
+  if (can("achievements")) user.achievements = milestoneList(row);
+  if (can("building_now")) user.building_now = row.building_now || "";
+  if (can("can_help_with")) user.can_help_with = row.can_help_with || "";
+  if (can("looking_for")) user.looking_for = row.looking_for || "";
+  if (can("skills")) user.skills = Array.isArray(row.skills) ? row.skills : [];
+  if (can("projects") && row.pinned_post_id) user.pinned_post_id = row.pinned_post_id;
   if (rel === "owner" || rel === "admin") {
     user.email = row.email;
     user.name = row.name;
@@ -581,7 +703,10 @@ export function richProfileShape(row: any, rel: Relationship): any {
     user.status = row.status;
     user.show_profile = row.show_profile;
     user.username_changeable_at = usernameChangeableAt(row.username_changed_at);
-    user.visibility = vis;
+    user.visibility = v;
+    user.pinned_post_id = row.pinned_post_id || null;
+    user.directory_opt_in = row.directory_opt_in ? 1 : 0;
+    user.activity_broadcast = row.activity_broadcast ? 1 : 0;
     // Raw (un-fallback) values the editor needs to round-trip.
     user.display_name_raw = row.display_name || "";
     user.bio_raw = row.bio || "";
@@ -602,7 +727,9 @@ async function relationshipTo(c: any, targetId: string): Promise<Relationship> {
 }
 
 /** Shared profile-view handler: relationship-filtered, anti-enumeration
- * (missing, private, and suspended targets all 404 for strangers). */
+ * (missing, private, and suspended targets all 404 for strangers).
+ * Per-field visibility comes from profile_field_visibility; member_profiles
+ * extras and skills ride along on the row. */
 async function profileView(c: any, idOrUsername: string) {
   const row = await fetchProfileRow(c.env.DB, idOrUsername);
   if (!row) return c.json({ ok: false, error: "Not found." }, 404);
@@ -613,7 +740,9 @@ async function profileView(c: any, idOrUsername: string) {
       return c.json({ ok: false, error: "Not found." }, 404);
     }
   }
-  return c.json({ ok: true, user: richProfileShape(row, rel) });
+  const vis = await loadVisibility(c.env.DB, row.id);
+  await attachProfileExtras(c.env.DB, row);
+  return c.json({ ok: true, user: richProfileShape(row, rel, vis) });
 }
 
 /** Shared avatar-upload handler (POST /users/me/avatar and
@@ -673,7 +802,8 @@ async function handleAvatarUpload(c: any, user: { id: string }) {
 
 /* ---------------- Own profile ---------------- */
 
-/** GET /users/me — full own profile (private fields included; authenticated only). */
+/** GET /users/me - full own profile (private fields included; authenticated only).
+ * Shape is the owner view of the rich profile engine. */
 app.get("/users/me", async (c) => {
   const user = await sessionUser(c);
   const no = needAuth(c, user);
@@ -684,37 +814,9 @@ app.get("/users/me", async (c) => {
     .bind(user!.id)
     .first();
   if (!row) return c.json({ ok: false, error: "Not found." }, 404);
-  return c.json({
-    ok: true,
-    user: {
-      id: row.id,
-      email: row.email,
-      name: row.name,
-      role: row.role,
-      status: row.status,
-      display_name: row.display_name,
-      display_name_public: row.display_name || initialsFor(row.name || ""),
-      bio: row.bio || "",
-      avatar_url: avatarUrlOf(row),
-      show_profile: row.show_profile,
-      username: row.username || null,
-      username_changeable_at: usernameChangeableAt(row.username_changed_at),
-      location: row.location || "",
-      website: row.website || "",
-      social_links: row.social_links || "",
-      work_history: row.work_history || "",
-      education: row.education || "",
-      education_list: educationList(row),
-      hobbies: row.hobbies || "",
-      hobbies_list: hobbyList(row),
-      dob: row.dob || "",
-      gender: row.gender || "",
-      achievements: milestoneList(row, "achievements"),
-      life_events: milestoneList(row, "life_events"),
-      visibility: effectiveVisibility(row),
-      member_since: (row.created_at || "").slice(0, 10),
-    },
-  });
+  const vis = await loadVisibility(c.env.DB, user!.id);
+  await attachProfileExtras(c.env.DB, row);
+  return c.json({ ok: true, user: richProfileShape(row, "owner", vis) });
 });
 
 /** ISO date when the user may next change their username (null = now). */
@@ -724,7 +826,7 @@ function usernameChangeableAt(changedAt: string | null): string | null {
   return next <= Date.now() ? null : new Date(next).toISOString();
 }
 
-/** PATCH /users/me — update display_name, bio, show_profile. */
+/** PATCH /users/me - update display_name, bio, show_profile. */
 app.patch("/users/me", async (c) => {
   const user = await sessionUser(c);
   const no = needAuth(c, user);
@@ -846,7 +948,7 @@ app.patch("/users/me", async (c) => {
   return c.json({ ok: true });
 });
 
-/** POST /users/me/avatar — member avatar upload (5MB, images only).
+/** POST /users/me/avatar - member avatar upload (5MB, images only).
  * Shared handler with POST /profiles/me/avatar. */
 app.post("/users/me/avatar", async (c) => {
   const user = await sessionUser(c);
@@ -856,11 +958,11 @@ app.post("/users/me/avatar", async (c) => {
 });
 
 /* ---------------- Rich profiles (per-field visibility) ----------------
- * NOTE: /profiles/me is registered BEFORE /profiles/:id — Hono matches in
+ * NOTE: /profiles/me is registered BEFORE /profiles/:id - Hono matches in
  * registration order, otherwise "me" would be treated as an id.
  */
 
-/** GET /profiles/me — full own profile incl. dob, gender, and the
+/** GET /profiles/me - full own profile incl. member_profiles, skills, and the
  * per-field visibility map. */
 app.get("/profiles/me", async (c) => {
   const user = await sessionUser(c);
@@ -872,11 +974,21 @@ app.get("/profiles/me", async (c) => {
     .bind(user!.id)
     .first();
   if (!row) return c.json({ ok: false, error: "Not found." }, 404);
-  return c.json({ ok: true, user: richProfileShape(row, "owner") });
+  const vis = await loadVisibility(c.env.DB, user!.id);
+  await attachProfileExtras(c.env.DB, row);
+  return c.json({ ok: true, user: richProfileShape(row, "owner", vis) });
 });
 
-/** PATCH /profiles/me — rich-profile editor. Validates every field; username
- * changes stay on PATCH /users/me (30-day anti-squatting rule). */
+/** PATCH /profiles/me - rich-profile editor. Validates every field; username
+ * changes stay on PATCH /users/me (30-day anti-squatting rule).
+ *
+ * D11: dob, gender, and life_events are rejected at the boundary. Sending a
+ * value returns a 400 with a plain-words message instead of letting the 0025
+ * trigger ABORT the save as a 500. Empty values are ignored (no write at all).
+ *
+ * Writes land in three places: users (identity/content columns), member_profiles
+ * (builder fields), member_skills (curated tags), and profile_field_visibility
+ * (the per-field map). One DB.batch keeps them atomic. */
 app.patch("/profiles/me", async (c) => {
   const user = await sessionUser(c);
   const no = needAuth(c, user);
@@ -894,9 +1006,27 @@ app.patch("/profiles/me", async (c) => {
     return c.json({ ok: false, error: "Invalid request." }, 400);
   }
 
+  const fail = (error: string) => c.json({ ok: false, error }, 400);
+  const D11_MSG = "Date of birth, gender, and life events are no longer collected.";
+
+  // D11 boundary: never let a new value reach the 0025 trigger (which would
+  // ABORT the save as a 500). Empty values are simply ignored.
+  for (const k of ["dob", "gender"] as const) {
+    const v = body[k];
+    if (v !== undefined && v !== null && String(v).trim() !== "") return fail(D11_MSG);
+  }
+  {
+    const v = body.life_events;
+    const has =
+      v !== undefined &&
+      v !== null &&
+      !(typeof v === "string" && v.trim() === "") &&
+      !(Array.isArray(v) && v.length === 0);
+    if (has) return fail(D11_MSG);
+  }
+
   const updates: string[] = [];
   const binds: any[] = [];
-  const fail = (error: string) => c.json({ ok: false, error }, 400);
 
   if (body.display_name !== undefined) {
     const dn = cleanStr(body.display_name, 40);
@@ -946,54 +1076,142 @@ app.patch("/profiles/me", async (c) => {
     updates.push("hobbies = ?");
     binds.push(v.value);
   }
-  if (body.dob !== undefined) {
-    const v = validateDob(body.dob);
-    if (!v.ok) return fail(v.error!);
-    updates.push("dob = ?");
-    binds.push(v.value || null);
-  }
-  if (body.gender !== undefined) {
-    const v = validateGender(body.gender);
-    updates.push("gender = ?");
-    binds.push(v.value || null);
-  }
   if (body.achievements !== undefined) {
-    const v = normalizeMilestones(body.achievements, "achievements");
+    const v = normalizeMilestones(body.achievements);
     if (!v.ok) return fail(v.error!);
     updates.push("achievements = ?");
     binds.push(v.value);
   }
-  if (body.life_events !== undefined) {
-    const v = normalizeMilestones(body.life_events, "life_events");
-    if (!v.ok) return fail(v.error!);
-    updates.push("life_events = ?");
-    binds.push(v.value);
+
+  // member_profiles fields (0025 side table).
+  const mpCols: string[] = [];
+  const mpBinds: any[] = [];
+  const mpField = (key: string, col: string, max: number) => {
+    if (body[key] !== undefined) {
+      mpCols.push(col);
+      mpBinds.push(cleanStr(body[key], max));
+    }
+  };
+  mpField("building_now", "building_now", 140);
+  mpField("can_help_with", "can_help_with", 280);
+  mpField("looking_for", "looking_for", 280);
+  for (const k of ["directory_opt_in", "activity_broadcast"] as const) {
+    if (body[k] !== undefined) {
+      mpCols.push(k);
+      mpBinds.push(body[k] === 1 || body[k] === true ? 1 : 0);
+    }
   }
-  if (body.profile_visibility !== undefined) {
-    const v = validateVisibility(body.profile_visibility);
-    if (!v.ok) return fail(v.error!);
-    updates.push("profile_visibility = ?");
-    binds.push(v.value);
+  if (body.pinned_post_id !== undefined) {
+    const pid = cleanStr(body.pinned_post_id, 64);
+    if (pid) {
+      // A pinned post must be the member's own live post.
+      const post: any = await c.env.DB.prepare(
+        `SELECT id FROM feed_posts
+         WHERE id = ? AND author_id = ? AND status <> 'removed' AND deleted_at IS NULL`
+      )
+        .bind(pid, user!.id)
+        .first();
+      if (!post) return fail("Pinned post not found.");
+      mpCols.push("pinned_post_id");
+      mpBinds.push(pid);
+    } else {
+      mpCols.push("pinned_post_id");
+      mpBinds.push(null);
+    }
   }
-  if (!updates.length) {
-    return fail("Nothing to update.");
+
+  // member_skills: curated tags only (checked against skill_tags).
+  let skillSlugs: string[] | null = null;
+  if (body.skills !== undefined) {
+    const v = normalizeSkills(body.skills);
+    if (!v.ok) return fail(v.error!);
+    skillSlugs = v.value!;
+    if (skillSlugs.length) {
+      const placeholders = skillSlugs.map(() => "?").join(", ");
+      const known: any = await c.env.DB.prepare(
+        `SELECT slug FROM skill_tags WHERE slug IN (${placeholders})`
+      )
+        .bind(...skillSlugs)
+        .all();
+      const knownSet = new Set((known?.results || []).map((r: any) => r.slug));
+      const missing = skillSlugs.filter((s) => !knownSet.has(s));
+      if (missing.length) return fail(`Unknown skill: ${missing[0]}.`);
+    }
+  }
+
+  // Per-field visibility (profile_field_visibility is the source of truth).
+  let visMap: Record<string, VisibilityLevel> | null = null;
+  if (body.visibility !== undefined) {
+    const v = validateVisibility(body.visibility);
+    if (!v.ok) return fail(v.error!);
+    visMap = v.value ? JSON.parse(v.value) : {};
   }
 
   // Fetch email for the audit log (never exposed to the client here).
   const me: any = await c.env.DB.prepare("SELECT email FROM users WHERE id = ?")
     .bind(user!.id)
     .first();
-  await c.env.DB.prepare(
-    `UPDATE users SET ${updates.join(", ")}, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
-  )
-    .bind(...binds, user!.id)
-    .run();
-  await audit(c, user!.id, me?.email || "unknown", "profile.rich.update", `fields: ${updates.length}; ip ${ip}`);
+
+  const stmts: any[] = [];
+  if (updates.length) {
+    stmts.push(
+      c.env.DB.prepare(
+        `UPDATE users SET ${updates.join(", ")}, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
+      ).bind(...binds, user!.id)
+    );
+  }
+  if (mpCols.length) {
+    const cols = ["user_id", ...mpCols].join(", ");
+    const marks = ["?", ...mpCols.map(() => "?")].join(", ");
+    const setClauses = mpCols.map((col) => `${col} = excluded.${col}`).join(", ");
+    stmts.push(
+      c.env.DB.prepare(
+        `INSERT INTO member_profiles (${cols}) VALUES (${marks})
+         ON CONFLICT(user_id) DO UPDATE SET ${setClauses},
+           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`
+      ).bind(user!.id, ...mpBinds)
+    );
+  }
+  if (skillSlugs !== null) {
+    stmts.push(c.env.DB.prepare("DELETE FROM member_skills WHERE user_id = ?").bind(user!.id));
+    for (const slug of skillSlugs) {
+      stmts.push(
+        c.env.DB.prepare("INSERT INTO member_skills (user_id, skill_slug) VALUES (?, ?)").bind(
+          user!.id,
+          slug
+        )
+      );
+    }
+  }
+  if (visMap !== null) {
+    stmts.push(
+      c.env.DB.prepare("DELETE FROM profile_field_visibility WHERE user_id = ?").bind(user!.id)
+    );
+    for (const [field, level] of Object.entries(visMap)) {
+      stmts.push(
+        c.env.DB.prepare(
+          "INSERT INTO profile_field_visibility (user_id, field, visibility) VALUES (?, ?, ?)"
+        ).bind(user!.id, field, level)
+      );
+    }
+  }
+  if (!stmts.length) {
+    return fail("Nothing to update.");
+  }
+
+  await c.env.DB.batch(stmts);
+  await audit(
+    c,
+    user!.id,
+    me?.email || "unknown",
+    "profile.rich.update",
+    `fields: ${updates.length + mpCols.length}; skills: ${skillSlugs === null ? "unchanged" : skillSlugs.length}; visibility: ${visMap === null ? "unchanged" : Object.keys(visMap).length}; ip ${ip}`
+  );
 
   return c.json({ ok: true });
 });
 
-/** POST /profiles/me/avatar — avatar upload; same rules as /users/me/avatar,
+/** POST /profiles/me/avatar - avatar upload; same rules as /users/me/avatar,
  * returns the canonical key and URL. */
 app.post("/profiles/me/avatar", async (c) => {
   const user = await sessionUser(c);
@@ -1002,9 +1220,9 @@ app.post("/profiles/me/avatar", async (c) => {
   return handleAvatarUpload(c, user!);
 });
 
-/** GET /profiles/:id — relationship-filtered profile view. Accepts a user id
+/** GET /profiles/:id - relationship-filtered profile view. Accepts a user id
  * OR a username handle. Server-side field filtering by the requester's
- * relationship and the profile's per-field visibility — only-me fields never
+ * relationship and the profile's per-field visibility - only-me fields never
  * reach another viewer. Private and nonexistent ids both 404 (no enumeration). */
 app.get("/profiles/:id", async (c) => {
   return profileView(c, c.req.param("id"));
@@ -1012,7 +1230,21 @@ app.get("/profiles/:id", async (c) => {
 
 /* ---------------- Public profile ---------------- */
 
-/** GET /users/public — minimal index of opted-in public profiles, for
+/** GET /skill-tags - public; the curated skill tag list the editor offers.
+ * Tags are curated (seeded) so the directory filter stays clean. */
+app.get("/skill-tags", async (c) => {
+  const rows: any = await c.env.DB.prepare(
+    "SELECT slug, label FROM skill_tags ORDER BY label"
+  )
+    .all()
+    .catch(() => null);
+  const tags: SkillTag[] = (rows?.results || [])
+    .filter((r: any) => r && r.slug)
+    .map((r: any) => ({ slug: r.slug, label: r.label || r.slug }));
+  return c.json({ ok: true, tags });
+});
+
+/** GET /users/public - minimal index of opted-in public profiles, for
  * build-time prerendering of /u/:id and /@username pages (OG tags).
  * Only show_profile=1 AND status='active'. No PII beyond id/username. */
 app.get("/users/public", async (c) => {
@@ -1022,7 +1254,7 @@ app.get("/users/public", async (c) => {
   return c.json({ ok: true, users: (rows.results || []).filter((u: any) => u.id) });
 });
 
-/** GET /users/:id — public profile view. Delegates to the same
+/** GET /users/:id - public profile view. Delegates to the same
  * relationship-filtered engine as GET /profiles/:id so per-field visibility
  * is enforced on every surface: anonymous viewers see only public fields of
  * show_profile=1, active profiles. Never returns email, real name, or
@@ -1033,7 +1265,7 @@ app.get("/users/:id", async (c) => {
 
 /* ---------------- Admin ---------------- */
 
-/** PATCH /admin/users/:id — role, status, display_name, show_profile override. Audit-logged. */
+/** PATCH /admin/users/:id - role, status, display_name, show_profile override. Audit-logged. */
 app.patch("/admin/users/:id", async (c) => {
   const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);

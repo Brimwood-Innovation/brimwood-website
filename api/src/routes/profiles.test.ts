@@ -1,20 +1,24 @@
-/* Profiles API tests (Phase D2): anonymity, validation, admin gates,
- * username rules, avatar upload. */
-import { describe, it, expect, beforeEach } from "vitest";
+/* Profiles API tests (Phase D2 + Phase 1 item 7):
+ * anonymity, validation, admin gates, username rules, avatar upload,
+ * D11 (no dob/gender/life events), per-field visibility from
+ * profile_field_visibility, member_profiles fields, member_skills. */
+import { describe, it, expect } from "vitest";
 import app, {
   validateUsername,
   initialsFor,
   validateVisibility,
   effectiveVisibility,
+  loadVisibility,
   fieldVisible,
   validPastDate,
-  validateDob,
   normalizeHobbies,
   hobbyList,
   normalizeEducation,
   educationList,
   normalizeMilestones,
   milestoneList,
+  normalizeSkills,
+  fetchMemberSkills,
   richProfileShape,
   avatarUrlOf,
 } from "./profiles";
@@ -86,7 +90,31 @@ describe("GET /users/me", () => {
     expect(res.status).toBe(200);
     const d: any = await res.json();
     expect(d.user.email).toBe("jane@example.com");
-    expect(d.user.display_name_public).toBe("J.");
+    expect(d.user.display_name).toBe("J."); // initials fallback
+    expect(d.user.visibility.bio).toBe("public");
+    expect(d.user.skills).toEqual([]);
+  });
+  it("never selects or returns dob, gender, or life_events (D11)", async () => {
+    const env = mockEnv();
+    const h = memberSession(env);
+    let seenSql = "";
+    env.DB.handler = (sql) => {
+      if (/from\s+users/i.test(sql)) {
+        seenSql = sql;
+        return { row: userRow() };
+      }
+      return undefined;
+    };
+    const res = await app.request("/users/me", { headers: h }, env as any);
+    expect(res.status).toBe(200);
+    expect(seenSql).not.toMatch(/dob|gender|life_events|profile_visibility/i);
+    const d: any = await res.json();
+    const body = JSON.stringify(d.user);
+    expect(d.user.dob).toBeUndefined();
+    expect(d.user.gender).toBeUndefined();
+    expect(d.user.life_events).toBeUndefined();
+    expect(body).not.toContain("dob");
+    expect(body).not.toContain("gender");
   });
 });
 
@@ -97,7 +125,7 @@ describe("GET /users/:id anonymity", () => {
     const res = await app.request("/users/member-1", {}, env as any);
     expect(res.status).toBe(404);
   });
-  it("404 for nonexistent id (same as private — no enumeration)", async () => {
+  it("404 for nonexistent id (same as private - no enumeration)", async () => {
     const env = mockEnv();
     env.DB.handler = () => ({ row: null });
     const r1 = await app.request("/users/nope", {}, env as any);
@@ -128,7 +156,7 @@ describe("GET /users/:id anonymity", () => {
     const env = mockEnv();
     let seenSql = "";
     env.DB.handler = (sql) => {
-      seenSql = sql;
+      if (/from\s+users/i.test(sql)) seenSql = sql;
       return { row: userRow({ show_profile: 1, username: "jane_builds" }) };
     };
     const res = await app.request("/users/jane_builds", {}, env as any);
@@ -161,7 +189,7 @@ describe("PATCH /users/me validation", () => {
     );
     expect(res.status).toBe(400);
   });
-  it("rejects bio over 500 chars (cleanStr truncates — accepted)", async () => {
+  it("rejects bio over 500 chars (cleanStr truncates - accepted)", async () => {
     const { env, h } = authedEnv();
     const res = await app.request(
       "/users/me",
@@ -348,28 +376,60 @@ describe("admin gates", () => {
   });
 });
 
-/* ---------------- Rich profiles (0016): per-field visibility ---------------- */
+/* ---------------- Item 7: visibility from profile_field_visibility ---------------- */
 
-/** Full profile row including the 0016 columns. */
+/** Full profile row (D11: no dob, gender, life_events, profile_visibility). */
 function richRow(overrides: any = {}) {
   return userRow({
-    dob: null,
-    gender: null,
-    achievements: null,
-    life_events: null,
-    profile_visibility: null,
     avatar_r2_key: null,
+    achievements: null,
     ...overrides,
   });
 }
 
-/** DB handler for profile-view tests: answers the session-user lookup with
- * the viewer row, and every other users query with the target profile row. */
-function profileHandler(target: any, viewerId: string, role = "member") {
+/** DB handler for profile-view tests. Answers:
+ * - readSession's users lookup with the viewer row,
+ * - every other users query with the target profile row,
+ * - profile_field_visibility with the stored visibility rows,
+ * - member_profiles with the side row (or null),
+ * - member_skills with skill rows (labels resolved by the handler). */
+function profileHandler(
+  target: any,
+  viewerId: string,
+  opts: {
+    role?: string;
+    visRows?: { field: string; visibility: string }[];
+    memberProfile?: any;
+    skills?: { slug: string; label: string }[];
+    /** full row for the viewer (defaults to a minimal session row); needed
+     * when the viewer is also the profile target (owner view). */
+    viewerRow?: any;
+  } = {}
+) {
+  const role = opts.role || "member";
   return (sql: string, params: unknown[]) => {
+    if (/profile_field_visibility/i.test(sql)) {
+      return { results: opts.visRows || [] };
+    }
+    if (/from\s+member_profiles/i.test(sql)) {
+      return { row: opts.memberProfile || null };
+    }
+    if (/from\s+member_skills/i.test(sql)) {
+      return { results: (opts.skills || []).map((s) => ({ slug: s.slug, label: s.label })) };
+    }
     if (/from\s+users/i.test(sql)) {
       if (params[0] === viewerId) {
-        return { row: { id: viewerId, role, status: "active", email: `${viewerId}@example.com` } };
+        return {
+          row:
+            opts.viewerRow ||
+            ({
+              id: viewerId,
+              role,
+              status: "active",
+              email: `${viewerId}@example.com`,
+              name: "Viewer",
+            } as any),
+        };
       }
       return { row: target };
     }
@@ -377,22 +437,44 @@ function profileHandler(target: any, viewerId: string, role = "member") {
   };
 }
 
+/** Extras riding on the row for shape tests (as attachProfileExtras sets them). */
+function withExtras(row: any, extras: any = {}) {
+  return {
+    ...row,
+    building_now: null,
+    can_help_with: null,
+    looking_for: null,
+    pinned_post_id: null,
+    directory_opt_in: 0,
+    activity_broadcast: 0,
+    skills: [],
+    ...extras,
+  };
+}
+
 describe("visibility primitives", () => {
-  it("dob and gender default to only-me; everything else defaults to public", () => {
+  it("every field defaults to public; dob/gender/life_events are gone", () => {
     const vis = effectiveVisibility({});
-    expect(vis.dob).toBe("only-me");
-    expect(vis.gender).toBe("only-me");
-    for (const f of ["display_name", "bio", "avatar", "location", "website", "hobbies", "achievements", "life_events"]) {
+    for (const f of [
+      "display_name", "bio", "avatar", "location", "website", "social_links",
+      "work_history", "education", "hobbies", "achievements",
+      "building_now", "can_help_with", "looking_for", "skills", "projects", "badges",
+    ]) {
       expect(vis[f]).toBe("public");
     }
+    expect(vis.dob).toBeUndefined();
+    expect(vis.gender).toBeUndefined();
+    expect(vis.life_events).toBeUndefined();
   });
-  it("stored overrides win over defaults; corrupt JSON fails closed to defaults", () => {
-    const vis = effectiveVisibility({ profile_visibility: JSON.stringify({ bio: "members", dob: "public" }) });
+  it("stored overrides win over defaults; unknown entries fail closed", () => {
+    const vis = effectiveVisibility({ bio: "members", skills: "only-me" });
     expect(vis.bio).toBe("members");
-    expect(vis.dob).toBe("public");
-    const broken = effectiveVisibility({ profile_visibility: "not json" });
-    expect(broken.dob).toBe("only-me");
-    expect(broken.bio).toBe("public");
+    expect(vis.skills).toBe("only-me");
+    expect(vis.location).toBe("public");
+    const dirty = effectiveVisibility({ bio: "everyone", dob: "public", nope: "public" } as any);
+    expect(dirty.bio).toBe("public");
+    expect(dirty.dob).toBeUndefined();
+    expect(dirty.nope).toBeUndefined();
   });
   it("fieldVisible matrix", () => {
     const vis = effectiveVisibility({});
@@ -400,35 +482,44 @@ describe("visibility primitives", () => {
     expect(fieldVisible("bio", vis, "admin")).toBe(true);
     expect(fieldVisible("bio", vis, "member")).toBe(true);
     expect(fieldVisible("bio", vis, "anonymous")).toBe(true);
-    expect(fieldVisible("dob", vis, "owner")).toBe(true);
-    expect(fieldVisible("dob", vis, "admin")).toBe(true);
-    expect(fieldVisible("dob", vis, "member")).toBe(false);
-    expect(fieldVisible("dob", vis, "anonymous")).toBe(false);
-    const membersOnly = effectiveVisibility({ profile_visibility: JSON.stringify({ location: "members" }) });
+    const membersOnly = effectiveVisibility({ location: "members" });
+    expect(fieldVisible("location", membersOnly, "owner")).toBe(true);
+    expect(fieldVisible("location", membersOnly, "admin")).toBe(true);
     expect(fieldVisible("location", membersOnly, "member")).toBe(true);
     expect(fieldVisible("location", membersOnly, "anonymous")).toBe(false);
+    const onlyMe = effectiveVisibility({ skills: "only-me" });
+    expect(fieldVisible("skills", onlyMe, "owner")).toBe(true);
+    expect(fieldVisible("skills", onlyMe, "admin")).toBe(true);
+    expect(fieldVisible("skills", onlyMe, "member")).toBe(false);
+    expect(fieldVisible("skills", onlyMe, "anonymous")).toBe(false);
   });
-  it("validateVisibility accepts a valid map, drops unknown fields, rejects bad levels", () => {
-    const v = validateVisibility({ bio: "members", nope: "public", dob: "only-me" });
+  it("validateVisibility accepts the 16-field map, drops unknown fields, rejects bad levels", () => {
+    const v = validateVisibility({ bio: "members", building_now: "only-me", dob: "public", nope: "public" });
     expect(v.ok).toBe(true);
-    expect(JSON.parse(v.value!)).toEqual({ bio: "members", dob: "only-me" });
+    expect(JSON.parse(v.value!)).toEqual({ bio: "members", building_now: "only-me" });
     expect(validateVisibility({ bio: "everyone" }).ok).toBe(false);
     expect(validateVisibility("not json").ok).toBe(false);
     expect(validateVisibility([{ bio: "public" }]).ok).toBe(false);
     expect(validateVisibility("").ok).toBe(true); // clears
   });
-  it("validateDob: valid past date ok; future, malformed, impossible dates rejected", () => {
-    expect(validateDob("1990-05-20").ok).toBe(true);
-    expect(validateDob("").ok).toBe(true);
-    expect(validateDob("2099-01-01").ok).toBe(false);
-    expect(validateDob("not-a-date").ok).toBe(false);
-    expect(validateDob("2026-02-30").ok).toBe(false); // impossible date
-    expect(validateDob("1990-13-01").ok).toBe(false);
+  it("loadVisibility reads profile_field_visibility rows and merges defaults", async () => {
+    const env = mockEnv();
+    env.DB.handler = (sql) => {
+      if (/profile_field_visibility/i.test(sql)) {
+        return { results: [{ field: "building_now", visibility: "members" }, { field: "dob", visibility: "public" }] };
+      }
+      return undefined;
+    };
+    const vis = await loadVisibility(env.DB, "member-1");
+    expect(vis.building_now).toBe("members");
+    expect(vis.bio).toBe("public");
+    expect(vis.dob).toBeUndefined(); // dob is not a field anymore
   });
   it("validPastDate rejects non-dates and future dates", () => {
     expect(validPastDate("2000-01-01")).toBe(true);
     expect(validPastDate("2100-01-01")).toBe(false);
     expect(validPastDate("hello")).toBe(false);
+    expect(validPastDate("2026-02-30")).toBe(false);
   });
   it("normalizeHobbies accepts arrays and comma strings; hobbyList falls back for legacy rows", () => {
     const v = normalizeHobbies(["Cycling", " Hiking "]);
@@ -448,45 +539,63 @@ describe("visibility primitives", () => {
     expect(JSON.parse(legacy.value!)).toEqual([
       { school: "U of T", kind: "college", years: "2020", degree: "BSc" },
     ]);
-    // Read path upgrades stored legacy rows too.
     expect(educationList({ education: JSON.stringify([{ school: "U of T", degree: "BSc", period: "2020" }]) }))
       .toEqual([{ school: "U of T", kind: "college", years: "2020", degree: "BSc" }]);
     expect(normalizeEducation("nope").ok).toBe(false);
   });
-  it("normalizeMilestones validates shape and dates", () => {
-    const v = normalizeMilestones(
-      [{ title: "Shipped v1", date: "2026-09-01", description: "First release." }],
-      "achievements"
-    );
+  it("normalizeMilestones validates achievements (life events are gone)", () => {
+    const v = normalizeMilestones([{ title: "Shipped v1", date: "2026-09-01", description: "First release." }]);
     expect(v.ok).toBe(true);
     expect(JSON.parse(v.value!)).toEqual([{ title: "Shipped v1", date: "2026-09-01", description: "First release." }]);
-    expect(normalizeMilestones([{ description: "no title" }], "achievements").ok).toBe(false);
-    expect(normalizeMilestones([{ title: "X", date: "2099-01-01" }], "life_events").ok).toBe(false);
-    expect(normalizeMilestones(new Array(11).fill({ title: "x" }), "achievements").ok).toBe(false);
-    expect(milestoneList({ achievements: JSON.stringify([{ title: "A" }]) }, "achievements"))
+    expect(normalizeMilestones([{ description: "no title" }]).ok).toBe(false);
+    expect(normalizeMilestones([{ title: "X", date: "2099-01-01" }]).ok).toBe(false);
+    expect(normalizeMilestones(new Array(11).fill({ title: "x" })).ok).toBe(false);
+    expect(milestoneList({ achievements: JSON.stringify([{ title: "A" }]) }))
       .toEqual([{ title: "A", date: "", description: "" }]);
   });
-  it("richProfileShape never leaks email/real name/dob to non-owners", () => {
-    const row = richRow({
-      show_profile: 1,
-      display_name: "Jane Builds",
-      dob: "1990-05-20",
-      gender: "she/her",
-    });
+  it("normalizeSkills accepts arrays and comma strings; validates slugs and the 12 cap", () => {
+    const v = normalizeSkills(["Python", " product-design "]);
+    expect(v.ok).toBe(true);
+    expect(v.value).toEqual(["python", "product-design"]);
+    const csv = normalizeSkills("python, python, marketing");
+    expect(csv.value).toEqual(["python", "marketing"]); // deduped
+    expect(normalizeSkills("").value).toEqual([]);
+    expect(normalizeSkills(["not a slug!"]).ok).toBe(false);
+    expect(normalizeSkills(new Array(13).fill("python")).ok).toBe(true); // 13 dupes -> 1
+    const many = Array.from({ length: 13 }, (_, i) => `skill-${i}`);
+    expect(normalizeSkills(many).ok).toBe(false);
+  });
+  it("fetchMemberSkills joins labels from skill_tags", async () => {
+    const env = mockEnv();
+    env.DB.handler = (sql) => {
+      if (/from\s+member_skills/i.test(sql)) {
+        return { results: [{ slug: "python", label: "Python" }] };
+      }
+      return undefined;
+    };
+    const skills = await fetchMemberSkills(env.DB, "member-1");
+    expect(skills).toEqual([{ slug: "python", label: "Python" }]);
+  });
+  it("richProfileShape never leaks email/real name to non-owners; D11 fields never appear", () => {
+    const row = withExtras(richRow({ show_profile: 1, display_name: "Jane Builds" }));
     for (const rel of ["member", "anonymous"] as const) {
-      const shape = richProfileShape(row, rel);
+      const shape = richProfileShape(row, rel, effectiveVisibility({}));
       const body = JSON.stringify(shape);
       expect(body).not.toContain("jane@example.com");
       expect(body).not.toContain("Jane Doe");
-      expect(body).not.toContain("1990-05-20");
-      expect(body).not.toContain("she/her");
       expect(shape.dob).toBeUndefined();
       expect(shape.gender).toBeUndefined();
+      expect(shape.life_events).toBeUndefined();
+      expect(body).not.toContain("dob");
+      expect(body).not.toContain("gender");
+      expect(shape.directory_opt_in).toBeUndefined();
+      expect(shape.activity_broadcast).toBeUndefined();
     }
-    const owner = richProfileShape(row, "owner");
+    const owner = richProfileShape(row, "owner", effectiveVisibility({}));
     expect(owner.email).toBe("jane@example.com");
-    expect(owner.dob).toBe("1990-05-20");
-    expect(owner.visibility.dob).toBe("only-me");
+    expect(owner.visibility.bio).toBe("public");
+    expect(owner.directory_opt_in).toBe(0);
+    expect(owner.dob).toBeUndefined();
   });
   it("avatarUrlOf prefers avatar_r2_key over avatar_key", () => {
     expect(avatarUrlOf({ avatar_key: "old", avatar_r2_key: "new" })).toBe("/api/media/new");
@@ -495,7 +604,51 @@ describe("visibility primitives", () => {
   });
 });
 
-describe("GET /profiles/:id relationship filtering", () => {
+describe("D11: dob, gender, life_events are rejected at the boundary", () => {
+  function authedEnv() {
+    const env = mockEnv();
+    const h = memberSession(env);
+    env.DB.handler = (sql) => {
+      if (/from\s+users/i.test(sql)) return { row: richRow() };
+      return undefined;
+    };
+    return { env, h };
+  }
+  async function patch(env: any, h: any, body: any) {
+    return app.request(
+      "/profiles/me",
+      { method: "PATCH", headers: { ...h, "content-type": "application/json" }, body: JSON.stringify(body) },
+      env as any
+    );
+  }
+  it("400 when dob is sent", async () => {
+    const { env, h } = authedEnv();
+    const res = await patch(env, h, { dob: "1990-05-20" });
+    expect(res.status).toBe(400);
+    const d: any = await res.json();
+    expect(d.error).toContain("no longer collected");
+  });
+  it("400 when gender is sent", async () => {
+    const { env, h } = authedEnv();
+    const res = await patch(env, h, { gender: "she/her" });
+    expect(res.status).toBe(400);
+  });
+  it("400 when life_events are sent", async () => {
+    const { env, h } = authedEnv();
+    const res = await patch(env, h, { life_events: [{ title: "Joined", date: "2026-09-25", description: "" }] });
+    expect(res.status).toBe(400);
+  });
+  it("empty values are ignored, not written", async () => {
+    const { env, h } = authedEnv();
+    const res = await patch(env, h, { dob: "", gender: "", life_events: [], display_name: "Jane Builds" });
+    expect(res.status).toBe(200);
+    const writes = env.DB.calls.filter((c: any) => c.op === "run");
+    const sql = writes.map((c: any) => c.sql).join(" ");
+    expect(sql).not.toMatch(/dob|gender|life_events/i);
+  });
+});
+
+describe("GET /profiles/:id relationship filtering (item 7)", () => {
   function target(overrides: any = {}) {
     return richRow({
       id: "target-2",
@@ -503,88 +656,101 @@ describe("GET /profiles/:id relationship filtering", () => {
       display_name: "Jane Builds",
       bio: "Builder.",
       location: "Toronto",
-      dob: "1990-05-20",
-      gender: "she/her",
       achievements: JSON.stringify([{ title: "Won demo night", date: "2026-09-01", description: "" }]),
       ...overrides,
     });
   }
-  it("anonymous sees public fields only — no dob, gender, email", async () => {
+  function extrasOpts(overrides: any = {}) {
+    return {
+      memberProfile: {
+        building_now: "Inventory tool for bakeries",
+        can_help_with: "Spreadsheets",
+        looking_for: "Beta testers",
+        pinned_post_id: "post-9",
+        directory_opt_in: 1,
+        activity_broadcast: 1,
+      },
+      skills: [
+        { slug: "python", label: "Python" },
+        { slug: "marketing", label: "Marketing" },
+      ],
+      ...overrides,
+    };
+  }
+  it("anonymous sees public fields incl. the new builder fields", async () => {
     const env = mockEnv();
-    env.DB.handler = profileHandler(target(), "nobody") as any;
+    env.DB.handler = profileHandler(target(), "nobody", extrasOpts()) as any;
     const res = await app.request("/profiles/target-2", {}, env as any);
     expect(res.status).toBe(200);
     const d: any = await res.json();
     expect(d.user.bio).toBe("Builder.");
-    expect(d.user.location).toBe("Toronto");
+    expect(d.user.building_now).toBe("Inventory tool for bakeries");
+    expect(d.user.can_help_with).toBe("Spreadsheets");
+    expect(d.user.looking_for).toBe("Beta testers");
+    expect(d.user.skills).toEqual([
+      { slug: "python", label: "Python" },
+      { slug: "marketing", label: "Marketing" },
+    ]);
     expect(d.user.achievements[0].title).toBe("Won demo night");
-    expect(d.user.dob).toBeUndefined();
-    expect(d.user.gender).toBeUndefined();
+    // Settings stay owner/admin only.
+    expect(d.user.directory_opt_in).toBeUndefined();
+    expect(d.user.activity_broadcast).toBeUndefined();
     const body = JSON.stringify(d);
-    expect(body).not.toContain("1990-05-20");
-    expect(body).not.toContain("she/her");
     expect(body).not.toContain("jane@example.com");
     expect(body).not.toContain("Jane Doe");
   });
-  it("anonymous 404s on show_profile=0 (same as missing — no enumeration)", async () => {
-    const env = mockEnv();
-    env.DB.handler = profileHandler(target({ show_profile: 0 }), "nobody") as any;
-    const r1 = await app.request("/profiles/target-2", {}, env as any);
-    const env2 = mockEnv();
-    env2.DB.handler = () => ({ row: null });
-    const r2 = await app2req(env2, "/profiles/nope");
-    expect(r1.status).toBe(404);
-    expect(r2.status).toBe(404);
-  });
-  it("anonymous cannot see members-only fields", async () => {
+  it("anonymous cannot see members-only builder fields", async () => {
     const env = mockEnv();
     env.DB.handler = profileHandler(
-      target({ profile_visibility: JSON.stringify({ location: "members" }) }),
-      "nobody"
+      target(),
+      "nobody",
+      extrasOpts({ visRows: [{ field: "building_now", visibility: "members" }, { field: "skills", visibility: "only-me" }] })
     ) as any;
     const res = await app.request("/profiles/target-2", {}, env as any);
     expect(res.status).toBe(200);
     const d: any = await res.json();
-    expect(d.user.location).toBeUndefined();
+    expect(d.user.building_now).toBeUndefined();
+    expect(d.user.skills).toBeUndefined();
     expect(d.user.bio).toBe("Builder."); // still public
   });
   it("member sees members-only fields but never only-me fields", async () => {
     const env = mockEnv();
     const h = memberSession(env); // viewer is member-1
     env.DB.handler = profileHandler(
-      target({ profile_visibility: JSON.stringify({ location: "members" }) }),
-      "member-1"
+      target(),
+      "member-1",
+      extrasOpts({ visRows: [{ field: "building_now", visibility: "members" }, { field: "skills", visibility: "only-me" }] })
     ) as any;
     const res = await app.request("/profiles/target-2", { headers: h }, env as any);
     expect(res.status).toBe(200);
     const d: any = await res.json();
-    expect(d.user.location).toBe("Toronto");
-    expect(d.user.dob).toBeUndefined();
-    expect(d.user.gender).toBeUndefined();
+    expect(d.user.building_now).toBe("Inventory tool for bakeries");
+    expect(d.user.skills).toBeUndefined();
     expect(JSON.stringify(d)).not.toContain("jane@example.com");
   });
   it("member 404s on suspended targets", async () => {
     const env = mockEnv();
     const h = memberSession(env);
-    env.DB.handler = profileHandler(target({ status: "suspended" }), "member-1") as any;
+    env.DB.handler = profileHandler(target({ status: "suspended" }), "member-1", extrasOpts()) as any;
     const res = await app.request("/profiles/target-2", { headers: h }, env as any);
     expect(res.status).toBe(404);
   });
-  it("admin sees everything including dob, gender, email, visibility map", async () => {
+  it("admin sees everything including settings and the visibility map", async () => {
     const env = mockEnv();
     const h = adminSession(env, "admin-1");
-    env.DB.handler = profileHandler(target(), "admin-1", "admin") as any;
+    env.DB.handler = profileHandler(target(), "admin-1", extrasOpts({ role: "admin" })) as any;
     const res = await app.request("/profiles/target-2", { headers: h }, env as any);
     expect(res.status).toBe(200);
     const d: any = await res.json();
-    expect(d.user.dob).toBe("1990-05-20");
-    expect(d.user.gender).toBe("she/her");
     expect(d.user.email).toBe("jane@example.com");
-    expect(d.user.visibility.dob).toBe("only-me");
+    expect(d.user.directory_opt_in).toBe(1);
+    expect(d.user.activity_broadcast).toBe(1);
+    expect(d.user.pinned_post_id).toBe("post-9");
+    expect(d.user.visibility.bio).toBe("public");
   });
   it("resolves by username", async () => {
     const env = mockEnv();
-    env.DB.handler = profileHandler(target({ username: "jane_builds" }), "nobody") as any;
+    env.DB.handler = profileHandler(target({ username: "jane_builds" }), "nobody", extrasOpts()) as any;
     const res = await app.request("/profiles/jane_builds", {}, env as any);
     expect(res.status).toBe(200);
     const d: any = await res.json();
@@ -598,7 +764,7 @@ async function app2req(env: any, path: string) {
 }
 
 describe("GET /users/:id delegates visibility", () => {
-  it("anonymous public view renders structured lists, hides dob", async () => {
+  it("anonymous public view renders structured lists", async () => {
     const env = mockEnv();
     env.DB.handler = (sql: string, params: unknown[]) => {
       if (/from\s+users/i.test(sql)) {
@@ -607,7 +773,6 @@ describe("GET /users/:id delegates visibility", () => {
             id: "target-2",
             show_profile: 1,
             display_name: "Jane Builds",
-            dob: "1990-05-20",
             education: JSON.stringify([{ school: "U of T", degree: "BSc", period: "2020" }]),
             hobbies: "Cycling, Hiking",
             achievements: JSON.stringify([{ title: "Won demo night", date: "2026-09-01", description: "" }]),
@@ -622,8 +787,6 @@ describe("GET /users/:id delegates visibility", () => {
     expect(d.user.education[0]).toEqual({ school: "U of T", kind: "college", years: "2020", degree: "BSc" });
     expect(d.user.hobbies).toEqual(["Cycling", "Hiking"]);
     expect(d.user.achievements[0].title).toBe("Won demo night");
-    expect(d.user.dob).toBeUndefined();
-    expect(JSON.stringify(d)).not.toContain("1990-05-20");
   });
 });
 
@@ -633,32 +796,58 @@ describe("GET /profiles/me", () => {
     const res = await app.request("/profiles/me", {}, env as any);
     expect(res.status).toBe(401);
   });
-  it("owner sees dob, gender, email, and the visibility map", async () => {
+  it("owner sees email, skills, member fields, settings, and the visibility map", async () => {
     const env = mockEnv();
-    const h = memberSession(env);
-    env.DB.handler = (sql: string, params: unknown[]) => {
-      if (/from\s+users/i.test(sql)) {
-        if (params[0] === "member-1") return { row: richRow({ dob: "1990-05-20", gender: "she/her" }) };
+    const h = memberSession(env, "target-2");
+    const ownerRow = richRow({
+      id: "target-2",
+      email: "jane@example.com",
+      name: "Jane Doe",
+      display_name: "Jane Builds",
+    });
+    env.DB.handler = profileHandler(
+      ownerRow,
+      "target-2",
+      {
+        viewerRow: ownerRow,
+        visRows: [{ field: "building_now", visibility: "members" }],
+        memberProfile: {
+          building_now: "Inventory tool",
+          can_help_with: null,
+          looking_for: null,
+          pinned_post_id: "post-9",
+          directory_opt_in: 1,
+          activity_broadcast: 0,
+        },
+        skills: [{ slug: "python", label: "Python" }],
       }
-      return undefined;
-    };
+    ) as any;
     const res = await app.request("/profiles/me", { headers: h }, env as any);
     expect(res.status).toBe(200);
     const d: any = await res.json();
     expect(d.user.email).toBe("jane@example.com");
-    expect(d.user.dob).toBe("1990-05-20");
-    expect(d.user.gender).toBe("she/her");
-    expect(d.user.visibility.dob).toBe("only-me");
+    expect(d.user.display_name).toBe("Jane Builds");
+    expect(d.user.building_now).toBe("Inventory tool");
+    expect(d.user.skills).toEqual([{ slug: "python", label: "Python" }]);
+    expect(d.user.directory_opt_in).toBe(1);
+    expect(d.user.pinned_post_id).toBe("post-9");
+    expect(d.user.visibility.building_now).toBe("members");
     expect(d.user.visibility.bio).toBe("public");
   });
 });
 
-describe("PATCH /profiles/me", () => {
+describe("PATCH /profiles/me (item 7)", () => {
   function authedEnv() {
     const env = mockEnv();
     const h = memberSession(env);
     env.DB.handler = (sql: string, params: unknown[]) => {
       if (/from\s+users/i.test(sql)) return { row: richRow() };
+      if (/from\s+skill_tags/i.test(sql)) {
+        return { results: [{ slug: "python" }, { slug: "marketing" }] };
+      }
+      if (/from\s+feed_posts/i.test(sql)) {
+        return params[0] === "post-9" ? { row: { id: "post-9" } } : { row: null };
+      }
       return undefined;
     };
     return { env, h };
@@ -684,12 +873,9 @@ describe("PATCH /profiles/me", () => {
           bio: "Builder.",
           location: "Toronto",
           hobbies: ["Cycling", "Hiking"],
-          dob: "1990-05-20",
-          gender: "she/her",
           education: [{ school: "U of T", kind: "college", years: "2020–2024" }],
           achievements: [{ title: "Won demo night", date: "2026-09-01", description: "First win." }],
-          life_events: [{ title: "Joined Brimwood", date: "2026-09-25", description: "" }],
-          profile_visibility: { location: "members", dob: "only-me" },
+          visibility: { location: "members", skills: "only-me" },
           show_profile: 1,
         }),
       },
@@ -699,8 +885,7 @@ describe("PATCH /profiles/me", () => {
     const upd = lastUpdate(env);
     expect(upd).toBeTruthy();
     const params = upd.params as unknown[];
-    expect(params).toContain("1990-05-20");
-    expect(params).toContain("she/her");
+    expect(params).toContain("Jane Builds");
     expect(params).toContain(JSON.stringify(["Cycling", "Hiking"]));
     expect(params).toContain(
       JSON.stringify([{ school: "U of T", kind: "college", years: "2020–2024" }])
@@ -708,20 +893,121 @@ describe("PATCH /profiles/me", () => {
     expect(params).toContain(
       JSON.stringify([{ title: "Won demo night", date: "2026-09-01", description: "First win." }])
     );
-    expect(params).toContain(JSON.stringify({ location: "members", dob: "only-me" }));
+    // Visibility lands in profile_field_visibility, not users.
+    const visInserts = (env.DB.inserts.get("profile_field_visibility") || []) as any[];
+    expect(visInserts).toHaveLength(2);
+    expect(visInserts).toContainEqual({ user_id: "member-1", field: "location", visibility: "members" });
+    expect(visInserts).toContainEqual({ user_id: "member-1", field: "skills", visibility: "only-me" });
   });
-  it("rejects a future dob", async () => {
+  it("writes builder fields to member_profiles", async () => {
     const { env, h } = authedEnv();
     const res = await app.request(
       "/profiles/me",
       {
         method: "PATCH",
         headers: { ...h, "content-type": "application/json" },
-        body: JSON.stringify({ dob: "2099-01-01" }),
+        body: JSON.stringify({
+          building_now: "Inventory tool for bakeries",
+          can_help_with: "Spreadsheets",
+          looking_for: "Beta testers",
+          directory_opt_in: true,
+          activity_broadcast: 1,
+        }),
+      },
+      env as any
+    );
+    expect(res.status).toBe(200);
+    const mp = (env.DB.inserts.get("member_profiles") || []) as any[];
+    expect(mp).toHaveLength(1);
+    expect(mp[0].user_id).toBe("member-1");
+    expect(mp[0].building_now).toBe("Inventory tool for bakeries");
+    expect(mp[0].can_help_with).toBe("Spreadsheets");
+    expect(mp[0].looking_for).toBe("Beta testers");
+    expect(mp[0].directory_opt_in).toBe(1);
+    expect(mp[0].activity_broadcast).toBe(1);
+    // No users write when only side-table fields are sent.
+    expect(lastUpdate(env)).toBeUndefined();
+  });
+  it("writes curated skills to member_skills", async () => {
+    const { env, h } = authedEnv();
+    const res = await app.request(
+      "/profiles/me",
+      {
+        method: "PATCH",
+        headers: { ...h, "content-type": "application/json" },
+        body: JSON.stringify({ skills: ["Python", "marketing"] }),
+      },
+      env as any
+    );
+    expect(res.status).toBe(200);
+    const sk = (env.DB.inserts.get("member_skills") || []) as any[];
+    expect(sk).toHaveLength(2);
+    expect(sk).toContainEqual({ user_id: "member-1", skill_slug: "python" });
+    expect(sk).toContainEqual({ user_id: "member-1", skill_slug: "marketing" });
+  });
+  it("rejects unknown skills", async () => {
+    const { env, h } = authedEnv();
+    const res = await app.request(
+      "/profiles/me",
+      {
+        method: "PATCH",
+        headers: { ...h, "content-type": "application/json" },
+        body: JSON.stringify({ skills: ["python", "telepathy"] }),
       },
       env as any
     );
     expect(res.status).toBe(400);
+  });
+  it("rejects more than 12 skills", async () => {
+    const { env, h } = authedEnv();
+    const many = Array.from({ length: 13 }, (_, i) => `skill-${i}`);
+    const res = await app.request(
+      "/profiles/me",
+      {
+        method: "PATCH",
+        headers: { ...h, "content-type": "application/json" },
+        body: JSON.stringify({ skills: many }),
+      },
+      env as any
+    );
+    expect(res.status).toBe(400);
+  });
+  it("clears skills with an empty list", async () => {
+    const { env, h } = authedEnv();
+    const res = await app.request(
+      "/profiles/me",
+      {
+        method: "PATCH",
+        headers: { ...h, "content-type": "application/json" },
+        body: JSON.stringify({ skills: [] }),
+      },
+      env as any
+    );
+    expect(res.status).toBe(200);
+    const deletes = env.DB.calls.filter(
+      (c: any) => c.op === "run" && /^delete\s+from\s+member_skills/i.test(c.sql)
+    );
+    expect(deletes.length).toBe(1);
+    expect(env.DB.inserts.get("member_skills") || []).toHaveLength(0);
+  });
+  it("pins the member's own post; rejects someone else's", async () => {
+    const { env, h } = authedEnv();
+    const okRes = await app.request(
+      "/profiles/me",
+      {
+        method: "PATCH",
+        headers: { ...h, "content-type": "application/json" },
+        body: JSON.stringify({ pinned_post_id: "post-9" }),
+      },
+      env as any
+    );
+    expect(okRes.status).toBe(200);
+    const mp = (env.DB.inserts.get("member_profiles") || []) as any[];
+    expect(mp[0].pinned_post_id).toBe("post-9");
+
+    const { env: env2, h: h2 } = authedEnv();
+    const badRes = await app2patch(env2, h2, { pinned_post_id: "post-404" });
+    expect(badRes.status).toBe(400);
   });
   it("rejects an invalid visibility level", async () => {
     const { env, h } = authedEnv();
@@ -730,7 +1016,7 @@ describe("PATCH /profiles/me", () => {
       {
         method: "PATCH",
         headers: { ...h, "content-type": "application/json" },
-        body: JSON.stringify({ profile_visibility: { bio: "everyone" } }),
+        body: JSON.stringify({ visibility: { bio: "everyone" } }),
       },
       env as any
     );
@@ -759,6 +1045,15 @@ describe("PATCH /profiles/me", () => {
     expect(res.status).toBe(400);
   });
 });
+
+/** Tiny helper: authed PATCH to /profiles/me. */
+async function app2patch(env: any, h: any, body: any) {
+  return app.request(
+    "/profiles/me",
+    { method: "PATCH", headers: { ...h, "content-type": "application/json" }, body: JSON.stringify(body) },
+    env as any
+  );
+}
 
 describe("POST /profiles/me/avatar", () => {
   it("401 when anonymous", async () => {
@@ -799,5 +1094,24 @@ describe("POST /profiles/me/avatar", () => {
     expect(upd?.params[0]).toBe(d.avatar_key); // avatar_key
     expect(upd?.params[1]).toBe(d.avatar_key); // avatar_r2_key
     expect(upd?.params[2]).toBe("member-1");
+  });
+});
+
+describe("GET /skill-tags", () => {
+  it("returns the curated tag list", async () => {
+    const env = mockEnv();
+    env.DB.handler = (sql) => {
+      if (/from\s+skill_tags/i.test(sql)) {
+        return { results: [{ slug: "python", label: "Python" }, { slug: "marketing", label: "Marketing" }] };
+      }
+      return undefined;
+    };
+    const res = await app.request("/skill-tags", {}, env as any);
+    expect(res.status).toBe(200);
+    const d: any = await res.json();
+    expect(d.tags).toEqual([
+      { slug: "python", label: "Python" },
+      { slug: "marketing", label: "Marketing" },
+    ]);
   });
 });

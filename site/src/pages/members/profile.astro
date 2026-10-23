@@ -1,15 +1,16 @@
 ---
 /* Member profile editor (rich profiles, social-UX overhaul): identity,
- * avatar, personal fields (dob, gender — private by default), location,
- * website, socials, hobbies, work history, education, achievements,
- * milestones, and per-field visibility (public / members / only me).
+ * avatar, location, website, socials, hobbies, work history, education,
+ * achievements, builder fields (what you are building, skills, directory
+ * opt-in), and per-field visibility (public / members / only me).
+ * D11: date of birth, gender, and life events are not collected.
  * Brand rule: anonymous by default; a preview panel shows what others see. */
 import Base from "../../layouts/Base.astro";
 import Avatar from "../../components/Avatar.astro";
 import VisSelect from "../../components/VisSelect.astro";
 ---
 
-<Base title="Your profile — Brimwood Innovation" description="Edit your member profile.">
+<Base title="Your profile - Brimwood Innovation" description="Edit your member profile.">
   <section class="block">
     <div id="prof-loading"><p class="sec-lede">Loading…</p></div>
 
@@ -64,31 +65,6 @@ import VisSelect from "../../components/VisSelect.astro";
           <div><VisSelect field="bio" def="public" /></div>
         </div>
 
-        <h3 class="sec" style="font-size:22px;margin-top:32px;">Personal</h3>
-        <p class="admin-muted" style="font-size:13px;">Date of birth and gender are <strong>private by default</strong> — only you can see them unless you choose otherwise.</p>
-
-        <div class="frow">
-          <div style="flex:1;">
-            <label for="fDob">Date of birth</label>
-            <input id="fDob" type="date" style="width:100%;" />
-          </div>
-          <div><VisSelect field="dob" def="only-me" /></div>
-        </div>
-
-        <div class="frow">
-          <div style="flex:1;">
-            <label for="fGender">Gender</label>
-            <input id="fGender" type="text" maxlength="60" list="genderHints" placeholder="How you describe yourself (optional)" style="width:100%;" />
-            <datalist id="genderHints">
-              <option value="she/her"></option>
-              <option value="he/him"></option>
-              <option value="they/them"></option>
-              <option value="Prefer not to say"></option>
-            </datalist>
-          </div>
-          <div><VisSelect field="gender" def="only-me" /></div>
-        </div>
-
         <h3 class="sec" style="font-size:22px;margin-top:32px;">About</h3>
 
         <div class="frow">
@@ -111,7 +87,7 @@ import VisSelect from "../../components/VisSelect.astro";
           <div style="flex:1;">
             <label for="fHobbies">Hobbies</label>
             <input id="fHobbies" type="text" maxlength="500" placeholder="Cycling, sourdough, film photography" style="width:100%;" />
-            <p class="admin-muted" style="font-size:13px;">Separate with commas — they show as chips.</p>
+            <p class="admin-muted" style="font-size:13px;">Separate with commas - they show as chips.</p>
           </div>
           <div><VisSelect field="hobbies" def="public" /></div>
         </div>
@@ -156,20 +132,58 @@ import VisSelect from "../../components/VisSelect.astro";
           <div><VisSelect field="achievements" def="public" /></div>
         </div>
 
+        <h3 class="sec" style="font-size:22px;margin-top:32px;">Builder profile</h3>
+        <p class="admin-muted" style="font-size:13px;">What you are working on and how others can find you. Shown on your public page under each field's visibility.</p>
+
         <div class="frow">
           <div style="flex:1;">
-            <h4 style="margin:0 0 8px;font-size:15px;">Milestones</h4>
-            <div id="mileList"></div>
-            <p><button type="button" class="btn btn-ghost small" id="addMile">+ Add milestone</button></p>
-            <p class="admin-muted" style="font-size:13px;">Life events worth marking — first demo night, first launch, and so on.</p>
+            <label for="fBuilding">Building now</label>
+            <input id="fBuilding" type="text" maxlength="140" placeholder="The thing you are building right now" style="width:100%;" />
           </div>
-          <div><VisSelect field="life_events" def="public" /></div>
+          <div><VisSelect field="building_now" def="public" /></div>
         </div>
+
+        <div class="frow">
+          <div style="flex:1;">
+            <label for="fHelp">Can help with</label>
+            <textarea id="fHelp" rows="2" maxlength="280" placeholder="What you can help other members with" style="width:100%;"></textarea>
+          </div>
+          <div><VisSelect field="can_help_with" def="public" /></div>
+        </div>
+
+        <div class="frow">
+          <div style="flex:1;">
+            <label for="fLooking">Looking for</label>
+            <input id="fLooking" type="text" maxlength="280" placeholder="What you are looking for - feedback, a co-builder, pilot users" style="width:100%;" />
+          </div>
+          <div><VisSelect field="looking_for" def="public" /></div>
+        </div>
+
+        <div class="frow">
+          <div style="flex:1;">
+            <h4 style="margin:0 0 8px;font-size:15px;">Skills</h4>
+            <div id="skillList" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+            <p class="admin-muted" style="font-size:13px;">Pick up to 12 from the curated list.</p>
+          </div>
+          <div><VisSelect field="skills" def="public" /></div>
+        </div>
+
+        <label style="margin-top:16px;display:flex;gap:10px;align-items:flex-start;cursor:pointer;">
+          <input id="fDirectory" type="checkbox" style="margin-top:4px;" />
+          <span><strong>List me in the member directory.</strong><br />
+          <span class="admin-muted" style="font-size:13px;">Off by default - other members can only find you by skill or by what you are building when this is on.</span></span>
+        </label>
+
+        <label style="margin-top:12px;display:flex;gap:10px;align-items:flex-start;cursor:pointer;">
+          <input id="fBroadcast" type="checkbox" style="margin-top:4px;" />
+          <span><strong>Broadcast my activity.</strong><br />
+          <span class="admin-muted" style="font-size:13px;">Off by default - let activity (posts, reactions) appear in member feeds under your name.</span></span>
+        </label>
 
         <label style="margin-top:32px;display:flex;gap:10px;align-items:flex-start;cursor:pointer;">
           <input id="fPublic" type="checkbox" style="margin-top:4px;" />
           <span><strong>Make my profile public.</strong><br />
-          <span class="admin-muted" style="font-size:13px;">Anyone can see the fields you marked Public at your public page. Off by default — you stay anonymous.</span></span>
+          <span class="admin-muted" style="font-size:13px;">Anyone can see the fields you marked Public at your public page. Off by default - you stay anonymous.</span></span>
         </label>
 
         <p style="margin-top:24px;">
@@ -184,7 +198,7 @@ import VisSelect from "../../components/VisSelect.astro";
 
       <div style="margin-top:40px;border-top:1px solid #e5e9e7;padding-top:24px;">
         <h3 class="sec" style="font-size:22px;">See what others see</h3>
-        <p class="admin-muted" style="font-size:13px;">A preview built from your current edits — nothing is saved until you press Save.</p>
+        <p class="admin-muted" style="font-size:13px;">A preview built from your current edits - nothing is saved until you press Save.</p>
         <p><button type="button" class="btn btn-ghost small" id="previewBtn">Refresh preview</button></p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;" id="previewGrid">
           <div style="border:1px solid #e5e9e7;border-radius:12px;padding:16px;">
@@ -243,7 +257,7 @@ import VisSelect from "../../components/VisSelect.astro";
           '<input data-k="degree" placeholder="Degree (optional)" maxlength="100" value="' + esc(data.degree || "") + '" style="grid-column:1/3;">' +
           '<button type="button" class="btn btn-ghost small entry-del">Remove</button>';
       } else {
-        // milestone: achievements + life events
+        // achievement
         div.style.cssText = "display:grid;grid-template-columns:2fr 1fr;gap:8px;margin-bottom:8px;";
         div.innerHTML =
           '<input data-k="title" placeholder="Title" maxlength="100" value="' + esc(data.title || "") + '">' +
@@ -275,7 +289,40 @@ import VisSelect from "../../components/VisSelect.astro";
     $("addWork").addEventListener("click", () => $("workList").appendChild(entryRow("work")));
     $("addEdu").addEventListener("click", () => $("eduList").appendChild(entryRow("edu")));
     $("addAch").addEventListener("click", () => $("achList").appendChild(entryRow("mile")));
-    $("addMile").addEventListener("click", () => $("mileList").appendChild(entryRow("mile")));
+
+    /* ---------- skills (curated tags from the API) ---------- */
+    let skillTags = [];
+    function paintSkills(selected) {
+      const box = $("skillList");
+      box.innerHTML = "";
+      const sel = new Set(selected || []);
+      skillTags.forEach((t) => {
+        const lab = document.createElement("label");
+        lab.style.cssText = "display:inline-flex;align-items:center;gap:6px;font-size:13px;border:1px solid #e5e9e7;border-radius:999px;padding:4px 12px;cursor:pointer;";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.value = t.slug;
+        cb.checked = sel.has(t.slug);
+        lab.appendChild(cb);
+        lab.appendChild(document.createTextNode(t.label));
+        box.appendChild(lab);
+      });
+    }
+    function selectedSkills() {
+      const out = [];
+      document.querySelectorAll("#skillList input[type=checkbox]:checked").forEach((cb) => {
+        if (out.length < 12) out.push(cb.value);
+      });
+      return out;
+    }
+    async function loadSkillTags(selected) {
+      try {
+        const r = await api("/api/skill-tags");
+        const d = await r.json();
+        if (r.ok && d.ok && Array.isArray(d.tags)) skillTags = d.tags;
+      } catch {}
+      paintSkills(selected);
+    }
 
     /* ---------- avatar preview ---------- */
     function paintAvatar(url) {
@@ -322,12 +369,15 @@ import VisSelect from "../../components/VisSelect.astro";
         $("fUsername").value = u.username || "";
         $("fDisplay").value = u.display_name_raw || "";
         $("fBio").value = u.bio_raw || "";
-        $("fDob").value = u.dob || "";
-        $("fGender").value = u.gender || "";
         $("fLocation").value = u.location || "";
         $("fWebsite").value = u.website || "";
         $("fHobbies").value = (u.hobbies || []).join(", ");
         $("fPublic").checked = u.show_profile === 1;
+        $("fBuilding").value = u.building_now || "";
+        $("fHelp").value = u.can_help_with || "";
+        $("fLooking").value = u.looking_for || "";
+        $("fDirectory").checked = u.directory_opt_in === 1;
+        $("fBroadcast").checked = u.activity_broadcast === 1;
         $("publicName").textContent = u.display_name || "Member";
         const social = u.social_links || {};
         $("sGithub").value = social.github || "";
@@ -337,10 +387,10 @@ import VisSelect from "../../components/VisSelect.astro";
         (u.work_history || []).forEach((e) => $("workList").appendChild(entryRow("work", e)));
         (u.education || []).forEach((e) => $("eduList").appendChild(entryRow("edu", e)));
         (u.achievements || []).forEach((e) => $("achList").appendChild(entryRow("mile", e)));
-        (u.life_events || []).forEach((e) => $("mileList").appendChild(entryRow("mile", e)));
         const vis = u.visibility || {};
         Object.keys(vis).forEach((f) => setVis(f, vis[f]));
         paintAvatar(u.avatar_url || null);
+        loadSkillTags((u.skills || []).map((s) => s.slug));
         updateBioCount();
         updateUsernameHint();
         if (u.show_profile === 1) showPublicLink(u);
@@ -368,7 +418,7 @@ import VisSelect from "../../components/VisSelect.astro";
     $("fUsername").addEventListener("input", updateUsernameHint);
 
     /* ---------- collect + preview ---------- */
-    const VIS_DEFAULTS = { dob: "only-me", gender: "only-me" };
+    const VIS_DEFAULTS = {};
     function visOf(field) {
       const sel = document.querySelector('select[data-vis="' + field + '"]');
       const v = sel ? sel.value : "default";
@@ -391,8 +441,6 @@ import VisSelect from "../../components/VisSelect.astro";
       return {
         display_name: $("fDisplay").value.trim(),
         bio: $("fBio").value.trim(),
-        dob: $("fDob").value,
-        gender: $("fGender").value.trim(),
         location: $("fLocation").value.trim(),
         website: $("fWebsite").value.trim(),
         hobbies: $("fHobbies").value.split(",").map((h) => h.trim()).filter(Boolean),
@@ -400,7 +448,12 @@ import VisSelect from "../../components/VisSelect.astro";
         work_history: collectEntries("workList", "work"),
         education: collectEntries("eduList", "edu"),
         achievements: collectEntries("achList", "mile"),
-        life_events: collectEntries("mileList", "mile"),
+        building_now: $("fBuilding").value.trim(),
+        can_help_with: $("fHelp").value.trim(),
+        looking_for: $("fLooking").value.trim(),
+        skills: selectedSkills(),
+        directory_opt_in: $("fDirectory").checked,
+        activity_broadcast: $("fBroadcast").checked,
         show_profile: $("fPublic").checked,
       };
     }
@@ -419,9 +472,26 @@ import VisSelect from "../../components/VisSelect.astro";
       if (can("bio") && v.bio) html += "<p>" + esc(v.bio) + "</p>";
       let about = "";
       if (can("location") && v.location) about += "<p>📍 " + esc(v.location) + "</p>";
-      if (can("gender") && v.gender) about += "<p>🧭 " + esc(v.gender) + "</p>";
       if (can("website") && v.website) about += "<p>🔗 " + esc(v.website) + "</p>";
       html += sectionHtml("About", about);
+      if (can("building_now") && v.building_now) {
+        html += sectionHtml("Building now", "<p>🛠 " + esc(v.building_now) + "</p>");
+      }
+      if (can("can_help_with") && v.can_help_with) {
+        html += sectionHtml("Can help with", "<p>" + esc(v.can_help_with) + "</p>");
+      }
+      if (can("looking_for") && v.looking_for) {
+        html += sectionHtml("Looking for", "<p>🔎 " + esc(v.looking_for) + "</p>");
+      }
+      if (can("skills") && v.skills.length) {
+        const names = v.skills.map((s) => {
+          const t = skillTags.find((x) => x.slug === s);
+          return t ? t.label : s;
+        });
+        html += sectionHtml("Skills", "<p>" + names.map((n) =>
+          '<span style="display:inline-block;background:#DDF5E9;color:#075E40;border-radius:999px;padding:2px 10px;margin:0 6px 6px 0;font-size:13px;">' + esc(n) + "</span>"
+        ).join("") + "</p>");
+      }
       if (can("hobbies") && v.hobbies.length) {
         html += sectionHtml("Hobbies", "<p>" + v.hobbies.map((h) =>
           '<span style="display:inline-block;background:#DDF5E9;color:#075E40;border-radius:999px;padding:2px 10px;margin:0 6px 6px 0;font-size:13px;">' + esc(h) + "</span>"
@@ -443,14 +513,8 @@ import VisSelect from "../../components/VisSelect.astro";
           (e.years ? ' <span class="admin-muted">(' + esc(e.years) + ")</span>" : "") + "</p>"
         ).join(""));
       }
-      if (can("life_events") && v.life_events.length) {
-        html += sectionHtml("Milestones", v.life_events.map((m) =>
-          "<p>✦ <strong>" + esc(m.title) + "</strong>" + (m.date ? ' <span class="admin-muted">· ' + esc(m.date) + "</span>" : "") + "</p>"
-        ).join(""));
-      }
-      if (can("dob") && v.dob) html += "<p class=\"admin-muted\">Born " + esc(v.dob) + "</p>";
       if (!v.show_profile && audience === "public") {
-        html = '<p class="admin-muted">Your profile is not public — visitors see nothing.</p>';
+        html = '<p class="admin-muted">Your profile is not public - visitors see nothing.</p>';
       }
       return html;
     }
@@ -488,8 +552,6 @@ import VisSelect from "../../components/VisSelect.astro";
           body: JSON.stringify({
             display_name: v.display_name,
             bio: v.bio,
-            dob: v.dob,
-            gender: v.gender,
             location: v.location,
             website: v.website,
             hobbies: v.hobbies,
@@ -497,8 +559,13 @@ import VisSelect from "../../components/VisSelect.astro";
             work_history: v.work_history,
             education: v.education,
             achievements: v.achievements,
-            life_events: v.life_events,
-            profile_visibility: visMap(),
+            building_now: v.building_now,
+            can_help_with: v.can_help_with,
+            looking_for: v.looking_for,
+            skills: v.skills,
+            directory_opt_in: v.directory_opt_in ? 1 : 0,
+            activity_broadcast: v.activity_broadcast ? 1 : 0,
+            visibility: visMap(),
             show_profile: v.show_profile ? 1 : 0,
           }),
         });
