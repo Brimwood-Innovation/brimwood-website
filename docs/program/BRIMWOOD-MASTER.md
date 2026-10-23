@@ -245,3 +245,36 @@ from the self-chaining loop's first run on 2026-10-21.
   stop reading and writing dob, gender, life events; per-field visibility
   in profile_field_visibility; new fields to member_profiles and
   member_skills).
+- Cycle 7, 2026-10-23: Phase 1 work order item 7 (profiles), on branch
+  phase1/item7-profiles (no open loop PR; develop CI green; #22 is the
+  founder-tapped README PR, not loop work). D11 cutover: PATCH /profiles/me
+  rejects dob, gender, and life_events at the boundary with a 400 in plain
+  words, instead of letting the 0025 trigger ABORT the save as a 500; empty
+  values are ignored; no API read or write touches those columns anymore.
+  Per-field visibility now reads and writes profile_field_visibility (the
+  0025 table is the source of truth): loadVisibility merges stored rows over
+  public defaults, PATCH takes a visibility map, and every view
+  (/profiles/:id, /users/:id, /profiles/me, /users/me) filters server-side.
+  New profile content: member_profiles (building_now, can_help_with,
+  looking_for, pinned_post_id with an own-live-post check, directory_opt_in,
+  activity_broadcast) and member_skills (curated skill_tags only, unknown
+  slugs rejected, 12 cap at the boundary); one DB.batch per save keeps the
+  users/member_profiles/skills/visibility writes atomic. Site: the member
+  editor drops the D11 fields and gains a Builder profile section (skills
+  offered from the new public GET /skill-tags); the public ProfileView drops
+  gender/Milestones and renders the new fields; the hub feed composer reads
+  me.user (was me.profile, which never matched the API shape). Em dashes
+  scrubbed from the touched files. Verification before the PR: 614 API
+  tests pass (33 files; 71 in profiles.test.ts covering the D11 400s, the
+  visibility filtering, member_profiles/skills writes, and pinned-post
+  ownership), tsc clean, site build clean (24 pages). Shipped in PR #30
+  (merged to develop; build, secrets, audit, analyze, lighthouse, CodeQL all
+  green). Grade (dimensions this cycle touched, scored from evidence):
+  functional 2,500/2,500; schema and API 2,000/2,000; accessibility
+  1,250/1,250 (new inputs all carry associated labels; no new unnamed
+  controls, motion, or color-only signals); performance 1,250/1,250
+  (Lighthouse green, no new assets, one small skill-tags fetch);
+  security 1,250/1,250; code quality 1,000/1,000; brand and copy 750/750.
+  Pro-rated total 10,000/10,000, no zero dimension, no open P0. Verdict:
+  ACCEPT. Next improvement: Phase 1 work order messaging and notifications
+  items 8, 11, 12.
