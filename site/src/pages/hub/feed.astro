@@ -468,10 +468,10 @@ import Base from "../../layouts/Base.astro";
         await loadFeed(false);
         try {
           const me = await (await api("/api/profiles/me")).json();
-          if (me && me.ok && me.profile) {
+          if (me && me.ok && me.user) {
             $("composer-avatar").outerHTML =
               '<span id="composer-avatar" style="display:inline-flex;flex:none;">' +
-              brimwoodAvatar({ src: me.profile.avatar_url, name: me.profile.display_name, size: 40 }) +
+              brimwoodAvatar({ src: me.user.avatar_url, name: me.user.display_name, size: 40 }) +
               "</span>";
           }
         } catch {}

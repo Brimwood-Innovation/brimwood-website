@@ -1,7 +1,7 @@
 ---
 /* Per-field visibility selector (profiles area): Public / Members / Only me,
  * plus "Default" which resolves to the API default for the field
- * (dob/gender → only me, everything else → public). */
+ * (public for every field; D11 removed dob/gender). */
 interface Props {
   field: string;
   /** The field's API default, shown in the Default option label. */
