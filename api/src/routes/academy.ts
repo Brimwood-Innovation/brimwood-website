@@ -2,7 +2,7 @@
  *
  * GET /api/courses                     → published courses (public)
  * GET /api/courses/:slug               → course + modules + lesson list (public;
- *                                         lesson bodies gated — previews show excerpt)
+ *                                         lesson bodies gated: previews show excerpt)
  * GET /api/lessons/:id                 → full lesson; preview lessons are public,
  *                                         full lessons require a session.
  *                                         Courses with visibility='public' are
@@ -18,7 +18,7 @@ const app = new Hono<{ Bindings: Bindings }>();
 
 
 /** Return the session's user id, or null. Role is intentionally NOT cached
- * here — authorization checks re-read it from D1 via isAdminUser so a
+ * here: authorization checks re-read it from D1 via isAdminUser so a
  * demoted admin loses access on the next request. */
 async function sessionUserId(c: any): Promise<string | null> {
   const s = await readSession(c);
@@ -47,8 +47,9 @@ app.get("/:slug", async (c) => {
     .first();
   if (!course) return c.json({ ok: false, error: "Not found" }, 404);
 
+  // Archived modules (removed from the CMS) are never shown to readers.
   const modules = await DB.prepare(
-    `SELECT id, title, sort_order FROM modules WHERE course_id = ? ORDER BY sort_order`
+    `SELECT id, title, sort_order FROM modules WHERE course_id = ? AND archived_at IS NULL ORDER BY sort_order`
   )
     .bind((course as any).id)
     .all();
@@ -106,7 +107,7 @@ app.get("/lessons/:id", async (c) => {
     const userId = await sessionUserId(c);
     if (!userId) return c.json({ ok: false, error: "Members only" }, 401);
     // Members-only course: must be enrolled (or admin). The admin check
-    // re-reads the role from D1 — never trust the cached session role.
+    // re-reads the role from D1 and never trusts the cached session role.
     if (!(await isAdminUser(c, userId))) {
       const enr = await DB.prepare(
         "SELECT id FROM enrollments WHERE user_id = ? AND course_id = ?"

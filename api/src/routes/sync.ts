@@ -1,4 +1,4 @@
-/* CMS course sync (Phase 5 — CMS-to-D1 pipeline).
+/* CMS course sync (Phase 5: CMS-to-D1 pipeline).
  *
  * POST /api/admin/sync/courses
  *
@@ -12,11 +12,15 @@
  *
  * Sync semantics, per course (keyed by slug):
  * - course row: upsert by slug (stable id)
- * - modules: reconciled by position (sort_order); extras deleted (their lessons
- *   are removed by ON DELETE CASCADE)
+ * - modules: reconciled by position (sort_order); extras are archived
+ *   (archived_at), never deleted, and their lessons are archived too;
+ *   reflections are member writing (D6) and must survive
  * - lessons: reconciled by slug within the module, so lesson ids stay stable
  *   across re-syncs and member progress in lesson_progress is preserved;
- *   stale slugs deleted
+ *   stale slugs are archived (status = 'archived'), never deleted.
+ *   Reconciliation reads skip archived rows, so an archived module or lesson
+ *   that returns to the CMS starts as a fresh row; the archived row keeps
+ *   the member's reflections and progress.
  */
 import { Hono } from "hono";
 import type { Bindings } from "../index";
@@ -43,7 +47,7 @@ function slugify(s: string): string {
   return slug || "untitled";
 }
 
-/** Manual constant-time string compare — see lib/safe-equal.ts. */
+/** Manual constant-time string compare (see lib/safe-equal.ts). */
 import { safeEqual } from "../lib/safe-equal";
 import { getAdminUser } from "../lib/auth";
 import { checkRateLimitD1 } from "../lib/ratelimit-d1";
@@ -140,9 +144,12 @@ app.post("/courses", async (c) => {
     if (!courseRow) return c.json({ ok: false, error: "Sync failed (course)" }, 500);
     const courseId = courseRow.id;
 
-    // Modules: reconcile by position.
+    // Modules: reconcile by position, skipping archived rows (tombstones
+    // from earlier CMS removals stay archived with their lessons).
     const existingMods = ((
-      await DB.prepare("SELECT id FROM modules WHERE course_id = ? ORDER BY sort_order")
+      await DB.prepare(
+        "SELECT id FROM modules WHERE course_id = ? AND archived_at IS NULL ORDER BY sort_order"
+      )
         .bind(courseId)
         .all()
     ).results ?? []) as { id: string }[];
@@ -173,7 +180,9 @@ app.post("/courses", async (c) => {
         return c.json({ ok: false, error: `Too many lessons in "${mTitle}"` }, 400);
       }
       const existingLessons = ((
-        await DB.prepare("SELECT id, slug FROM lessons WHERE module_id = ?")
+        await DB.prepare(
+          "SELECT id, slug FROM lessons WHERE module_id = ? AND status <> 'archived'"
+        )
           .bind(moduleId)
           .all()
       ).results ?? []) as { id: string; slug: string }[];
@@ -236,17 +245,34 @@ app.post("/courses", async (c) => {
         nLessons++;
       }
 
-      // Delete lessons whose slugs disappeared from the CMS.
+      // Archive lessons whose slugs disappeared from the CMS. Never
+      // delete: reflections are member writing (D6, ON DELETE RESTRICT) and
+      // the trigger trg_lessons_archive_not_delete would refuse anyway.
       for (const ex of existingLessons) {
         if (!seen.has(ex.slug)) {
-          await DB.prepare("DELETE FROM lessons WHERE id = ?").bind(ex.id).run();
+          await DB.prepare(
+            "UPDATE lessons SET status = 'archived', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?"
+          )
+            .bind(ex.id)
+            .run();
         }
       }
     }
 
-    // Delete modules past the end of the CMS list (lessons cascade).
+    // Archive modules past the end of the CMS list (never delete), and
+    // archive their lessons so no reader can reach them.
     for (let mi = modules.length; mi < existingMods.length; mi++) {
-      await DB.prepare("DELETE FROM modules WHERE id = ?").bind(existingMods[mi].id).run();
+      const modId = existingMods[mi].id;
+      await DB.prepare(
+        "UPDATE modules SET archived_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?"
+      )
+        .bind(modId)
+        .run();
+      await DB.prepare(
+        "UPDATE lessons SET status = 'archived', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE module_id = ? AND status <> 'archived'"
+      )
+        .bind(modId)
+        .run();
     }
   }
 

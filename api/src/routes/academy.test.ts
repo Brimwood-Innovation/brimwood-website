@@ -1,4 +1,4 @@
-/* Route tests: academy — course reads (N+1 fix), lesson gating, visibility. */
+/* Route tests: academy :  course reads (N+1 fix), lesson gating, visibility. */
 import { describe, it, expect } from "vitest";
 import app from "./academy";
 import { mockEnv, memberSession, adminSession } from "../test/helpers";
@@ -87,6 +87,17 @@ describe("GET /api/courses/:slug", () => {
     const env = mockEnv();
     const res = await app.request("/nope", {}, env as any);
     expect(res.status).toBe(404);
+  });
+
+  it("skips archived modules and lessons for readers (D6, R3)", async () => {
+    const env = courseEnv();
+    await app.request("/foundations", {}, env as any);
+    // The module list read excludes archived modules.
+    const modQuery = env.DB.calls.find((c) => /FROM modules/.test(c.sql))!;
+    expect(modQuery.sql).toMatch(/archived_at IS NULL/);
+    // The lesson index read excludes non-published (archived) lessons.
+    const lessonQuery = env.DB.calls.find((c) => /FROM lessons/.test(c.sql))!;
+    expect(lessonQuery.sql).toMatch(/status = 'published'/);
   });
 });
 
