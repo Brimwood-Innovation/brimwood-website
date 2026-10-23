@@ -5,7 +5,7 @@
  */
 import { Hono } from "hono";
 import type { Bindings } from "../index";
-import { getAdminUser } from "../lib/auth";
+import { getAdminUser, getUserId } from "../lib/auth";
 import { sendEmail, shell, esc, SITE } from "../lib/email";
 import { cleanStr, isEmail, isRecord, clientIp } from "../lib/validate";
 import { verifyTurnstile } from "../lib/turnstile";
@@ -103,7 +103,7 @@ app.post("/events/:slug/rsvp", async (c) => {
     return c.json({ ok: false, error: "Invalid request." }, 400);
   }
   if (cleanStr(data.website, 200)) {
-    return c.json({ ok: true }); // honeypot: bot — pretend success
+    return c.json({ ok: true }); // honeypot: bot - pretend success
   }
 
   const name = cleanStr(data.name, 100);
@@ -135,33 +135,69 @@ app.post("/events/:slug/rsvp", async (c) => {
     return c.json({ ok: false, error: "This event has already happened." }, 400);
   }
 
-  // Capacity: count confirmed guests excluding this email, then add the new total.
-  const current = await DB.prepare(
-    `SELECT COALESCE(SUM(guests), 0) AS n FROM event_rsvps
-     WHERE event_id = ? AND status = 'confirmed' AND email != ?`
-  )
-    .bind(ev.id, email)
-    .first<{ n: number }>();
-  if (ev.capacity && (current?.n || 0) + guests > ev.capacity) {
-    return c.json({ ok: false, error: "Sorry — this event is at capacity." }, 400);
+  // Phase 1 item 9 (RSVP by member): a signed-in member's RSVP carries their
+  // user_id, so it can be joined back to the member. Guests keep name/email
+  // only. readSession is cookie-gated, so this adds no query for guests.
+  const memberId = await getUserId(c).catch(() => null);
+
+  // Remember any existing RSVP so the capacity check can exclude it and the
+  // post-write check below can restore it. A member's own row is found by
+  // user_id first (it may carry an older email); otherwise fall back to the
+  // submitted email, which also adopts a pre-sign-in guest row to the member.
+  let prior: { id: string; name: string; email: string; guests: number; status: string; user_id: string | null } | null = null;
+  if (memberId) {
+    prior = await DB.prepare(
+      "SELECT id, name, email, guests, status, user_id FROM event_rsvps WHERE event_id = ? AND user_id = ?"
+    )
+      .bind(ev.id, memberId)
+      .first<{ id: string; name: string; email: string; guests: number; status: string; user_id: string | null }>()
+      .catch(() => null);
+  }
+  if (!prior) {
+    prior = await DB.prepare(
+      "SELECT id, name, email, guests, status, user_id FROM event_rsvps WHERE event_id = ? AND email = ?"
+    )
+      .bind(ev.id, email)
+      .first<{ id: string; name: string; email: string; guests: number; status: string; user_id: string | null }>()
+      .catch(() => null);
   }
 
-  // Remember any existing RSVP so the post-write check below can restore it.
-  const prior = await DB.prepare(
-    "SELECT id, name, guests, status FROM event_rsvps WHERE event_id = ? AND email = ?"
+  // Capacity: count confirmed guests excluding this submitter's own RSVP,
+  // then add the new total.
+  const current = await DB.prepare(
+    `SELECT COALESCE(SUM(guests), 0) AS n FROM event_rsvps
+     WHERE event_id = ? AND status = 'confirmed' AND email != ? AND id != ?`
   )
-    .bind(ev.id, email)
-    .first<{ id: string; name: string; guests: number; status: string }>()
-    .catch(() => null);
+    .bind(ev.id, email, prior?.id ?? "")
+    .first<{ n: number }>();
+  if (ev.capacity && (current?.n || 0) + guests > ev.capacity) {
+    return c.json({ ok: false, error: "Sorry - this event is at capacity." }, 400);
+  }
 
-  await DB.prepare(
-    `INSERT INTO event_rsvps (id, event_id, name, email, guests, status)
-     VALUES (?, ?, ?, ?, ?, 'confirmed')
-     ON CONFLICT(event_id, email) DO UPDATE SET
-       name = excluded.name, guests = excluded.guests, status = 'confirmed'`
-  )
-    .bind(crypto.randomUUID(), ev.id, name, email, guests)
-    .run();
+  if (prior) {
+    // The member (or the email) already has a row: update it in place.
+    // COALESCE keeps an existing member link when a guest re-submits the
+    // same email, and adopts a guest row when the member signs in later.
+    // Updating by id (never re-inserting) keeps the (event_id, user_id)
+    // unique index happy when a member changes their RSVP email.
+    await DB.prepare(
+      `UPDATE event_rsvps
+       SET user_id = COALESCE(user_id, ?), name = ?, email = ?, guests = ?, status = 'confirmed'
+       WHERE id = ?`
+    )
+      .bind(memberId, name, email, guests, prior.id)
+      .run();
+  } else {
+    await DB.prepare(
+      `INSERT INTO event_rsvps (id, event_id, user_id, name, email, guests, status)
+       VALUES (?, ?, ?, ?, ?, ?, 'confirmed')
+       ON CONFLICT(event_id, email) DO UPDATE SET
+         user_id = COALESCE(user_id, excluded.user_id),
+         name = excluded.name, guests = excluded.guests, status = 'confirmed'`
+    )
+      .bind(crypto.randomUUID(), ev.id, memberId, name, email, guests)
+      .run();
+  }
 
   // Post-write capacity verify: closes the check-then-insert race where two
   // concurrent RSVPs both pass the check above. On oversell, restore the
@@ -186,11 +222,11 @@ app.post("/events/:slug/rsvp", async (c) => {
           .run()
           .catch(() => {});
       }
-      return c.json({ ok: false, error: "Sorry — this event is at capacity." }, 400);
+      return c.json({ ok: false, error: "Sorry - this event is at capacity." }, 400);
     }
   }
 
-  // Confirmation email (best effort — RSVP is stored regardless).
+  // Confirmation email (best effort - RSVP is stored regardless).
   const resendKey = env.RESEND_API_KEY;
   if (resendKey) {
     const when = new Date(ev.starts_at).toLocaleString("en-CA", {
@@ -206,7 +242,7 @@ app.post("/events/:slug/rsvp", async (c) => {
       "You are on the list",
       `RSVP confirmed: ${ev.title}`,
       `<p style="margin:0 0 16px;">Hello ${esc(name)},</p>` +
-        `<p style="margin:0 0 16px;">You are confirmed for <strong>${esc(ev.title)}</strong> — ` +
+        `<p style="margin:0 0 16px;">You are confirmed for <strong>${esc(ev.title)}</strong> - ` +
         `${esc(when)}${ev.location ? ` at ${esc(ev.location)}` : ""}. ` +
         `Party of ${guests}.</p>` +
         `<p style="margin:0;font-size:13px;color:#5B6862;">Build a business. Build yourself.<br>` +
@@ -214,12 +250,12 @@ app.post("/events/:slug/rsvp", async (c) => {
     );
     await sendEmail(resendKey, {
       to: email,
-      subject: `Confirmed: ${ev.title} — Brimwood Innovation`,
+      subject: `Confirmed: ${ev.title} - Brimwood Innovation`,
       html,
       text:
-        `Hello ${name},\n\nYou are confirmed for ${ev.title} — ${when}` +
+        `Hello ${name},\n\nYou are confirmed for ${ev.title} - ${when}` +
         `${ev.location ? ` at ${ev.location}` : ""}. Party of ${guests}.\n\n` +
-        `Build a business. Build yourself.\n— Brimwood Innovation`,
+        `Build a business. Build yourself.\n- Brimwood Innovation`,
     }).catch(() => {});
     await DB.prepare(
       "INSERT INTO email_log (id, kind, to_email, subject, status) VALUES (?, 'rsvp-confirm', ?, ?, 'sent')"
@@ -232,6 +268,182 @@ app.post("/events/:slug/rsvp", async (c) => {
   return c.json({ ok: true });
 });
 
+/* ================= Event room holds (Phase 1 item 20) =================
+ *
+ * An event that uses a room inserts one space_bookings row per hold window
+ * with event_id set (an "event hold"), so the overlap rule in 0029_space.sql
+ * blocks member bookings against it. Holds only exist while the event is
+ * published; cancelling or drafting an event cancels its holds, deleting the
+ * event cascades them away (FK ON DELETE CASCADE). Each row respects the
+ * space_bookings CHECKs: minute-aligned ISO times, 15 to 120 minutes long.
+ */
+
+const HOLD_MAX_MINUTES = 120;
+const HOLD_CHUNK_MINUTES = 105;
+
+function floorToMinute(d: Date): Date {
+  d.setSeconds(0, 0);
+  return d;
+}
+
+/** Split an event window into minute-aligned hold windows of 15 to 120
+ * minutes. Long events are chunked at 105 minutes so the trailing chunk is
+ * never shorter than the 15-minute minimum. */
+function holdWindows(startsAt: string, endsAt: string | null): { starts: string; ends: string }[] {
+  const start = floorToMinute(new Date(startsAt));
+  let endMs = endsAt ? floorToMinute(new Date(endsAt)).getTime() : start.getTime() + HOLD_MAX_MINUTES * 60000;
+  if (!(endMs > start.getTime())) endMs = start.getTime() + 15 * 60000;
+  if (endMs - start.getTime() < 15 * 60000) endMs = start.getTime() + 15 * 60000;
+  const windows: { starts: string; ends: string }[] = [];
+  let cur = start.getTime();
+  while (cur < endMs) {
+    const remaining = endMs - cur;
+    const len = remaining > HOLD_MAX_MINUTES * 60000 ? HOLD_CHUNK_MINUTES * 60000 : remaining;
+    const wEnd = cur + len;
+    windows.push({ starts: new Date(cur).toISOString(), ends: new Date(wEnd).toISOString() });
+    cur = wEnd;
+  }
+  return windows;
+}
+
+/** Map a space_bookings trigger ABORT (or the pre-check equivalent) to a
+ * plain-words 400 message. Returns null when the error is not a hold rule. */
+function holdRuleMessage(e: unknown): string | null {
+  const msg = String((e as Error | null)?.message ?? e ?? "");
+  if (msg.includes("booking overlaps another booking")) return "That room is already booked at that time.";
+  if (msg.includes("resource is not bookable")) return "That room cannot be booked right now.";
+  if (msg.includes("the hub is closed then")) return "The hub is closed at that time.";
+  if (msg.includes("party is larger than the room capacity")) return "That event is larger than the room capacity.";
+  return null;
+}
+
+interface HoldPlan {
+  error?: string;
+  stmts?: { sql: string; params: unknown[] }[];
+}
+
+/** Validate a room and build the hold insert statements for an event, or
+ * return { error } for a clean 400. The overlap and closure pre-checks mirror
+ * the 0029 triggers; the triggers stay the race fallback. */
+async function planEventHolds(
+  DB: any,
+  opts: {
+    eventId: string;
+    eventTitle: string;
+    resourceId: string;
+    startsAt: string;
+    endsAt: string | null;
+    capacity: number | null;
+    holderUserId: string;
+  }
+): Promise<HoldPlan> {
+  const res = (await DB.prepare(
+    "SELECT id, bookable, active, capacity FROM space_resources WHERE id = ?"
+  )
+    .bind(opts.resourceId)
+    .first()
+    .catch(() => null)) as { id: string; bookable: number; active: number; capacity: number } | null;
+  if (!res) return { error: "Unknown room." };
+  if (!res.bookable || !res.active) return { error: "That room cannot be booked right now." };
+
+  const windows = holdWindows(opts.startsAt, opts.endsAt);
+  for (const w of windows) {
+    const clash = await DB.prepare(
+      `SELECT 1 FROM space_bookings
+       WHERE resource_id = ? AND status IN ('confirmed','checked_in')
+         AND (event_id IS NULL OR event_id != ?)
+         AND starts_at < ? AND ? < ends_at
+       LIMIT 1`
+    )
+      .bind(opts.resourceId, opts.eventId, w.ends, w.starts)
+      .first()
+      .catch(() => null);
+    if (clash) return { error: "That room is already booked at that time." };
+    const closed = await DB.prepare(
+      `SELECT 1 FROM space_closures
+       WHERE (resource_id IS NULL OR resource_id = ?)
+         AND starts_at < ? AND ? < ends_at
+       LIMIT 1`
+    )
+      .bind(opts.resourceId, w.ends, w.starts)
+      .first()
+      .catch(() => null);
+    if (closed) return { error: "The hub is closed at that time." };
+  }
+
+  const partySize = Math.min(Math.max(opts.capacity ?? 1, 1), res.capacity);
+  const purpose = ("Event hold: " + opts.eventTitle).slice(0, 140);
+  const stmts = windows.map((w) => ({
+    sql: `INSERT INTO space_bookings
+            (id, resource_id, user_id, starts_at, ends_at, party_size, purpose, event_id, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'confirmed')`,
+    params: [crypto.randomUUID(), opts.resourceId, opts.holderUserId, w.starts, w.ends, partySize, purpose, opts.eventId],
+  }));
+  return { stmts };
+}
+
+/** Rebuild an event's holds from a validated plan: clear the old rows, then
+ * insert the new ones. resourceId null clears the holds; undefined keeps the
+ * event's current room (no-op when the event has no holds). Planning happens
+ * before any delete, so a bad room leaves the existing holds untouched. */
+async function syncEventHolds(
+  DB: any,
+  eventId: string,
+  opts: {
+    resourceId?: string | null;
+    title: string;
+    startsAt: string;
+    endsAt: string | null;
+    capacity: number | null;
+    holderUserId: string;
+  }
+): Promise<string | null> {
+  let resourceId = opts.resourceId;
+  if (resourceId === undefined) {
+    const row = (await DB.prepare(
+      "SELECT resource_id FROM space_bookings WHERE event_id = ? LIMIT 1"
+    )
+      .bind(eventId)
+      .first()
+      .catch(() => null)) as { resource_id: string } | null;
+    if (!row) return null;
+    resourceId = row.resource_id;
+  }
+  if (!resourceId) {
+    await DB.prepare("DELETE FROM space_bookings WHERE event_id = ?").bind(eventId).run().catch(() => {});
+    return null;
+  }
+  const plan = await planEventHolds(DB, {
+    eventId,
+    eventTitle: opts.title,
+    resourceId,
+    startsAt: opts.startsAt,
+    endsAt: opts.endsAt,
+    capacity: opts.capacity,
+    holderUserId: opts.holderUserId,
+  });
+  if (plan.error) return plan.error;
+  await DB.prepare("DELETE FROM space_bookings WHERE event_id = ?").bind(eventId).run().catch(() => {});
+  try {
+    await DB.batch(plan.stmts!.map((s) => DB.prepare(s.sql).bind(...s.params)));
+  } catch (e) {
+    return holdRuleMessage(e) ?? "Could not hold the room for this event.";
+  }
+  return null;
+}
+
+/** Release an event's holds without deleting the rows (status cancelled). */
+async function cancelEventHolds(DB: any, eventId: string): Promise<void> {
+  await DB.prepare(
+    `UPDATE space_bookings
+     SET status = 'cancelled', cancelled_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+     WHERE event_id = ? AND status IN ('confirmed','checked_in')`
+  )
+    .bind(eventId)
+    .run()
+    .catch(() => {});
+}
+
 /* ================= Admin ================= */
 
 /** All events, newest first, with RSVP counts. */
@@ -241,8 +453,10 @@ app.get("/admin/events", async (c) => {
   if (no) return no;
   const { DB } = c.env;
   const rows = await DB.prepare(
-    `SELECT e.*, (SELECT COALESCE(SUM(r.guests), 0) FROM event_rsvps r
-       WHERE r.event_id = e.id AND r.status = 'confirmed') AS rsvp_count
+    `SELECT e.*,
+       (SELECT COALESCE(SUM(r.guests), 0) FROM event_rsvps r
+        WHERE r.event_id = e.id AND r.status = 'confirmed') AS rsvp_count,
+       (SELECT resource_id FROM space_bookings WHERE event_id = e.id LIMIT 1) AS space_resource_id
      FROM events e ORDER BY e.starts_at DESC LIMIT 100`
   ).all();
   return c.json({ ok: true, events: rows.results });
@@ -271,6 +485,31 @@ app.post("/admin/events", async (c) => {
     return c.json({ ok: false, error: "Invalid status." }, 400);
   }
   const capacity = data.capacity ? Math.max(parseInt(String(data.capacity), 10) || 0, 0) : null;
+  const startsAt = new Date(starts_at).toISOString();
+  const endsAt =
+    data.ends_at && !isNaN(Date.parse(String(data.ends_at)))
+      ? new Date(String(data.ends_at)).toISOString()
+      : null;
+  const eventId = crypto.randomUUID();
+
+  // Phase 1 item 20: an event that uses a room holds it in space_bookings, so
+  // the overlap rule blocks member bookings. Drafts and cancelled events hold
+  // nothing; publishing later (PATCH) creates the hold. The room is validated
+  // before the event row is written, so a bad room is a clean 400.
+  const resourceId = cleanStr(data.space_resource_id, 50);
+  const wantHold = status === "published" && !!resourceId;
+  const holdPlan = wantHold
+    ? await planEventHolds(DB, {
+        eventId,
+        eventTitle: title,
+        resourceId,
+        startsAt,
+        endsAt,
+        capacity,
+        holderUserId: admin!.id,
+      })
+    : null;
+  if (holdPlan?.error) return c.json({ ok: false, error: holdPlan.error }, 400);
 
   try {
     await DB.prepare(
@@ -278,12 +517,12 @@ app.post("/admin/events", async (c) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
       .bind(
-        crypto.randomUUID(),
+        eventId,
         slug,
         title,
         cleanStr(data.description_md, 10000) || null,
-        new Date(starts_at).toISOString(),
-        data.ends_at && !isNaN(Date.parse(String(data.ends_at))) ? new Date(String(data.ends_at)).toISOString() : null,
+        startsAt,
+        endsAt,
         cleanStr(data.location, 200) || null,
         capacity,
         status
@@ -295,6 +534,17 @@ app.post("/admin/events", async (c) => {
     }
     throw e;
   }
+
+  if (holdPlan?.stmts) {
+    try {
+      await DB.batch(holdPlan.stmts.map((s) => DB.prepare(s.sql).bind(...s.params)));
+    } catch (e) {
+      // Race lost to a concurrent booking: the event stands, the room does
+      // not. The message is honest about what happened.
+      return c.json({ ok: false, error: holdRuleMessage(e) ?? "Could not hold the room for this event." }, 400);
+    }
+  }
+
   await audit(c, admin!, "event.create", slug);
   return c.json({ ok: true, slug });
 });
@@ -347,19 +597,63 @@ app.patch("/admin/events/:id", async (c) => {
     }
     set("status", st);
   }
-  if (fields.length === 0) return c.json({ ok: false, error: "Nothing to update." }, 400);
-
-  try {
-    const res = await DB.prepare(`UPDATE events SET ${fields.join(", ")} WHERE id = ?`)
-      .bind(...vals, id)
-      .run();
-    if (!res.meta.changes) return c.json({ ok: false, error: "Event not found." }, 404);
-  } catch (e) {
-    if (String(e).includes("UNIQUE")) {
-      return c.json({ ok: false, error: "An event with that slug already exists." }, 400);
-    }
-    throw e;
+  // space_resource_id is not an events column; it only drives the room hold,
+  // so a room-only PATCH is valid even with no column changes.
+  const roomTouched = data.space_resource_id !== undefined;
+  if (fields.length === 0 && !roomTouched) {
+    return c.json({ ok: false, error: "Nothing to update." }, 400);
   }
+
+  const prevStatus = await DB.prepare("SELECT status FROM events WHERE id = ?")
+    .bind(id)
+    .first<{ status: string }>()
+    .then((r) => r?.status ?? null)
+    .catch(() => null);
+  if (prevStatus === null) return c.json({ ok: false, error: "Event not found." }, 404);
+
+  if (fields.length > 0) {
+    try {
+      const res = await DB.prepare(`UPDATE events SET ${fields.join(", ")} WHERE id = ?`)
+        .bind(...vals, id)
+        .run();
+      if (!res.meta.changes) return c.json({ ok: false, error: "Event not found." }, 404);
+    } catch (e) {
+      if (String(e).includes("UNIQUE")) {
+        return c.json({ ok: false, error: "An event with that slug already exists." }, 400);
+      }
+      throw e;
+    }
+  }
+
+  // Phase 1 item 20: keep the room hold in step with the event. Holds only
+  // exist while the event is published; anything else releases the room.
+  const ev = await DB.prepare(
+    "SELECT title, starts_at, ends_at, capacity, status FROM events WHERE id = ?"
+  )
+    .bind(id)
+    .first<{ title: string; starts_at: string; ends_at: string | null; capacity: number | null; status: string }>()
+    .catch(() => null);
+  if (ev) {
+    if (ev.status !== "published") {
+      await cancelEventHolds(DB, id);
+    } else {
+      const timesTouched = data.starts_at !== undefined || data.ends_at !== undefined;
+      const capacityTouched = data.capacity !== undefined;
+      const becamePublished = prevStatus !== null && prevStatus !== "published";
+      if (roomTouched || timesTouched || capacityTouched || becamePublished) {
+        const err = await syncEventHolds(DB, id, {
+          resourceId: roomTouched ? cleanStr(data.space_resource_id, 50) || null : undefined,
+          title: ev.title,
+          startsAt: ev.starts_at,
+          endsAt: ev.ends_at,
+          capacity: ev.capacity,
+          holderUserId: admin!.id,
+        });
+        if (err) return c.json({ ok: false, error: err }, 400);
+      }
+    }
+  }
+
   await audit(c, admin!, "event.update", id);
   return c.json({ ok: true });
 });
@@ -372,7 +666,7 @@ app.get("/admin/events/:id/rsvps", async (c) => {
   const { DB } = c.env;
   const id = cleanStr(c.req.param("id"), 50);
   const rows = await DB.prepare(
-    `SELECT id, name, email, guests, status, created_at FROM event_rsvps
+    `SELECT id, name, email, guests, status, created_at, user_id FROM event_rsvps
      WHERE event_id = ? ORDER BY created_at ASC LIMIT 500`
   )
     .bind(id)

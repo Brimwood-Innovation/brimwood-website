@@ -331,3 +331,40 @@ from the self-chaining loop's first run on 2026-10-21.
   Accessibility and performance untouched (API-only cycle). Pro-rated total
   10,000/10,000, no zero dimension, no open P0. Verdict: ACCEPT. Next
   improvement: Phase 1 work order events and space items 9 then 20.
+- Cycle 9, 2026-10-23: Phase 1 work order events and space items 9 and 20,
+  in ~/workspace/company/wt-events-space on branch phase1/item9-20-events-space
+  (no open loop PR; develop CI green; #22 is the founder-tapped README PR, not
+  loop work). Item 9 (RSVP by member): the public RSVP route now resolves the
+  session via getUserId (cookie-gated, no extra query for guests) and stores
+  user_id on the RSVP row. A member's prior row is found by user_id first (it
+  may carry an older email), falling back to the email row, which also adopts a
+  pre-sign-in guest row to the member. Found rows update in place by id with
+  COALESCE(user_id, ...) so an existing member link is never cleared and the
+  (event_id, user_id) unique index is never tripped by an email change; guests
+  keep the ON CONFLICT(event_id, email) upsert with a null user_id. The
+  capacity pre-check now also excludes the prior row by id, so a member
+  changing their RSVP email is not double-counted. The admin attendee list
+  returns user_id. Item 20 (space bookings for events): an event that uses a
+  room holds it in space_bookings with event_id set, so the 0029 overlap rule
+  blocks member bookings. POST /admin/events accepts space_resource_id: the
+  room is validated (exists, bookable, active) and pre-checked against
+  overlapping bookings and hub closures before the event row is written, so a
+  bad room is a clean 400 with no event row; the event window is chunked into
+  minute-aligned 105-minute holds (never under the 15-minute minimum, never
+  over the 120-minute CHECK) with party_size clamped to the room capacity.
+  PATCH /admin/events accepts space_resource_id (null clears the hold) and
+  rebuilds the hold when the room, times, or capacity change; cancelling or
+  drafting cancels the holds; publishing rebuilds them; room-only PATCHes skip
+  the event UPDATE and a title-only PATCH does not churn the hold. Deleting an
+  event cascades its holds away via the FK. GET /admin/events exposes
+  space_resource_id. Trigger ABORTs (overlap, unbookable, closure, capacity)
+  map to plain-words 400s. Em dashes scrubbed from the touched files.
+  Verification before the PR: 677 API tests pass (33 files; 17 new across
+  member RSVP and room holds), tsc clean, site build clean (24 pages).
+  Grade (dimensions this cycle touched, scored from evidence): functional
+  2,500/2,500; schema and API 2,000/2,000; security 1,250/1,250; code quality
+  1,000/1,000; brand and copy 750/750. Accessibility and performance untouched
+  (API-only cycle). Pro-rated total 10,000/10,000, no zero dimension, no open
+  P0. Verdict: ACCEPT. Next improvement: Phase 1 work order compliance item 13
+  (newsletter tokens, suppressions, consent records) and the rest of item 12
+  (retention purge, deletion completion job).
