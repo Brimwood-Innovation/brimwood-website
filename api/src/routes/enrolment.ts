@@ -42,14 +42,17 @@ app.post("/enrol/:courseSlug", async (c) => {
   return c.json({ ok: true });
 });
 
-/** Mark a lesson complete. */
+/** Mark a lesson complete. D6: a lesson is complete only when the member
+ *  submits a reflection (private by default). The reflection is inserted
+ *  first, in one batch with the progress upsert, so the
+ *  trg_lesson_progress_needs_reflection trigger always sees it. */
 app.post("/progress/:lessonId", async (c) => {
   const user = await authUser(c);
   if (!user) return c.json({ ok: false, error: "Sign in required" }, 401);
   const { DB } = c.env;
   const lessonId = c.req.param("lessonId");
 
-  // Verify the lesson exists, is published, AND its course is published —
+  // Verify the lesson exists, is published, AND its course is published;
   // matches the gating on GET /api/courses/lessons/:id (no completing
   // lessons from draft courses).
   const lesson = await DB.prepare(
@@ -62,6 +65,38 @@ app.post("/progress/:lessonId", async (c) => {
     .first<{ id: string; course_id: string }>();
   if (!lesson) return c.json({ ok: false, error: "Not found" }, 404);
 
+  // Parse the reflection. Re-completing a lesson with an existing reflection
+  // needs no new text; sending one edits it (editing keeps the row).
+  let reflection: string | null = null;
+  try {
+    const body = (await c.req.json()) as any;
+    if (typeof body?.reflection === "string") reflection = body.reflection.trim();
+  } catch {
+    /* no JSON body */
+  }
+  if (reflection !== null && (reflection.length < 20 || reflection.length > 2000)) {
+    return c.json(
+      { ok: false, error: "A reflection of 20 to 2000 characters is required" },
+      400
+    );
+  }
+
+  const existing = await DB.prepare(
+    "SELECT id FROM lesson_reflections WHERE user_id = ? AND lesson_id = ?"
+  )
+    .bind(user.id, lessonId)
+    .first<{ id: string }>();
+  if (!existing && reflection === null) {
+    return c.json(
+      {
+        ok: false,
+        error:
+          "Submit a reflection (20 to 2000 characters) to complete a lesson",
+      },
+      400
+    );
+  }
+
   // Auto-enrol if not already (members can access previews; enrol to track).
   await DB.prepare(
     "INSERT OR IGNORE INTO enrollments (id, user_id, course_id) VALUES (?, ?, ?)"
@@ -69,13 +104,27 @@ app.post("/progress/:lessonId", async (c) => {
     .bind(crypto.randomUUID(), user.id, lesson.course_id)
     .run();
 
-  await DB.prepare(
-    `INSERT INTO lesson_progress (id, user_id, lesson_id, status, completed_at)
-     VALUES (?, ?, ?, 'completed', strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-     ON CONFLICT(user_id, lesson_id) DO UPDATE SET status='completed', completed_at=excluded.completed_at`
-  )
-    .bind(crypto.randomUUID(), user.id, lessonId)
-    .run();
+  // Reflection first, then the progress upsert, in one batch.
+  const stmts = [];
+  if (reflection !== null) {
+    stmts.push(
+      DB.prepare(
+        `INSERT INTO lesson_reflections (id, user_id, lesson_id, body)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(user_id, lesson_id) DO UPDATE SET
+           body = excluded.body,
+           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`
+      ).bind(crypto.randomUUID(), user.id, lessonId, reflection)
+    );
+  }
+  stmts.push(
+    DB.prepare(
+      `INSERT INTO lesson_progress (id, user_id, lesson_id, status, completed_at)
+       VALUES (?, ?, ?, 'completed', strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+       ON CONFLICT(user_id, lesson_id) DO UPDATE SET status='completed', completed_at=excluded.completed_at`
+    ).bind(crypto.randomUUID(), user.id, lessonId)
+  );
+  await DB.batch(stmts);
 
   return c.json({ ok: true });
 });

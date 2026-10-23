@@ -1,18 +1,22 @@
-/* Route tests: enrolment — idempotency, progress gating, progress math. */
+/* Route tests: enrolment :  idempotency, progress gating, progress math. */
 import { describe, it, expect } from "vitest";
 import app from "./enrolment";
 import { mockEnv, memberSession, postJSON } from "../test/helpers";
 
-function enrolEnv(courseRow: any, lessonRow: any) {
+function enrolEnv(courseRow: any, lessonRow: any, reflectionRow: any = null) {
   const env = mockEnv();
   const prev = env.DB.handler;
   env.DB.handler = (sql, params) => {
     if (/FROM courses/.test(sql) && !/JOIN courses/.test(sql)) return { row: courseRow };
     if (/FROM lessons l/.test(sql)) return { row: lessonRow };
+    if (/FROM lesson_reflections/.test(sql)) return { row: reflectionRow };
     return prev?.(sql, params);
   };
   return env;
 }
+
+const reflectionText =
+  "This lesson changed how I think about shipping: small, verified, every day.";
 
 const publishedLesson = { id: "l1", course_id: "course-1" };
 
@@ -62,20 +66,62 @@ describe("POST /api/progress/:lessonId", () => {
   it("marks complete and auto-enrols on success", async () => {
     const env = enrolEnv({ id: "course-1" }, publishedLesson);
     const h = memberSession(env);
-    const res = await postJSON(app, "/progress/l1", {}, env, h);
+    const res = await postJSON(app, "/progress/l1", { reflection: reflectionText }, env, h);
     expect(res.status).toBe(200);
     expect(env.DB.calls.some((c) => /INSERT OR IGNORE INTO enrollments/.test(c.sql))).toBe(true);
     expect(env.DB.calls.some((c) => /INSERT INTO lesson_progress/.test(c.sql))).toBe(true);
   });
 
   it("upserts on re-complete (no duplicate rows)", async () => {
-    const env = enrolEnv({ id: "course-1" }, publishedLesson);
+    const env = enrolEnv({ id: "course-1" }, publishedLesson, { id: "r1" });
     const h = memberSession(env);
+    // Existing reflection: re-complete needs no new text.
     await postJSON(app, "/progress/l1", {}, env, h);
-    const res = await postJSON(app, "/progress/l1", {}, env, h);
+    const res = await postJSON(app, "/progress/l1", { reflection: reflectionText }, env, h);
     expect(res.status).toBe(200);
     const writes = env.DB.calls.filter((c) => /lesson_progress/.test(c.sql) && c.op === "run");
     expect(writes.every((c) => /ON CONFLICT\(user_id, lesson_id\)/.test(c.sql))).toBe(true);
+  });
+
+  it("400s without a reflection on first completion (D6)", async () => {
+    const env = enrolEnv({ id: "course-1" }, publishedLesson);
+    const h = memberSession(env);
+    const res = await postJSON(app, "/progress/l1", {}, env, h);
+    expect(res.status).toBe(400);
+    // No progress row written.
+    expect(env.DB.calls.some((c) => /INSERT INTO lesson_progress/.test(c.sql))).toBe(false);
+  });
+
+  it("400s when the reflection is too short or too long", async () => {
+    const env = enrolEnv({ id: "course-1" }, publishedLesson);
+    const h = memberSession(env);
+    const short = await postJSON(app, "/progress/l1", { reflection: "too short" }, env, h);
+    expect(short.status).toBe(400);
+    const long = await postJSON(
+      app,
+      "/progress/l1",
+      { reflection: "x".repeat(2001) },
+      env,
+      h
+    );
+    expect(long.status).toBe(400);
+    expect(env.DB.calls.some((c) => /INSERT INTO lesson_progress/.test(c.sql))).toBe(false);
+  });
+
+  it("inserts the reflection first, in one batch with the progress upsert", async () => {
+    const env = enrolEnv({ id: "course-1" }, publishedLesson);
+    const h = memberSession(env);
+    const res = await postJSON(app, "/progress/l1", { reflection: reflectionText }, env, h);
+    expect(res.status).toBe(200);
+    const calls = env.DB.calls;
+    const reflIdx = calls.findIndex((c) => /INSERT INTO lesson_reflections/.test(c.sql));
+    const progIdx = calls.findIndex((c) => /INSERT INTO lesson_progress/.test(c.sql));
+    expect(reflIdx).toBeGreaterThanOrEqual(0);
+    expect(progIdx).toBeGreaterThanOrEqual(0);
+    // Reflection insert runs before the progress upsert (one batch, in order).
+    expect(reflIdx).toBeLessThan(progIdx);
+    // Re-submitting edits the row, not a duplicate.
+    expect(calls[reflIdx].sql).toMatch(/ON CONFLICT\(user_id, lesson_id\)/);
   });
 });
 
