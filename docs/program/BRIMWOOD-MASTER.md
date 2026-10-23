@@ -361,7 +361,10 @@ from the self-chaining loop's first run on 2026-10-21.
   map to plain-words 400s. Em dashes scrubbed from the touched files.
   Verification before the PR: 677 API tests pass (33 files; 17 new across
   member RSVP and room holds), tsc clean, site build clean (24 pages).
-  Grade (dimensions this cycle touched, scored from evidence): functional
+  Shipped in PR #34 (merged to develop; build, secrets, audit, analyze,
+  CodeQL, lighthouse all green; the audit job initially flagged the
+  pre-existing zod <4.6.6 high advisory, fixed on the branch by bumping the
+  lockfile to zod 4.6.7). Grade (dimensions this cycle touched, scored from evidence): functional
   2,500/2,500; schema and API 2,000/2,000; security 1,250/1,250; code quality
   1,000/1,000; brand and copy 750/750. Accessibility and performance untouched
   (API-only cycle). Pro-rated total 10,000/10,000, no zero dimension, no open
