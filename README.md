@@ -1,3 +1,22 @@
+<!-- PREPEND to brimwood-website/README.md, above the existing "# brimwoodinnovation.com website" heading -->
+
+<p align="center">
+  <strong>Brimwood Innovation</strong> — Build a business. Build yourself.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Site-brimwoodinnovation.com-0C9463" alt="Live site" />
+  <img src="https://img.shields.io/badge/Stack-Astro%20%2B%20Cloudflare-0C9463" alt="Astro + Cloudflare" />
+  <img src="https://img.shields.io/badge/Cost-C%240%20open%20source-0C9463" alt="C$0, open source" />
+  <img src="https://img.shields.io/badge/Licence-MIT%20OR%20AGPL--3.0-0C9463" alt="MIT OR AGPL-3.0" />
+</p>
+
+<p align="center">
+  The public platform for a selective Toronto builder community and venture foundry.<br/>
+  Lightweight, fast, fully open source. Every change flows through GitHub — no zip uploads.
+</p>
+
+---
 # brimwoodinnovation.com website
 
 Monorepo for the Brimwood Innovation website. Public repo:
