@@ -215,3 +215,33 @@ from the self-chaining loop's first run on 2026-10-21.
   Accessibility and performance untouched (API + label cycle). Pro-rated
   total 10,000/10,000, no zero dimension, no open P0. Verdict: ACCEPT.
   Next improvement: academy items 10 and 19 together.
+- Cycle 6, 2026-10-23: academy items 10 and 19 together, in
+  ~/workspace/company/wt-academy on branch phase1/academy-integrity (fresh
+  worktree; no open loop PR; develop CI green; #22 is the founder-tapped
+  README PR, not loop work). Item 10: POST /progress/:lessonId now takes
+  { reflection } in the JSON body; the reflection is inserted first, in one
+  batch with the progress upsert, so the
+  trg_lesson_progress_needs_reflection trigger always sees it (D6).
+  Re-completing with an existing reflection needs no new text; sending one
+  edits the row. Reflection length 20 to 2000 enforced at the boundary (400,
+  not a trigger 500). Item 19: the CMS sync archives instead of deleting
+  (lessons whose slugs left the CMS are set status = 'archived'; extra
+  modules get archived_at plus archiving of their lessons); reconciliation
+  reads skip archived rows so a returning slug or module starts as a fresh
+  row while the archived row keeps the member's reflections and progress.
+  GET /api/courses/:slug now filters archived_at IS NULL; all lesson
+  readers already filter status = 'published'. Em dashes scrubbed from the
+  touched files. No site caller of POST /progress/:lessonId exists yet, so
+  the new reflection contract breaks nothing. Verification before the PR:
+  602 API tests pass (33 files; 4 new sync archive-semantics tests, 3 new
+  enrolment D6 tests, 1 new academy reader test), tsc clean, site build
+  clean (24 pages). Shipped in PR #28 (merged to develop; build, secrets,
+  audit, analyze, lighthouse, CodeQL all green). Grade (dimensions this
+  cycle touched, scored from evidence): functional 2,500/2,500; schema and
+  API 2,000/2,000; security 1,250/1,250; code quality 1,000/1,000; brand and
+  copy 750/750. Accessibility and performance untouched (API and sync
+  cycle). Pro-rated total 10,000/10,000, no zero dimension, no open P0.
+  Verdict: ACCEPT. Next improvement: Phase 1 work order item 7 (profiles:
+  stop reading and writing dob, gender, life events; per-field visibility
+  in profile_field_visibility; new fields to member_profiles and
+  member_skills).
