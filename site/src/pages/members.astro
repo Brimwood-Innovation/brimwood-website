@@ -7,7 +7,7 @@ import StoriesTray from "../components/StoriesTray.astro";
 
 <Base
   title="Members — Brimwood Innovation"
-  description="The Brimwood members area. Sign in with your email to continue."
+  description="The Brimwood members area. Sign in with your email or a passkey to continue."
   path="/members"
 >
   <section class="block" id="members-loading">
@@ -33,6 +33,11 @@ import StoriesTray from "../components/StoriesTray.astro";
         <button class="btn" type="submit" id="codeBtn">Sign in</button>
         <p class="form-err" id="codeErr" style="display:none"></p>
       </form>
+      <div id="pkSigninWrap" style="display:none;margin-top:24px;border-top:1px solid rgba(18,26,22,.12);padding-top:24px;">
+        <button class="btn btn-ghost" type="button" id="pkSigninBtn" style="width:100%;">Sign in with a passkey</button>
+        <p class="form-err" id="pkSigninErr" style="display:none"></p>
+        <p style="margin-top:12px;font-size:14px;">No passkey yet? Sign in with a code, then add one below.</p>
+      </div>
     </div>
   </section>
 
@@ -46,6 +51,16 @@ import StoriesTray from "../components/StoriesTray.astro";
     <div class="cards" style="grid-template-columns:repeat(2,1fr);">
       <div class="card"><div class="n">ROLE</div><h3 id="memberRole">—</h3><p>Your membership role.</p></div>
       <div class="card"><div class="n">EMAIL</div><h3 id="memberEmail" style="font-size:15px;word-break:break-all;">—</h3><p>Signed in as.</p></div>
+    </div>
+    <div id="pkManage" style="display:none;margin-top:32px;">
+      <h2 class="sec" style="font-size:22px;margin-bottom:12px;">Passkeys</h2>
+      <p class="sec-lede" id="pkEmpty">No passkeys yet. Add one to sign in without a code.</p>
+      <ul id="pkList" style="list-style:none;padding:0;margin:0;"></ul>
+      <p style="margin-top:16px;display:flex;gap:12px;flex-wrap:wrap;">
+        <button class="btn btn-ghost" type="button" id="pkAddBtn">Add a passkey</button>
+      </p>
+      <p class="form-err" id="pkErr" style="display:none"></p>
+      <p role="status" id="pkOk" style="display:none;"></p>
     </div>
     <p style="margin-top:32px;display:flex;gap:12px;flex-wrap:wrap;">
       <a class="btn" href="/dashboard">Go to dashboard →</a>
@@ -78,8 +93,10 @@ import StoriesTray from "../components/StoriesTray.astro";
         document.getElementById('memberRole').textContent = d.user.role;
         document.getElementById('memberEmail').textContent = d.user.email;
         if (d.user.role === 'admin') document.getElementById('adminLink').style.display = '';
+        if (pkSupported) { show('pkManage'); loadPasskeys(); }
       } catch {
         hide('members-loading'); show('members-login'); hide('members-home');
+        if (pkSupported) show('pkSigninWrap');
       }
     }
 
@@ -131,6 +148,168 @@ import StoriesTray from "../components/StoriesTray.astro";
       await fetch(API_BASE + '/api/auth/logout', { method: 'POST', ...withCreds });
       location.reload();
     });
+
+    // --- passkeys (Phase 3 slice 1; talks to /api/passkeys/*) ---
+    const pkSupported = typeof window !== 'undefined' && !!window.PublicKeyCredential;
+    const b64ToBuf = (s) => {
+      const bin = atob(s.replace(/-/g, '+').replace(/_/g, '/'));
+      const b = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
+      return b.buffer;
+    };
+    const bufToB64 = (buf) => {
+      const bytes = new Uint8Array(buf);
+      let bin = '';
+      bytes.forEach((b) => { bin += String.fromCharCode(b); });
+      return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    };
+    const pkOk = (msg) => {
+      const e = document.getElementById('pkOk');
+      e.textContent = msg; e.style.display = 'block';
+      document.getElementById('pkErr').style.display = 'none';
+    };
+
+    async function signInWithPasskey() {
+      const btn = document.getElementById('pkSigninBtn');
+      btn.disabled = true; btn.textContent = 'Waiting for your passkey…';
+      try {
+        const o = await fetch(API_BASE + '/api/passkeys/authenticate/options', {
+          method: 'POST', headers: { accept: 'application/json' }, ...withCreds,
+        });
+        const d = await o.json();
+        if (!o.ok || !d.ok) throw new Error('Could not start passkey sign-in.');
+        const cred = await navigator.credentials.get({
+          publicKey: {
+            challenge: b64ToBuf(d.options.challenge),
+            timeout: d.options.timeout,
+            rpId: d.options.rpId,
+            userVerification: d.options.userVerification,
+          },
+        });
+        if (!cred) throw new Error('No passkey selected.');
+        if (!cred.response.userHandle) throw new Error('This passkey did not identify its owner.');
+        const r = await fetch(API_BASE + '/api/passkeys/authenticate/verify', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', accept: 'application/json' },
+          body: JSON.stringify({
+            id: cred.id, rawId: cred.id, type: cred.type,
+            response: {
+              clientDataJSON: bufToB64(cred.response.clientDataJSON),
+              authenticatorData: bufToB64(cred.response.authenticatorData),
+              signature: bufToB64(cred.response.signature),
+              userHandle: bufToB64(cred.response.userHandle),
+            },
+          }),
+          ...withCreds,
+        });
+        const v = await r.json().catch(() => ({}));
+        if (!r.ok || !v.ok) throw new Error(v.error || 'Passkey sign-in failed.');
+        location.reload();
+      } catch (ex) {
+        const msg = ex && ex.name === 'NotAllowedError'
+          ? 'Passkey sign-in was cancelled.'
+          : (ex.message || 'Passkey sign-in failed.');
+        err('pkSigninErr', msg);
+        btn.disabled = false; btn.textContent = 'Sign in with a passkey';
+      }
+    }
+
+    async function loadPasskeys() {
+      try {
+        const r = await fetch(API_BASE + '/api/passkeys', { headers: { accept: 'application/json' }, ...withCreds });
+        const d = await r.json();
+        if (!r.ok || !d.ok) throw 0;
+        const list = document.getElementById('pkList');
+        list.innerHTML = '';
+        document.getElementById('pkEmpty').style.display = d.credentials.length ? 'none' : '';
+        d.credentials.forEach((c) => {
+          const li = document.createElement('li');
+          li.style.cssText = 'display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid rgba(18,26,22,.12);';
+          const label = document.createElement('span');
+          const added = new Date(c.createdAt).toLocaleDateString();
+          label.textContent = (c.nickname || 'Passkey') + ' · added ' + added +
+            (c.lastUsedAt ? ' · last used ' + new Date(c.lastUsedAt).toLocaleDateString() : '');
+          const rm = document.createElement('button');
+          rm.className = 'btn btn-ghost';
+          rm.type = 'button';
+          rm.textContent = 'Remove';
+          rm.addEventListener('click', async () => {
+            if (!confirm('Remove this passkey?')) return;
+            const del = await fetch(API_BASE + '/api/passkeys/' + encodeURIComponent(c.id), {
+              method: 'DELETE', ...withCreds,
+            });
+            const dd = await del.json().catch(() => ({}));
+            if (!del.ok || !dd.ok) { err('pkErr', dd.error || 'Could not remove that passkey.'); return; }
+            pkOk('Passkey removed.');
+            loadPasskeys();
+          });
+          li.appendChild(label);
+          li.appendChild(rm);
+          list.appendChild(li);
+        });
+      } catch {
+        /* Leave the empty state; the list simply stays blank. */
+      }
+    }
+
+    async function addPasskey() {
+      const btn = document.getElementById('pkAddBtn');
+      btn.disabled = true; btn.textContent = 'Waiting for your passkey…';
+      try {
+        const o = await fetch(API_BASE + '/api/passkeys/register/options', {
+          method: 'POST', headers: { accept: 'application/json' }, ...withCreds,
+        });
+        const d = await o.json();
+        if (!o.ok || !d.ok) throw new Error('Could not start passkey setup.');
+        const cred = await navigator.credentials.create({
+          publicKey: {
+            rp: d.options.rp,
+            user: {
+              id: b64ToBuf(d.options.user.id),
+              name: d.options.user.name,
+              displayName: d.options.user.displayName,
+            },
+            challenge: b64ToBuf(d.options.challenge),
+            pubKeyCredParams: d.options.pubKeyCredParams,
+            timeout: d.options.timeout,
+            attestation: d.options.attestation,
+            authenticatorSelection: d.options.authenticatorSelection,
+            excludeCredentials: (d.options.excludeCredentials || []).map((e) => ({
+              type: e.type, id: b64ToBuf(e.id),
+            })),
+          },
+        });
+        if (!cred) throw new Error('No passkey created.');
+        const r = await fetch(API_BASE + '/api/passkeys/register/verify', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', accept: 'application/json' },
+          body: JSON.stringify({
+            id: cred.id, rawId: cred.id, type: cred.type,
+            response: {
+              clientDataJSON: bufToB64(cred.response.clientDataJSON),
+              attestationObject: bufToB64(cred.response.attestationObject),
+              transports: cred.response.getTransports ? cred.response.getTransports() : [],
+            },
+          }),
+          ...withCreds,
+        });
+        const v = await r.json().catch(() => ({}));
+        if (!r.ok || !v.ok) throw new Error(v.error || 'Could not save that passkey.');
+        pkOk('Passkey added. You can sign in with it next time.');
+        loadPasskeys();
+      } catch (ex) {
+        const msg = ex && ex.name === 'NotAllowedError'
+          ? 'Passkey setup was cancelled.'
+          : (ex.message || 'Could not save that passkey.');
+        err('pkErr', msg);
+      }
+      btn.disabled = false; btn.textContent = 'Add a passkey';
+    }
+
+    if (pkSupported) {
+      document.getElementById('pkSigninBtn').addEventListener('click', signInWithPasskey);
+      document.getElementById('pkAddBtn').addEventListener('click', addPasskey);
+    }
 
     checkSession();
   </script>
