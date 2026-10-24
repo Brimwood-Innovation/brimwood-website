@@ -1,20 +1,42 @@
 ---
-/* About page (T9): per report §7.2. Copy approved by founder 2026-10-01 (CP2a). */
+/* About page (T9): per report §7.2. Copy approved by founder 2026-10-01 (CP2a).
+ * Phase 2 slice 2: hero and loop trio ported from prototype section 06
+ * (/about screen, v5 UX deck) and section 05 public-page rules. The deck
+ * covers About lightly: the core line as the headline, one plain line
+ * under it, the Build / Show / Learn trio, and the intro button at the
+ * end. The approved body sections below the trio are unchanged. */
 import Base from "../layouts/Base.astro";
 ---
 
 <Base
   title="About — Brimwood Innovation"
-  description="Brimwood Innovation is a selective innovation hub in Toronto for ambitious people building AI-powered micro businesses. Elite by effort, not by background."
+  description="Brimwood Innovation is a builder community in a real room in Toronto. Invitation only, free, calm. Elite by effort, not by background."
   path="/about"
+  jsonld={{
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: "https://brimwoodinnovation.com/" },
+      { "@type": "ListItem", position: 2, name: "About", item: "https://brimwoodinnovation.com/about" },
+    ],
+  }}
 >
   <section class="block">
     <div class="kicker">About</div>
-    <h1 class="sec" style="font-size:clamp(34px,5.4vw,56px);margin-bottom:18px;">A room where builders become owners.</h1>
+    <h1 class="sec" style="font-size:clamp(34px,5.4vw,56px);margin-bottom:18px;">Build a business.<br /><em>Build yourself.</em></h1>
     <p class="sec-lede">
-      Brimwood Innovation is a selective innovation hub in Toronto for ambitious
-      people building AI-powered micro businesses.
+      A builder community in a real room in Toronto. Invitation only, free, calm.
     </p>
+  </section>
+
+  <section class="block">
+    <div class="kicker">The loop</div>
+    <h2 class="sec">How the hub works</h2>
+    <div class="cards cards-3">
+      <div class="card"><h3>Build</h3><p>Side by side.</p></div>
+      <div class="card"><h3>Show</h3><p>Demo nights.</p></div>
+      <div class="card"><h3>Learn</h3><p>Foundations.</p></div>
+    </div>
   </section>
 
   <section class="block">
@@ -22,13 +44,13 @@ import Base from "../layouts/Base.astro";
     <h2 class="sec">The story</h2>
     <p class="sec-lede">
       Most people with the drive to build something of their own never get a fair
-      run at it. Not for lack of talent — for lack of room, skills, and people
+      run at it. Not for lack of talent, for lack of room, skills, and people
       who take them seriously.
     </p>
     <p class="sec-lede">
       Brimwood is that room. A physical hub, hands-on AI training, and a small
       vetted community of people building real micro businesses. We build
-      alongside our members — not above them.
+      alongside our members, not above them.
     </p>
     <p class="sec-lede">
       Build a business. Build yourself. The two were never separate.
