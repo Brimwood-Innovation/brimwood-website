@@ -693,3 +693,105 @@ from the self-chaining loop's first run on 2026-10-21.
   Journal post pages remain recorded follow-ups. Still blocked: the
   Phase 1 preview smoke flows and applying 0037 to preview D1 (no
   Cloudflare token in the environment).
+- Cycle 16, 2026-10-24: Phase 2 slice 4, the Academy public pages
+  (/academy, /academy/SLUG, /academy/SLUG/LESSON) from prototype
+  section 06, in ~/workspace/company/wt-phase2-public on branch
+  phase2/academy (no open loop PR; develop CI green; #22 is the
+  founder-tapped README PR, not loop work). The founder ordered
+  Phase 2 to run without waiting, and slices run back to back.
+  Catalogue: the header is now the deck header (H1 Academy; lede
+  "Courses built from what the hub ships. Free for members."),
+  replacing "Learn by shipping." Cards follow the deck card model in
+  the shared card grid: an Open badge, the title, the tagline with
+  the deck counts line (modules, lessons, about hours; counts
+  computed at build time from each course detail, the pattern the
+  lesson paths already use), and a View course button. The deck's
+  two Later cards (Shipping Software, Demo Craft) are ported with
+  deck copy verbatim as static cards, each skipped automatically if
+  a published course ever carries the same title. BreadcrumbList
+  JSON-LD added; the page now passes its path, so the canonical is
+  /academy (it defaulted to the home page before). Course page: a
+  visible breadcrumb (Academy / course); the sub line is the deck
+  model built from live data (counts sentence, then the tagline);
+  the Syllabus is the deck table (caption Syllabus; Module N:
+  title, lesson count, lesson titles) with the titles kept as
+  links, so lesson navigation, preview lessons, and the progress
+  checkmarks in academy-course.js keep working, and preview lessons
+  carry a muted (preview) tag; lesson durations move to the lesson
+  pages. The enrol row follows the deck (Enrol (free for members)
+  plus a Sign in to enrol ghost link to /members; same button id,
+  POST target, and flow; the link hides wherever the button hides).
+  Course and BreadcrumbList JSON-LD in one @graph; canonical now
+  /academy/SLUG. No cohort badge: the deck badge carries a cohort
+  start date, sample seed data the API does not return, and nothing
+  is invented client-side. Lesson page: breadcrumb (Academy /
+  course / Lesson N of M), a meta line from live data (Module K,
+  minutes, Preview; a video lesson reads "N min video"), and the
+  deck reflection panel in place of Mark as complete. The old
+  button could not work: Phase 1 made POST /api/progress/:lessonId
+  require a reflection (D6) and the button sent none. The panel
+  posts { reflection } (20 to 2000 characters), shows the completed
+  state from /api/progress/detail, renders the deck progress line
+  from /api/progress, and a resubmit edits the reflection, which
+  the API already supports. For a signed-in member who has not
+  reflected yet, the Next lesson link is disabled with the deck
+  note "Submit your reflection to finish this lesson."; anonymous
+  visitors keep live links and their submit surfaces the sign-in
+  message. The gated view keeps the calm sign-in gate; the client
+  unlock renders the same reflection panel instead of the dead
+  button. BreadcrumbList JSON-LD added; canonical now the lesson
+  URL. Not ported, recorded gaps: the deck's Notes and Transcript
+  tabs and its "Captions on" line (the lesson API returns one body
+  field and no transcript or caption track, so there is nothing
+  honest to tab or caption yet; needs API and content support
+  first), and the reflection visibility choice, Only me or My
+  cohort (reflections are private in the API with no sharing
+  support; the panel hint reads "Private by default." rather than
+  promising a choice that does not exist). No API file changed;
+  gating is untouched (anonymous reads still get 401 and 403
+  exactly as before; nothing a visitor can see has widened). New
+  styles are scoped under .academy-ui in brand.css; shared
+  components are untouched. Verification before the PR: site build
+  clean (24 pages without an API base), a stub-API build (34
+  pages) inspected directly (catalogue with the deck lede, Open
+  badge, the counts line "3 modules, 9 lessons, about 18 hours.",
+  both Later cards, and View course; the course page with the
+  Syllabus table, all module rows, 9 linked lesson titles, the
+  (preview) tag, the deck enrol row, and Course JSON-LD at 9.9 KB;
+  a preview lesson with Lesson 1 of 9, the module meta line, the
+  reflection form, and no Mark as complete anywhere at 8.6 KB; a
+  video lesson reading "180 min video"; a members lesson showing
+  the calm gate; catalogue 7.6 KB), 699 API tests pass (34 files),
+  tsc clean, no new dependency. Shipped in PR #46 (merged to
+  develop; build, secrets, audit, analyze, CodeQL, lighthouse, and
+  Cloudflare Pages all green, so the page budgets and the 0.95
+  accessibility and SEO gates held). Grade (dimensions this cycle
+  touched, scored from evidence): functional 2,500/2,500 (every
+  deck element the data supports verified in the stub build;
+  enrol, checkmark, gate, and unlock flows preserved; the
+  reflection panel also repairs the completion flow the Phase 1
+  contract had left dead); schema and API 2,000/2,000 (no API
+  change, suite green, the panel matches the shipped reflection
+  contract, Course and BreadcrumbList per the structured-data
+  pattern, canonicals fixed on all three pages); accessibility
+  1,250/1,250 (Lighthouse accessibility gate passed, breadcrumb
+  navs with aria-current, a labelled reflection field with a
+  described hint and status line, the aria-disabled Next pattern,
+  a visible textarea focus style); performance 1,250/1,250
+  (budgets passed, counts fetched at build time only, page weights
+  7.6 to 9.9 KB, no new dependency); security 1,250/1,250 (no new
+  endpoints or secrets, gating not widened and verified in the
+  stub build, API-filled text still escaped in the client render,
+  scripts still external under the CSP); code quality 1,000/1,000
+  (tsc clean, one shared reflection wiring for both lesson paths,
+  page-scoped styles); brand and copy 750/750 (deck copy verbatim
+  where ported, Canadian spelling, no new em dash, no member
+  named). Pro-rated total 10,000/10,000, no zero dimension, no
+  open P0. Verdict: ACCEPT. Next improvement: Phase 2 slice 5, the
+  Journal post pages from prototype section 06, the last unported
+  public screen; that closes the Phase 2 public pages, and Phase
+  3 (member hub and auth) opens after it. The events API read
+  extension (kind, demo slots, past recaps) remains a recorded
+  follow-up. Still blocked: the Phase 1 preview smoke flows and
+  applying 0037 to preview D1 (no Cloudflare token in the
+  environment).
