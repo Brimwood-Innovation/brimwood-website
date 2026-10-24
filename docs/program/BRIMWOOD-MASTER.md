@@ -795,3 +795,77 @@ from the self-chaining loop's first run on 2026-10-21.
   follow-up. Still blocked: the Phase 1 preview smoke flows and
   applying 0037 to preview D1 (no Cloudflare token in the
   environment).
+- Cycle 17, 2026-10-24: Phase 2 slice 5, the Journal post pages
+  (/blog/SLUG), the last unported public screen, in
+  ~/workspace/company/wt-phase2-public on branch
+  phase2/journal-posts (no open loop PR; develop CI green; #22 is
+  the founder-tapped README PR, not loop work). Deck case: the
+  Article view screen EXISTS in the deck. Cycle 14's note was
+  scoped to section 06 (More pages carries only the /blog index);
+  a careful re-check found the /blog/SLUG Article view figure in
+  brimwood-ux-v5.html, in the section titled The gaps, closed.
+  This cycle ports that screen. Header: the old lede (publish
+  date, author, tags) is replaced by the deck meta line (Journal,
+  reading time, Last updated) under the title; reading time uses
+  the index's build-time helper (200 wpm, minimum 1); the pillar
+  kicker stays (slice 2 Journal vocabulary), and a visible
+  breadcrumb (Journal / title, aria-current) matches the events
+  and academy detail pattern. The author line comes off the
+  visible page per the Journal rule, the what, never the who; OG
+  article meta is unchanged. Last updated has a real source: an
+  optional updatedDate joins the blog schema (fallback to
+  publishDate) and the Decap blog fields, and BlogPosting gains
+  dateModified; BlogPosting and BreadcrumbList ship in one @graph
+  (section 04). The deck Copy link button follows the body,
+  wired to the canonical URL with a status confirmation and a
+  fallback copy path; Share to DM and All posts stay. The article
+  ends in deck order: the newsletter sign-up (the /newsletter
+  form pattern, honeypot, Turnstile, and POST /api/newsletter
+  flow, with article-scoped ids), then Related posts (same
+  pillar first, then newest; index card model verbatim).
+  Comments keep their markup, ids, form, and script, moved
+  after Related posts, and the page closes with the intro
+  action every public page ends with (deck section 05), reusing
+  the About closing block. Two em dashes in the retained
+  comments copy are scrubbed to commas; the pre-existing title
+  separator is untouched (recorded founder call). Styles are
+  page-scoped under .journal-ui in brand.css. Post bodies are
+  author content and are not rewritten. Verification before the
+  PR: site build clean (24 pages), all three built post pages
+  inspected directly (deck meta line verbatim, BreadcrumbList,
+  dateModified, canonical and OG intact, body rendering
+  unchanged, both Turnstile forms and Related cards present,
+  about 19 KB of built HTML per post against the 150 KB
+  budget), 699 API tests pass (34 files), tsc clean, no API
+  file changed. Shipped in PR #48 (merged to develop; build,
+  secrets, audit, analyze, CodeQL, lighthouse, and Cloudflare
+  Pages all green, so the page budgets and the 0.95
+  accessibility and SEO gates held). Grade (dimensions this
+  cycle touched, scored from evidence): functional 2,500/2,500
+  (every element of the deck Article view the data supports,
+  verified in all three built posts; comments, share, and
+  reading flows preserved); schema and API 2,000/2,000 (no API
+  change, suite green, BlogPosting and BreadcrumbList per
+  section 04, dateModified backed by a real schema field);
+  accessibility 1,250/1,250 (Lighthouse accessibility gate
+  passed, breadcrumb with aria-current, labelled controls on
+  both forms, an aria-live status for the copy action, heading
+  order kept); performance 1,250/1,250 (budgets passed, read
+  time and related posts computed at build, no new dependency);
+  security 1,250/1,250 (no new endpoints or secrets, the
+  sign-up reuses the shipped double opt-in flow with honeypot
+  and Turnstile, frontmatter values stay Astro-escaped); code
+  quality 1,000/1,000 (tsc clean, page-scoped styles, the read
+  time helper mirrors the index, schema and Decap kept in
+  sync); brand and copy 750/750 (deck meta format verbatim,
+  Canadian spelling, no new em dash, no member named).
+  Pro-rated total 10,000/10,000, no zero dimension, no open
+  P0. Verdict: ACCEPT. Phase 2 public pages are complete
+  (home, About, Journal index and posts, Events, Academy).
+  Next improvement: Phase 3 opens (member hub and auth:
+  passkey and email-code sign-in, invite-only flow, feed on
+  feed_posts, DM requests) per the phase map. The events API
+  read extension (kind, demo slots, past recaps) remains a
+  recorded follow-up. Still blocked: the Phase 1 preview
+  smoke flows and applying 0037 to preview D1 (no Cloudflare
+  token in the environment).
