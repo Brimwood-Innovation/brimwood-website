@@ -22,6 +22,7 @@ import chat from "./routes/chat";
 import feed from "./routes/feed";
 import studio from "./routes/studio";
 import invites from "./routes/invites";
+import passkeys from "./routes/passkeys";
 import { handleScheduled } from "./cron";
 import { csrfGuard } from "./lib/csrf";
 
@@ -115,6 +116,7 @@ app.route("/api/introduction", introduction);
 app.route("/api/newsletter", newsletter);
 app.route("/api/auth", auth);
 app.route("/api/auth", password);
+app.route("/api/passkeys", passkeys);
 app.route("/api/metrics", metrics);
 app.route("/api/courses", academy);
 app.route("/api", enrolment);
