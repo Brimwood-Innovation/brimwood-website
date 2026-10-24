@@ -1,5 +1,11 @@
 ---
-/* Blog index (T10): lists published posts by pillar. Drafts are never built. */
+/* Journal index (T10): lists published posts by pillar. Drafts are never built.
+ * Phase 2 slice 2: ported from prototype section 06 (/blog screen, v5 UX
+ * deck). The page is the Journal: heading and standfirst from the deck,
+ * cards carry the pillar, the title, and the reading time. The deck rule
+ * for the Journal is the what, never the who, so cards carry no author
+ * and no date. Posts still come from the blog content collection (Git via
+ * Decap), and card links are unchanged. */
 import Base from "../../layouts/Base.astro";
 import { getCollection } from "astro:content";
 
@@ -13,29 +19,45 @@ const pillars: Record<string, string> = {
   "owner-mindset": "Owner mindset",
   "members-hub": "Members + hub",
 };
+
+/* Reading time from the raw post body, at 200 words per minute, minimum
+ * one minute. Build-time only, so the index stays fully static. */
+const readMinutes = (body: string | undefined) => {
+  const words = (body || "").split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.round(words / 200));
+};
 ---
 
 <Base
-  title="Blog — Brimwood Innovation"
-  description="Notes on micro business, AI in practice, and the owner mindset. From the Brimwood team."
+  title="Journal — Brimwood Innovation"
+  description="What the hub learns, written down. Notes on micro business, AI in practice, and the owner mindset."
   path="/blog"
+  rssAlternate
+  jsonld={{
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: "https://brimwoodinnovation.com/" },
+      { "@type": "ListItem", position: 2, name: "Journal", item: "https://brimwoodinnovation.com/blog" },
+    ],
+  }}
 >
   <section class="block">
-    <div class="kicker">Blog</div>
-    <h1 class="sec" style="font-size:clamp(34px,5.4vw,56px);margin-bottom:18px;">Notes from the build floor.</h1>
-    <p class="sec-lede">Short, practical writing on micro business, AI in practice, and the owner mindset.</p>
-    <div class="cards cards-3">
-      {posts.map((post) => (
-        <a class="card" href={`/blog/${post.id.replace(/\.md$/, "")}/`} style="text-decoration:none;color:inherit;">
-          <div class="n">{pillars[post.data.pillar]}</div>
-          <h3>{post.data.title}</h3>
-          <p>{post.data.description}</p>
-          <p style="margin-top:12px;font-size:13px;">
-            {post.data.publishDate.toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric" })}
-            {" · "}{post.data.author}
-          </p>
-        </a>
-      ))}
-    </div>
+    <div class="kicker">Journal</div>
+    <h1 class="sec" style="font-size:clamp(34px,5.4vw,56px);margin-bottom:18px;">Journal</h1>
+    <p class="sec-lede">What the hub learns, written down.</p>
+    {posts.length > 0 ? (
+      <div class="cards cards-3">
+        {posts.map((post) => (
+          <a class="card" href={`/blog/${post.id.replace(/\.md$/, "")}/`} style="text-decoration:none;color:inherit;">
+            <div class="n">{pillars[post.data.pillar]}</div>
+            <h3>{post.data.title}</h3>
+            <p style="margin-top:12px;font-size:13px;">{readMinutes(post.body)} min read</p>
+          </a>
+        ))}
+      </div>
+    ) : (
+      <p class="sec-lede">No posts yet. What the hub learns will be written down here.</p>
+    )}
   </section>
 </Base>
