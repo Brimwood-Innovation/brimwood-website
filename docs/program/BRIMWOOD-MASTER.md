@@ -454,3 +454,44 @@ from the self-chaining loop's first run on 2026-10-21.
   no open P0. Verdict: ACCEPT. Next improvement: optional search item
   15, then Phase 1 closes with the preview smoke flows. Still blocked:
   applying 0037 to preview D1 (no Cloudflare token in the environment).
+- Cycle 12, 2026-10-24: Phase 1 work order optional search item 15, in
+  ~/workspace/company/wt-item15-search on branch phase1/item15-search (no
+  open loop PR; develop CI green; #22 is the founder-tapped README PR, not
+  loop work). Item 15 (search.ts): GET /api/search now queries
+  search_documents (0036) with the read rules. Anonymous search returns
+  visibility = 'public' rows only. Member search returns visibility in
+  ('public', 'members'), grouped rows only when the viewer is an active
+  member of that group (group_members state = 'active'), and no rows by an
+  author on either side of a block (block_pairs is the both-ways view from
+  0025). Blog posts keep their own query: the posts table is not indexed
+  in search_documents, so dropping it would have been a regression. Slug
+  lookups resolve event, page, course, and lesson URLs (lesson URLs keep
+  the existing /academy/<course>/<lesson> shape, filtered to published
+  courses); a document whose source row no longer resolves is skipped
+  rather than linked to a dead URL. Feed posts link to /hub/post/?id=
+  with the post text as the title line. Scope notes, recorded: people
+  search is not part of this route (per the 0036 header it reads
+  member_profiles and users directly, only for directory_opt_in = 1);
+  the anonymous search_queries_daily log has no reader yet, so this cycle
+  does not write it; the site search page renders post and lesson
+  sections today, so the new feed_post, event, page, and course types are
+  returned by the API and await Phase 2 page rendering. Em dashes scrubbed
+  from the touched files. Verification before the PR: 699 API tests pass
+  (34 files; 4 new covering the anonymous public-only SQL, the member
+  visibility plus group plus block SQL and binds, published posts, and
+  the merged type and URL shape with unresolvable rows skipped), tsc
+  clean, site build clean (24 pages). The exact route queries were also
+  run against a real SQLite database built from the full 0001-0037
+  migration chain: the 0036 triggers populate search_documents,
+  anonymous results were public-only, member results included the group
+  post and the members lesson, and the blocked author's post was
+  excluded. Shipped in PR #38 (merged to develop; build, secrets, audit,
+  analyze, CodeQL, lighthouse all green). Grade (dimensions this cycle
+  touched, scored from evidence): functional 2,500/2,500; schema and API
+  2,000/2,000; security 1,250/1,250; code quality 1,000/1,000; brand and
+  copy 750/750. Accessibility and performance untouched (API-only cycle).
+  Pro-rated total 10,000/10,000, no zero dimension, no open P0. Verdict:
+  ACCEPT. Next improvement: Phase 1 closes with the preview smoke flows
+  (register by invite, sign in, post, react, complete a lesson with
+  reflection, book a room), then Phase 2. Still blocked: applying 0037
+  to preview D1 (no Cloudflare token in the environment).
