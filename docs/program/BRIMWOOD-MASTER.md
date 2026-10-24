@@ -413,8 +413,8 @@ from the self-chaining loop's first run on 2026-10-21.
   unsubscribe tests updated for the JS-side status check), tsc clean, site
   build clean (24 pages), migration 0037 verified against the full 0001-0037
   chain on local SQLite (additive column, active filters and effective roles
-  exclude the deleted account). Shipped in the cycle PR below (merged to
-  develop on green CI). Grade (dimensions this cycle touched, scored from
+  exclude the deleted account). Shipped in PR #36 (merged to develop on green
+  CI). Grade (dimensions this cycle touched, scored from
   evidence): functional 2,500/2,500 (suppression gating, consent writes,
   purge, deletion completion, issue sends all covered by tests); schema and
   API 2,000/2,000 (0037 additive and verified; API matches the item specs);
