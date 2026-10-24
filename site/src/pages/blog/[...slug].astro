@@ -1,5 +1,15 @@
 ---
-/* Article page (T10): title, pillar, date, body, author. */
+/* Article page (T10): title, pillar, date, body, author.
+ * Phase 2 slice 5: ported from the v5 UX deck's Article view screen
+ * (/blog/SLUG, in the deck's "The gaps, closed" section; the section 06
+ * More pages screens cover only the Journal index). The deck header is
+ * a meta line (Journal, reading time, Last updated) over the title; the
+ * old date, author, and tags lede comes off, per the Journal rule from
+ * slice 2: the what, never the who. The article ends, as the deck
+ * specifies, with the newsletter sign-up and related posts; comments
+ * keep their place after them, and the page closes with the intro
+ * action every public page ends with (deck section 05). Post bodies
+ * are author content and render exactly as before. */
 import Base from "../../layouts/Base.astro";
 import { getCollection, render } from "astro:content";
 
@@ -23,6 +33,37 @@ const pillars: Record<string, string> = {
   "owner-mindset": "Owner mindset",
   "members-hub": "Members + hub",
 };
+
+/* Reading time from the raw post body, at 200 words per minute, minimum
+ * one minute. Same build-time helper as the Journal index (slice 2). */
+const readMinutes = (body: string | undefined) => {
+  const words = (body || "").split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.round(words / 200));
+};
+
+/* Last updated: the optional updatedDate, else the publish date. Post
+ * dates are date-only, so the deck format (Thu, Oct 8, 2026) is read in
+ * UTC to keep the printed day the stored day. */
+const lastUpdated = post.data.updatedDate ?? post.data.publishDate;
+const lastUpdatedLabel = lastUpdated.toLocaleDateString("en-CA", {
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+/* Related posts: same pillar first, then the newest of the rest, three
+ * at most. Drafts are never built, so they are never related either. */
+const related = (await getCollection("blog", ({ data }) => !data.draft))
+  .filter((p) => p.id !== post.id)
+  .sort((a, b) => {
+    const sameA = a.data.pillar === post.data.pillar ? 0 : 1;
+    const sameB = b.data.pillar === post.data.pillar ? 0 : 1;
+    if (sameA !== sameB) return sameA - sameB;
+    return b.data.publishDate.valueOf() - a.data.publishDate.valueOf();
+  })
+  .slice(0, 3);
 ---
 
 <Base
@@ -37,36 +78,89 @@ const pillars: Record<string, string> = {
   }}
   jsonld={{
     "@context": "https://schema.org",
-    "@type": "BlogPosting",
-    headline: post.data.title,
-    description: post.data.description,
-    datePublished: post.data.publishDate.toISOString(),
-    author: { "@type": "Organization", name: post.data.author },
-    publisher: {
-      "@type": "Organization",
-      name: "Brimwood Innovation",
-      logo: { "@type": "ImageObject", url: "https://brimwoodinnovation.com/img/brimwood-logo-colour.svg" },
-    },
-    mainEntityOfPage: `https://brimwoodinnovation.com/blog/${slug}/`,
+    "@graph": [
+      {
+        "@type": "BlogPosting",
+        headline: post.data.title,
+        description: post.data.description,
+        datePublished: post.data.publishDate.toISOString(),
+        dateModified: lastUpdated.toISOString(),
+        author: { "@type": "Organization", name: post.data.author },
+        publisher: {
+          "@type": "Organization",
+          name: "Brimwood Innovation",
+          logo: { "@type": "ImageObject", url: "https://brimwoodinnovation.com/img/brimwood-logo-colour.svg" },
+        },
+        mainEntityOfPage: `https://brimwoodinnovation.com/blog/${slug}/`,
+      },
+      {
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "Home", item: "https://brimwoodinnovation.com/" },
+          { "@type": "ListItem", position: 2, name: "Journal", item: "https://brimwoodinnovation.com/blog" },
+          { "@type": "ListItem", position: 3, name: post.data.title, item: `https://brimwoodinnovation.com/blog/${slug}/` },
+        ],
+      },
+    ],
   }}
   turnstile
 >
-  <article class="prose">
+  <article class="prose journal-ui">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <ol>
+        <li><a href="/blog">Journal</a></li>
+        <li><span aria-current="page">{post.data.title}</span></li>
+      </ol>
+    </nav>
     <div class="kicker">{pillars[post.data.pillar]}{post.data.draft ? " · DRAFT" : ""}</div>
     <h1>{post.data.title}</h1>
-    <p class="sec-lede">
-      {post.data.publishDate.toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric" })}
-      {" · "}{post.data.author}
-      {post.data.tags.length > 0 && <>{" · "}{post.data.tags.join(", ")}</>}
+    <p class="article-meta">
+      Journal · {readMinutes(post.body)} min read · Last updated {lastUpdatedLabel}
     </p>
     <Content />
-    <p style="margin-top:3rem;display:flex;gap:12px;flex-wrap:wrap;">
+    <p class="article-actions">
       <a class="btn btn-ghost" href="/blog">All posts</a>
+      <button class="btn btn-ghost" id="copyLinkBtn" type="button" data-copy-url={`https://brimwoodinnovation.com/blog/${slug}`}>
+        Copy link
+      </button>
+      <span class="copy-status" id="copyStatus" role="status"></span>
       <button class="btn btn-ghost" id="sharePostBtn" type="button" data-share-title={post.data.title} data-share-url={`https://brimwoodinnovation.com/blog/${slug}`}>
         Share to DM →
       </button>
     </p>
   </article>
+
+  <section class="block journal-ui" id="article-newsletter">
+    <div class="cta">
+      <h2>Get the newsletter.</h2>
+      <p>One email, now and then. Short notes on micro business, AI in practice, and the owner mindset. Enter your email and we will send a confirmation link. You are only subscribed after you click it.</p>
+      <form class="intro" id="jNewsForm">
+        <label for="jEmail">Email</label>
+        <input id="jEmail" type="email" name="email" placeholder="you@example.com" required />
+        <input type="text" name="website" id="jSite" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true" />
+        <div class="cf-turnstile" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx" style="margin:16px 0;"></div>
+        <button class="btn" type="submit">Subscribe</button>
+        <p class="form-err" id="jNewsErr" style="display:none">Something went wrong on our end. Please email <a href="mailto:info@brimwoodinnovation.com" style="color:#fff;text-decoration:underline">info@brimwoodinnovation.com</a> directly.</p>
+      </form>
+      <div class="thanks" id="jNewsThanks">Check your inbox. We sent a confirmation link. Click it and you are in.</div>
+    </div>
+  </section>
+
+  {related.length > 0 && (
+    <section class="block journal-ui">
+      <div class="kicker">Journal</div>
+      <h2 class="sec" style="font-size:clamp(26px,3.6vw,36px);margin-bottom:18px;">Related posts</h2>
+      <div class="cards cards-3">
+        {related.map((p) => (
+          <a class="card" href={`/blog/${p.id.replace(/\.md$/, "")}/`} style="text-decoration:none;color:inherit;">
+            <div class="n">{pillars[p.data.pillar]}</div>
+            <h3>{p.data.title}</h3>
+            <p style="margin-top:12px;font-size:13px;">{readMinutes(p.body)} min read</p>
+          </a>
+        ))}
+      </div>
+    </section>
+  )}
 
   <section id="comments" style="margin-top:4rem;max-width:720px;" data-slug={slug} data-api-base={apiBase}>
     <h2 class="sec" style="font-size:clamp(22px,3vw,30px);margin-bottom:8px;">Comments</h2>
@@ -90,6 +184,14 @@ const pillars: Record<string, string> = {
     </div>
   </section>
 
+  <section class="block" id="introduce">
+    <div class="cta">
+      <h2>Membership is by invitation.</h2>
+      <p>If you build, you belong here. Request an introduction and tell us what you're working on.</p>
+      <a class="btn" href="/#introduce">Request an introduction</a>
+    </div>
+  </section>
+
   <script is:inline src="/js/blog-comments.js"></script>
   <script>
     // Share-to-DM (audit/social/wiring): paper-plane pattern for blog posts.
@@ -105,5 +207,72 @@ const pillars: Record<string, string> = {
         });
       });
     })();
+  </script>
+  <script>
+    // Copy link (v5 deck, Article view): copies the canonical post URL and
+    // confirms in a status line. Falls back to a prompt-free textarea copy
+    // where the Clipboard API is unavailable.
+    (function () {
+      var btn = document.getElementById("copyLinkBtn");
+      var status = document.getElementById("copyStatus");
+      if (!btn || !status) return;
+      btn.addEventListener("click", function () {
+        var url = btn.getAttribute("data-copy-url") || location.href;
+        function done() {
+          status.textContent = "Link copied.";
+          setTimeout(function () { status.textContent = ""; }, 3000);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(done, function () { status.textContent = "Copy failed. The address bar has the link."; });
+          return;
+        }
+        var ta = document.createElement("textarea");
+        ta.value = url;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "absolute";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); done(); } catch (e) { status.textContent = "Copy failed. The address bar has the link."; }
+        document.body.removeChild(ta);
+      });
+    })();
+  </script>
+  <script>
+    // --- article newsletter signup (same flow as /newsletter: POSTs to
+    // /api/newsletter; double opt-in; honeypot checked client-side) ---
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || '';
+    document.getElementById('jNewsForm').addEventListener('submit', async function(e){
+      e.preventDefault();
+      const email = document.getElementById('jEmail').value.trim();
+      const btn = this.querySelector('button[type=submit]');
+      const err = document.getElementById('jNewsErr');
+      err.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Subscribing\u2026';
+      try {
+        if (document.getElementById('jSite').value){ // honeypot: bot, silently accept
+          document.getElementById('jNewsForm').style.display = 'none';
+          document.getElementById('jNewsThanks').style.display = 'block';
+          return;
+        }
+        const res = await fetch(API_BASE + '/api/newsletter', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'accept': 'application/json' },
+          body: JSON.stringify({
+            email,
+            'cf-turnstile-response': (document.querySelector('#jNewsForm [name="cf-turnstile-response"]') || {}).value || ''
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.error || 'subscribe failed');
+        document.getElementById('jNewsForm').style.display = 'none';
+        document.getElementById('jNewsThanks').style.display = 'block';
+      } catch (ex) {
+        btn.disabled = false;
+        btn.textContent = 'Subscribe';
+        err.style.display = 'block';
+      }
+    });
   </script>
 </Base>

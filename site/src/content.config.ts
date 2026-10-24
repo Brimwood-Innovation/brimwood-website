@@ -9,6 +9,9 @@ const blog = defineCollection({
     title: z.string(),
     description: z.string(),
     publishDate: z.coerce.date(),
+    /* Optional. The article view shows a Last updated date (v5 deck);
+     * it falls back to the publish date when a post has not been revised. */
+    updatedDate: z.coerce.date().optional(),
     pillar: z.enum(["micro-business", "ai-in-practice", "owner-mindset", "members-hub"]),
     tags: z.array(z.string()).default([]),
     author: z.string().default("Brimwood Team"),
