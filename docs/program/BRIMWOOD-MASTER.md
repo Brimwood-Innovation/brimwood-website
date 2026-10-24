@@ -495,3 +495,65 @@ from the self-chaining loop's first run on 2026-10-21.
   (register by invite, sign in, post, react, complete a lesson with
   reflection, book a room), then Phase 2. Still blocked: applying 0037
   to preview D1 (no Cloudflare token in the environment).
+- Cycle 13, 2026-10-24: Phase 2 first slice, the home page rebuilt from
+  prototype section 05 (UX deck, Public pages), in
+  ~/workspace/company/wt-phase2-public on branch phase2/public-home (no
+  open loop PR; develop CI green; #22 is the founder-tapped README PR,
+  not loop work). The founder ordered Phase 2 to start now, ahead of the
+  token-blocked preview smoke flows. Port, section by section: header
+  nav is now About, Journal (/blog), Academy, Events per the mock
+  (navigation.json; Base keeps the four-link rule and the CTA). The hero
+  loses the countdown and the Coming soon eyebrow (the prototype is
+  explicit: the hero is still, no motion, no count-up; the countdown
+  also carried a stale demo-night date), the closing headline line takes
+  the italic accent, and the lede becomes the prototype copy via
+  settings.json. New facts strip (address and second floor, Wednesday
+  demo nights at 6:30 p.m., free membership by invitation, anonymous by
+  default), holding only facts a visitor can check. The belief strip
+  stays (brand standard line). The four promises and the old steps
+  become one How the hub works section: one loop, every week; Build,
+  Show, Learn cards with the prototype copy; still gated by the
+  homepage.json features flag, whose entries are consolidated to one
+  with aligned copy. New Next at Brimwood mint panel: progressive
+  enhancement fills the next event from GET /api/events (en-CA,
+  America/Toronto, textContent only) and retargets the button; the
+  standing Wednesday line stays as the fallback. The introduction form
+  gets the prototype's light-card treatment scoped under .home-intro
+  (the shared dark form.intro on newsletter, members, and event pages
+  is untouched): heading and 5-day reply line, the same four fields,
+  honeypot, POST target and payload, and lazy Turnstile, a one-line
+  hint under the message field, a Send request submit, and the
+  prototype success card (Sent badge, Thanks with the sender's first
+  name, the invite-link wording; the old success copy's em dash is
+  gone). The footer renders the CMS footer_tagline under the logo and
+  its links follow the prototype vocabulary and routes, with the
+  member and admin script hooks preserved. Recorded observations: page
+  titles site-wide use an em dash separator from before this cycle (no
+  new em dash introduced here; changing it everywhere is a founder
+  walkthrough call), and the prototype's three-field intro mock stays
+  four fields live so no working behaviour changes in a design cycle.
+  Verification before the PR: site build clean (24 pages), 699 API
+  tests pass (34 files), tsc clean, built home page inspected directly
+  (all new sections present, form ids and payload intact, countdown
+  gone), index.html 14.9 KB and shared CSS 11.9 KB. Shipped in PR #40
+  (merged to develop; build, secrets, audit, analyze, CodeQL,
+  lighthouse, and Cloudflare Pages all green, so the 200 KB total and
+  60 KB script budgets and the 0.95 accessibility and SEO gates held).
+  Grade (dimensions this cycle touched, scored from evidence):
+  functional 2,500/2,500; schema and API 2,000/2,000 (no API change,
+  suite green, events read follows the established pattern);
+  accessibility 1,250/1,250 (Lighthouse accessibility gate passed,
+  labelled facts list, labelled controls with a described hint,
+  role=status on success and error, touch targets untouched);
+  performance 1,250/1,250 (Lighthouse budgets passed; countdown script
+  removed); security 1,250/1,250 (no new endpoints or secrets,
+  textContent for API-filled text, honeypot and Turnstile unchanged);
+  code quality 1,000/1,000 (tsc clean, dead countdown CSS and JS
+  removed, home styles scoped so three other form pages are
+  undisturbed); brand and copy 750/750 (prototype copy, Canadian
+  spelling, kit colours only, logo assets as delivered, no new em
+  dash). Pro-rated total 10,000/10,000, no zero dimension, no open P0.
+  Verdict: ACCEPT. Next improvement: Phase 2 slice 2, the About and
+  Journal (blog index) pages from prototype sections 05 and 06. Still
+  blocked: the Phase 1 preview smoke flows and applying 0037 to
+  preview D1 (no Cloudflare token in the environment).
