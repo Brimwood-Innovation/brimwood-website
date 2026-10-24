@@ -869,3 +869,68 @@ from the self-chaining loop's first run on 2026-10-21.
   recorded follow-up. Still blocked: the Phase 1 preview
   smoke flows and applying 0037 to preview D1 (no Cloudflare
   token in the environment).
+- Cycle 18, 2026-10-24: Phase 3 opens, slice 1, passkey sign-in, in
+  ~/workspace/company/wt-phase3-passkeys on branch phase3/passkeys.
+  Sync first merged the cycle 17 docs PR #49 (required checks green;
+  lighthouse was pending at merge and passed after). The phase map
+  promised passkey sign-in, but only email codes and legacy passwords
+  had API behind them: the 0023 tables (webauthn_credentials,
+  webauthn_user_handles, webauthn_challenges) existed with no routes.
+  This cycle adds the routes, no migration needed, email codes stay
+  as the fallback. New API at /api/passkeys, backed by a
+  dependency-free WebAuthn helper: register options (signed in,
+  attestation none, resident key required, user verification
+  required, existing credentials excluded) and verify (clientData
+  webauthn.create and production origin, single-use challenge,
+  only fmt none attestation accepted, rpIdHash and UP plus UV flags
+  checked, duplicate credential id rejected, COSE key stored);
+  authenticate options (discoverable credentials) and verify
+  (ECDSA signature over authData plus the clientData hash, counter
+  rule: a non-zero counter must rise, zero means the authenticator
+  does not track one; session created with amr passkey); list of
+  the member's live credentials; revoke one, refusing the last live
+  credential (the 0024 trigger enforces the same rule in the
+  database). Challenges are single-use (select, then a delete that
+  must change a row) and 4-minute lived, inside the 300.5 second
+  table CHECK with clock-skew room; verify failures are generic.
+  Members page: a passkey sign-in button on the sign-in form (shown
+  only where WebAuthn exists) and a signed-in Passkeys section
+  (list, add, remove). Verification before the PR: 715 API tests
+  pass (35 files; 16 new passkey tests with generated P-256 keys
+  and hand-built authenticator responses), tsc clean, site build
+  clean (24 pages), the built members bundle checked for all four
+  passkey endpoints and the credentials.get and create calls, no
+  new dependency, no new em dash. Shipped in PR #50 (merged to
+  develop; build, secrets, audit, analyze, CodeQL, lighthouse, and
+  Cloudflare Pages all green). Grade (dimensions this cycle
+  touched, scored from evidence): functional 2,500/2,500 (all six
+  endpoints plus the members UI, happy and failure paths tested,
+  built bundle verified); schema and API 2,000/2,000 (no migration
+  needed, suite green, endpoints follow the email-code patterns:
+  D1 rate limits, sessions with amr, generic failures); accessibility
+  1,250/1,250 (Lighthouse gate passed, labelled passkey controls,
+  status lines for both forms, no new keyboard trap: the browser
+  owns the passkey prompt); performance 1,250/1,250 (budgets
+  passed, no new dependency, no new runtime weight beyond the
+  members page script); security 1,250/1,250 (CodeQL and analyze
+  green, signature verified cryptographically, single-use
+  challenges, counter regression rejected, last credential
+  protected, no new endpoints beyond the passkey set); code quality
+  1,000/1,000 (tsc clean, one shared WebAuthn helper for routes
+  and tests, page script follows the existing vanilla pattern);
+  brand and copy 750/750 (no new em dash, Canadian spelling, no
+  member named, copy matches the members page voice). Pro-rated
+  total 10,000/10,000, no zero dimension, no open P0. Verdict:
+  ACCEPT. Next improvement: Phase 3 slice 2, the hub shell from
+  the deck (one shared shell for the hub pages: nine places on
+  desktop, five tabs on the phone, search, bell, avatar menu),
+  applied to the existing hub pages. The events API read extension
+  (kind, demo slots, past recaps) remains a recorded follow-up.
+  Still blocked: the Phase 1 preview smoke flows and applying 0037
+  to preview D1 (no Cloudflare token in the environment). Note:
+  the table CHECK pins rp_id to brimwoodinnovation.com, so the
+  browser passkey flow works on the production domain only; on a
+  preview deployment the browser refuses a credential whose relying
+  party is not a suffix of the page origin. That is a deployment
+  fact, not a code path; preview verification for this slice is
+  the test suite plus the site build.
