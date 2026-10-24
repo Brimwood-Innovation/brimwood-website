@@ -411,7 +411,7 @@ describe("runPublishQueue (item 12, messaging half)", () => {
   it("publishes a page: flips the row live and marks the queue row done", async () => {
     const env = queueEnv(queueRow());
     const { runPublishQueue } = await import("./cron");
-    const n = await runPublishQueue(env.DB as any);
+    const n = await runPublishQueue(env as any);
     expect(n).toBe(1);
     // Atomic claim first.
     const claim = env.DB.calls.find((c) =>
@@ -430,7 +430,7 @@ describe("runPublishQueue (item 12, messaging half)", () => {
   it("unpublishes to 'draft' (a valid status for events)", async () => {
     const env = queueEnv(queueRow({ item_type: "event", item_id: "ev1", action: "unpublish" }));
     const { runPublishQueue } = await import("./cron");
-    await runPublishQueue(env.DB as any);
+    await runPublishQueue(env as any);
     const pub = env.DB.calls.find((c) => /UPDATE events SET status/.test(c.sql));
     expect(pub?.params).toEqual(["draft", "ev1"]);
   });
@@ -441,7 +441,7 @@ describe("runPublishQueue (item 12, messaging half)", () => {
       { id: "r1", title: "Monday kickoff", body_template: "Share one win.", group_id: null, author_id: "staff-1" }
     );
     const { runPublishQueue } = await import("./cron");
-    const n = await runPublishQueue(env.DB as any);
+    const n = await runPublishQueue(env as any);
     expect(n).toBe(1);
     const posts = env.DB.inserts.get("feed_posts") || [];
     expect(posts).toHaveLength(1);
@@ -455,21 +455,104 @@ describe("runPublishQueue (item 12, messaging half)", () => {
     expect(posts[0].body).toContain("Share one win.");
   });
 
-  it("fails a newsletter send with the item-13 requeue note (never faked)", async () => {
-    const env = queueEnv(queueRow({ item_type: "newsletter_issue", item_id: "ni1", action: "send" }));
-    const { runPublishQueue } = await import("./cron");
-    const n = await runPublishQueue(env.DB as any);
-    expect(n).toBe(0);
-    const failed = env.DB.calls.find((c) => /SET status = 'failed'/.test(c.sql));
-    expect(failed).toBeDefined();
-    expect(String(failed?.params[0])).toContain("item 13");
-    expect(String(failed?.params[0]).length).toBeLessThanOrEqual(200);
+  it("sends a newsletter issue to active, non-suppressed subscribers (item 13)", async () => {
+    const env = mockEnv();
+    let batches = 0;
+    env.DB.handler = (sql) => {
+      if (/FROM publish_queue/.test(sql))
+        return {
+          results: [queueRow({ item_type: "newsletter_issue", item_id: "ni1", action: "send" })],
+        };
+      if (/FROM newsletter_issues/.test(sql))
+        return {
+          row: {
+            id: "ni1",
+            subject: "October news",
+            preview_text: "What happened",
+            body_md: "# Hello\n\nSome **news** for you.",
+            status: "scheduled",
+          },
+        };
+      if (/FROM newsletter_sends s/.test(sql)) {
+        batches++;
+        return {
+          results:
+            batches === 1
+              ? [{ subscriber_id: "sub-1", email: "jane@example.com", name: "Jane" }]
+              : [],
+        };
+      }
+      if (/COUNT\(\*\) AS n FROM newsletter_sends/.test(sql)) return { row: { n: 0 } };
+      return undefined;
+    };
+    const sent: { to: string; subject: string }[] = [];
+    const restore = mailStub(sent);
+    try {
+      const { runPublishQueue } = await import("./cron");
+      const n = await runPublishQueue(env as any);
+      expect(n).toBe(1);
+    } finally {
+      restore();
+    }
+    // The subscriber got the issue with a signed unsubscribe header.
+    expect(sent).toHaveLength(1);
+    expect(sent[0].to).toBe("jane@example.com");
+    expect(sent[0].subject).toBe("October news");
+    // The audience was snapshotted and the recipient marked sent.
+    const snap = env.DB.calls.find((c) => /INSERT OR IGNORE INTO newsletter_sends/.test(c.sql));
+    expect(snap).toBeDefined();
+    const marked = env.DB.calls.find((c) => /SET status = 'sent'/.test(c.sql) && /newsletter_sends/.test(c.sql));
+    expect(marked).toBeDefined();
+    // The issue moved scheduled -> sending -> sent.
+    const issueDone = env.DB.calls.find((c) => /UPDATE newsletter_issues SET status = 'sent'/.test(c.sql));
+    expect(issueDone).toBeDefined();
+    const failed = env.DB.calls.find((c) => /publish_queue/.test(c.sql) && /SET status = 'failed'/.test(c.sql));
+    expect(failed).toBeUndefined();
+  });
+
+  it("marks suppressed recipients as suppressed instead of sending", async () => {
+    const env = mockEnv();
+    let batches = 0;
+    const { emailFingerprint } = await import("./routes/newsletter");
+    const fp = await emailFingerprint("jane@example.com");
+    env.DB.handler = (sql, params) => {
+      if (/FROM publish_queue/.test(sql))
+        return {
+          results: [queueRow({ item_type: "newsletter_issue", item_id: "ni1", action: "send" })],
+        };
+      if (/FROM newsletter_issues/.test(sql))
+        return {
+          row: { id: "ni1", subject: "S", preview_text: "P", body_md: "Hi", status: "sending" },
+        };
+      if (/FROM email_suppressions/.test(sql))
+        return params[0] === fp ? { row: { 1: 1 } } : { row: undefined };
+      if (/FROM newsletter_sends s/.test(sql)) {
+        batches++;
+        return {
+          results:
+            batches === 1 ? [{ subscriber_id: "sub-1", email: "jane@example.com", name: "Jane" }] : [],
+        };
+      }
+      if (/COUNT\(\*\) AS n FROM newsletter_sends/.test(sql)) return { row: { n: 0 } };
+      return undefined;
+    };
+    const sent: { to: string; subject: string }[] = [];
+    const restore = mailStub(sent);
+    try {
+      const { runPublishQueue } = await import("./cron");
+      await runPublishQueue(env as any);
+    } finally {
+      restore();
+    }
+    expect(sent).toHaveLength(0);
+    const supp = env.DB.calls.find((c) => /SET status = 'suppressed'/.test(c.sql));
+    expect(supp).toBeDefined();
   });
 
   it("fails an unknown item_type", async () => {
     const env = queueEnv(queueRow({ item_type: "announcement", item_id: "a1", action: "publish" }));
     const { runPublishQueue } = await import("./cron");
-    await runPublishQueue(env.DB as any);
+    await runPublishQueue(env as any);
     const failed = env.DB.calls.find((c) => /SET status = 'failed'/.test(c.sql));
     expect(failed).toBeDefined();
     expect(String(failed?.params[0])).toContain("announcement");
@@ -478,7 +561,7 @@ describe("runPublishQueue (item 12, messaging half)", () => {
   it("fails an unknown action", async () => {
     const env = queueEnv(queueRow({ item_type: "page", item_id: "p1", action: "send" }));
     const { runPublishQueue } = await import("./cron");
-    await runPublishQueue(env.DB as any);
+    await runPublishQueue(env as any);
     const failed = env.DB.calls.find((c) => /SET status = 'failed'/.test(c.sql));
     expect(failed).toBeDefined();
   });
@@ -491,7 +574,7 @@ describe("runPublishQueue (item 12, messaging half)", () => {
       return prev?.(sql, params);
     };
     const { runPublishQueue } = await import("./cron");
-    const n = await runPublishQueue(env.DB as any);
+    const n = await runPublishQueue(env as any);
     expect(n).toBe(0);
     // No dispatch and no done/failed write for the skipped row.
     expect(env.DB.calls.some((c) => /UPDATE pages SET status/.test(c.sql))).toBe(false);
@@ -506,7 +589,7 @@ describe("runPublishQueue (item 12, messaging half)", () => {
       return prev?.(sql, params);
     };
     const { runPublishQueue } = await import("./cron");
-    const n = await runPublishQueue(env.DB as any);
+    const n = await runPublishQueue(env as any);
     expect(n).toBe(0);
     const failed = env.DB.calls.find((c) => /SET status = 'failed'/.test(c.sql));
     expect(failed).toBeDefined();
@@ -536,5 +619,192 @@ describe("inQuietHours", () => {
     expect(inQuietHours(at("2026-10-23T03:30:00Z"), "09:00", "17:00", "America/Toronto")).toBe(false);
     // An unknown timezone never suppresses.
     expect(inQuietHours(at("2026-10-23T03:30:00Z"), "00:00", "23:59", "Mars/Olympus")).toBe(false);
+  });
+});
+
+describe("renderMarkdown (newsletter issues)", () => {
+  it("renders headings, bold, italic, links and lists; escapes raw HTML", async () => {
+    const { renderMarkdown } = await import("./cron");
+    const html = renderMarkdown(
+      "# Title\n\nHello **bold** and *italic*.\n\n- one\n- two\n\n1. first\n\n[Link](https://example.com)\n\n<script>alert(1)</script>"
+    );
+    expect(html).toContain("<h1");
+    expect(html).toContain("<strong>bold</strong>");
+    expect(html).toContain("<em>italic</em>");
+    expect(html).toContain("<ul>");
+    expect(html).toContain("<ol>");
+    expect(html).toContain('<a href="https://example.com"');
+    expect(html).not.toContain("<script>");
+    expect(html).toContain("&lt;script&gt;");
+  });
+
+  it("refuses non-http links", async () => {
+    const { renderMarkdown } = await import("./cron");
+    const html = renderMarkdown("[x](javascript:alert(1))");
+    expect(html).not.toContain("<a href");
+    expect(html).toContain("[x](javascript:alert(1))");
+  });
+});
+
+describe("runRetentionPurge (item 12, S24)", () => {
+  function purgeEnv() {
+    const env = mockEnv();
+    env.DB.handler = (sql, params) => {
+      if (/FROM retention_policies/.test(sql))
+        return {
+          results: [
+            { table_name: "email_log", purge_column: "created_at", retain_days: 180 },
+            { table_name: "audit_log", purge_column: "created_at", retain_days: 2555 },
+            { table_name: "privacy_breaches", purge_column: "retain_until", retain_days: 730 },
+            { table_name: "email_log; DROP TABLE users;--", purge_column: "created_at", retain_days: 1 },
+            { table_name: "ghost_table", purge_column: "created_at", retain_days: 7 },
+          ],
+        };
+      if (/FROM sqlite_master/.test(sql))
+        return params[0] === "email_log" ? { row: { name: "email_log" } } : { row: undefined };
+      return undefined;
+    };
+    return env;
+  }
+
+  it("purges per policy, skips audit_log and privacy_breaches, rejects bad identifiers", async () => {
+    const env = purgeEnv();
+    const { runRetentionPurge } = await import("./cron");
+    const purged = await runRetentionPurge(env.DB as any);
+    // The normal table was purged with a cutoff bound as a parameter.
+    const del = env.DB.calls.find((c) => /^DELETE FROM "email_log"/.test(c.sql));
+    expect(del).toBeDefined();
+    expect(del!.params).toHaveLength(1);
+    expect(new Date(del!.params[0] as string).getTime()).toBeLessThan(Date.now());
+    expect(purged.email_log).toBeDefined();
+    // Trigger-guarded tables are never touched.
+    expect(env.DB.calls.some((c) => /DELETE FROM "audit_log"/.test(c.sql))).toBe(false);
+    expect(env.DB.calls.some((c) => /DELETE FROM "privacy_breaches"/.test(c.sql))).toBe(false);
+    // The injection-shaped table name never reaches SQL; neither does the
+    // unknown table.
+    expect(env.DB.calls.some((c) => /DROP TABLE/.test(c.sql))).toBe(false);
+    expect(env.DB.calls.some((c) => /ghost_table/.test(c.sql) && /^DELETE/.test(c.sql))).toBe(false);
+  });
+});
+
+describe("runDeletionCompletions (item 12, S20)", () => {
+  function deletionEnv(opts: {
+    due?: { id: string; user_id: string; delete_content: number }[];
+    tombstones?: string[];
+    liveUsers?: { id: string; email: string }[];
+  } = {}) {
+    const env = mockEnv();
+    env.DB.handler = (sql) => {
+      if (/FROM deletion_requests/.test(sql) && /due_at/.test(sql))
+        return { results: opts.due ?? [] };
+      if (/FROM users WHERE id/.test(sql))
+        return { row: { id: "u1", email: "gone@example.com" } };
+      if (/FROM deletion_tombstones/.test(sql))
+        return { results: (opts.tombstones ?? []).map((subject_hmac) => ({ subject_hmac })) };
+      if (/FROM users WHERE status IN/.test(sql))
+        return { results: opts.liveUsers ?? [] };
+      if (/FROM deletion_requests WHERE user_id/.test(sql)) return { row: undefined };
+      return undefined;
+    };
+    return env;
+  }
+
+  it("completes a due request: tombstone, anonymised member, sessions gone, completed_at", async () => {
+    const env = deletionEnv({ due: [{ id: "dr1", user_id: "u1", delete_content: 0 }] });
+    const { runDeletionCompletions } = await import("./cron");
+    const n = await runDeletionCompletions(env as any);
+    expect(n).toBe(1);
+    // Tombstone first, PII-free.
+    const tomb = env.DB.inserts.get("deletion_tombstones") || [];
+    expect(tomb).toHaveLength(1);
+    expect(tomb[0].subject_hmac).toHaveLength(64);
+    // Member row anonymised: PII nulled, non-routable email, suspended + deleted_at.
+    const upd = env.DB.calls.find((c) => /UPDATE users SET/.test(c.sql) && /deleted_at/.test(c.sql));
+    expect(upd).toBeDefined();
+    expect(upd!.sql).toContain("status = 'suspended'");
+    expect(String(upd!.params[0])).toContain("@deleted.invalid");
+    // Consent proof keeps the hashed email; only the member link is cut.
+    const unlink = env.DB.calls.find((c) => /UPDATE consent_records SET user_id = NULL/.test(c.sql));
+    expect(unlink?.params).toEqual(["u1"]);
+    // Sessions, credentials, devices go.
+    expect(env.DB.calls.some((c) => /DELETE FROM sessions WHERE user_id/.test(c.sql))).toBe(true);
+    expect(env.DB.calls.some((c) => /DELETE FROM webauthn_credentials/.test(c.sql))).toBe(true);
+    expect(env.DB.calls.some((c) => /DELETE FROM devices/.test(c.sql))).toBe(true);
+    // Certificates withdrawn, not deleted.
+    const cert = env.DB.calls.find((c) => /UPDATE certificates SET status = 'withdrawn'/.test(c.sql));
+    expect(cert).toBeDefined();
+    // The request is marked complete.
+    const done = env.DB.calls.find((c) => /SET completed_at/.test(c.sql));
+    expect(done?.params[1]).toBe("dr1");
+  });
+
+  it("wipes content when the member asked for it", async () => {
+    const env = deletionEnv({ due: [{ id: "dr2", user_id: "u1", delete_content: 1 }] });
+    const { runDeletionCompletions } = await import("./cron");
+    await runDeletionCompletions(env as any);
+    expect(env.DB.calls.some((c) => /DELETE FROM feed_posts WHERE author_id/.test(c.sql))).toBe(true);
+    expect(env.DB.calls.some((c) => /DELETE FROM stories WHERE author_id/.test(c.sql))).toBe(true);
+  });
+
+  it("re-applies a tombstoned deletion when the member row is back (Time Travel restore)", async () => {
+    const { sha256Hex } = await import("./lib/validate");
+    const h = await sha256Hex("back@example.com");
+    const env = deletionEnv({
+      due: [],
+      tombstones: [h],
+      liveUsers: [{ id: "u9", email: "back@example.com" }],
+    });
+    // The re-apply pass loads the user row to complete it.
+    const prev = env.DB.handler;
+    env.DB.handler = (sql, params) => {
+      if (/FROM users WHERE id/.test(sql)) return { row: { id: "u9", email: "back@example.com" } };
+      return prev?.(sql, params as unknown[]);
+    };
+    const { runDeletionCompletions } = await import("./cron");
+    await runDeletionCompletions(env as any);
+    const upd = env.DB.calls.find(
+      (c) => /UPDATE users SET/.test(c.sql) && /deleted_at/.test(c.sql) && c.params.includes("u9")
+    );
+    expect(upd).toBeDefined();
+  });
+
+  it("leaves not-due and cancelled requests alone (the query filters them)", async () => {
+    const env = deletionEnv({ due: [] });
+    const { runDeletionCompletions } = await import("./cron");
+    const n = await runDeletionCompletions(env as any);
+    expect(n).toBe(0);
+    expect(env.DB.calls.some((c) => /UPDATE users SET/.test(c.sql))).toBe(false);
+  });
+});
+
+describe("weekly digest (item 13: suppression)", () => {
+  it("skips suppressed subscribers without sending", async () => {
+    const { emailFingerprint } = await import("./routes/newsletter");
+    const fp = await emailFingerprint("jane@example.com");
+    const env = mockEnv();
+    const prev = env.DB.handler;
+    env.DB.handler = (sql, params) => {
+      if (/FROM posts/.test(sql))
+        return { results: [{ slug: "hello", title: "Hello", excerpt: "An excerpt." }] };
+      if (/FROM lessons l/.test(sql))
+        return { results: [{ id: "l1", slug: "a", title: "Lesson A", course_slug: "foundations" }] };
+      if (/FROM newsletter_subscribers/.test(sql))
+        return { results: [{ email: "jane@example.com", name: "Jane" }] };
+      if (/FROM email_suppressions/.test(sql))
+        return params[0] === fp ? { row: { 1: 1 } } : { row: undefined };
+      if (/INSERT OR IGNORE INTO digest_sends/.test(sql)) return { changes: 1 };
+      return prev?.(sql, params);
+    };
+    const sent: { to: string; subject: string }[] = [];
+    const restore = mailStub(sent);
+    try {
+      const { handleScheduled } = await import("./cron");
+      await handleScheduled({ cron: "0 9 * * 1" } as any, env as any);
+    } finally {
+      restore();
+    }
+    expect(sent).toHaveLength(0);
+    // The claim still stands, so a retry will not send either.
+    expect(env.DB.calls.some((c) => /INSERT OR IGNORE INTO digest_sends/.test(c.sql))).toBe(true);
   });
 });
