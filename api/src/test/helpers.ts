@@ -95,24 +95,77 @@ export interface MockD1 {
 /** Parse the target table out of an INSERT/UPDATE/DELETE statement. */
 function tableOf(sql: string): string {
   const m =
-    sql.match(/insert\s+into\s+([a-z_]+)/i) ||
+    sql.match(/insert\s+(?:or\s+(?:ignore|replace)\s+)?into\s+([a-z_]+)/i) ||
     sql.match(/update\s+([a-z_]+)/i) ||
     sql.match(/delete\s+from\s+([a-z_]+)/i);
   return (m?.[1] || "unknown").toLowerCase();
 }
 
+/** Split a comma list, ignoring commas inside parentheses or quotes (e.g. an
+ * inline strftime('%Y-%m-%dT%H:%M:%fZ','now','+48 hours') in VALUES). */
+function splitTopLevel(s: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let quote: string | null = null;
+  let cur = "";
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (quote) {
+      cur += ch;
+      if (ch === quote) quote = null;
+    } else if (ch === "'" || ch === '"') {
+      quote = ch;
+      cur += ch;
+    } else if (ch === "(") {
+      depth++;
+      cur += ch;
+    } else if (ch === ")") {
+      depth--;
+      cur += ch;
+    } else if (ch === "," && depth === 0) {
+      parts.push(cur);
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  parts.push(cur);
+  return parts;
+}
+
 /** Column list for a simple `INSERT INTO t (a, b, c) VALUES ...` statement. */
 function columnsOf(sql: string): string[] {
-  const m = sql.match(/insert\s+into\s+[a-z_]+\s*\(([^)]+)\)/i);
-  return m ? m[1].split(",").map((c) => c.trim().replace(/["`]/g, "")) : [];
+  const m = sql.match(/insert\s+(?:or\s+(?:ignore|replace)\s+)?into\s+[a-z_]+\s*\(([^)]+)\)/i);
+  return m ? splitTopLevel(m[1]).map((c) => c.trim().replace(/["`]/g, "")) : [];
 }
 
 /** Align bind params with `?` placeholders, resolving SQL literals inline.
  * e.g. `VALUES (?, ?, 'new')` with params [a,b] → {col0:a, col1:b, col2:'new'}. */
+/** Text inside the first balanced parens after VALUES (the first row). */
+function valuesGroup(sql: string): string {
+  const m = sql.match(/values\s*\(/i);
+  if (!m || m.index === undefined) return "";
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = m.index + m[0].length - 1; i < sql.length; i++) {
+    const ch = sql[i];
+    if (quote) {
+      if (ch === quote) quote = null;
+    } else if (ch === "'" || ch === '"') {
+      quote = ch;
+    } else if (ch === "(") {
+      depth++;
+    } else if (ch === ")") {
+      depth--;
+      if (depth === 0) return sql.slice(m.index + m[0].length, i);
+    }
+  }
+  return "";
+}
+
 function rowOf(sql: string, params: unknown[]): Record<string, unknown> {
   const cols = columnsOf(sql);
-  const vm = sql.match(/values\s*\(([^)]+)\)/i);
-  const vals = vm ? vm[1].split(",").map((v) => v.trim()) : [];
+  const vals = splitTopLevel(valuesGroup(sql)).map((v) => v.trim());
   const row: Record<string, unknown> = {};
   let pi = 0;
   vals.forEach((v, i) => {

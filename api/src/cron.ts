@@ -1,27 +1,27 @@
 /* Scheduled tasks (T25, T33): publish scheduled posts + the publish queue +
  * event reminders (old path + event_reminders) + weekly digest + health
- * monitoring.
+ * monitoring + the compliance jobs (retention purge S24, deletion
+ * completion S20, newsletter issue sends S21).
  *
  * Runs on Cloudflare Cron Triggers. Three jobs:
  * 1. Every 15 min: publish posts where status='scheduled' AND published_at <= now,
- *    run the publish queue (staff-scheduled page/event/course/lesson publishes
- *    and ritual runs; newsletter sends stay failed until item 13), event
- *    reminders (RSVP → 24h-before reminder email + in-app notification, and
- *    due event_reminders rows with quiet-hours suppression), and poll-close
- *    notifications.
+ *    run the publish queue (staff-scheduled page/event/course/lesson publishes,
+ *    ritual runs, newsletter issue sends), event reminders (RSVP → 24h-before
+ *    reminder email + in-app notification, and due event_reminders rows with
+ *    quiet-hours suppression), poll-close notifications, and the daily
+ *    compliance sweep (retention purge + deletion completions, once per day).
  * 2. Weekly (Monday 09:00 UTC): digest email to active subscribers with
  *    the week's new published posts + lessons.
  * 3. Every 5 min: health check - ping key endpoints, log to D1,
  *    email the founder on failure.
- *
- * Item 12, messaging half only: the retention purge and the deletion
- * completion job are the compliance cycle's, not this job's.
  */
 import { sendEmail, shell, esc } from "./lib/email";
 import { INBOX } from "./lib/email";
+import { sha256Hex } from "./lib/validate";
 import { pruneSessions } from "./lib/auth";
 import { pruneRateLimits } from "./lib/ratelimit-d1";
 import { emitNotification } from "./routes/notifications";
+import { isSuppressed, unsubUrlFor } from "./routes/newsletter";
 
 /**
  * Event reminders (audit/social/wiring): for published events starting in
@@ -278,13 +278,16 @@ export async function sendDueReminders(
 }
 
 /** One claimed publish_queue row. Throws on failure; the caller records it. */
-async function dispatchPublishRow(DB: D1Database, row: any): Promise<void> {
+async function dispatchPublishRow(env: any, row: any): Promise<void> {
+  const DB: D1Database = env.DB;
   const { item_type, item_id, action } = row;
 
-  // The newsletter send machinery is item 13 (compliance cycle): never fake
-  // a send. The row fails with a requeue note for the item-13 cycle.
+  // Newsletter issue send (item 13, S21): staff-scheduled issues go out to
+  // active subscribers here, skipping suppressed addresses. Never faked: a
+  // failure marks the queue row failed with the reason.
   if (item_type === "newsletter_issue" && action === "send") {
-    throw new Error("Newsletter send lands with item 13; requeue after that item ships.");
+    await sendNewsletterIssue(env, item_id);
+    return;
   }
 
   // D9: each ritual run inserts one feed post from the ritual's own copy.
@@ -333,16 +336,14 @@ async function dispatchPublishRow(DB: D1Database, row: any): Promise<void> {
 }
 
 /**
- * Publish queue, messaging half of item 12 (D9): staff-scheduled publishes
- * go live here. Each row is claimed atomically (status pending -> running
- * with attempts + 1), so at-least-once cron retries cannot double-publish.
- * Success marks the row done; any failure marks it failed with the reason
- * (trimmed to 200 chars). Best-effort per row; never throws out of the loop.
- *
- * Explicitly out of scope this cycle: the retention purge and the deletion
- * completion job (compliance cycle).
+ * Publish queue (item 12, D9): staff-scheduled publishes go live here. Each
+ * row is claimed atomically (status pending -> running with attempts + 1),
+ * so at-least-once cron retries cannot double-publish. Success marks the
+ * row done; any failure marks it failed with the reason (trimmed to 200
+ * chars). Best-effort per row; never throws out of the loop.
  */
-export async function runPublishQueue(DB: D1Database): Promise<number> {
+export async function runPublishQueue(env: any): Promise<number> {
+  const DB: D1Database = env.DB;
   const nowIso = new Date().toISOString();
   const due = await DB.prepare(
     `SELECT id, item_type, item_id, action, attempts FROM publish_queue
@@ -360,7 +361,7 @@ export async function runPublishQueue(DB: D1Database): Promise<number> {
         .bind(row.id)
         .run();
       if ((claimed.meta.changes || 0) === 0) continue; // taken by another worker
-      await dispatchPublishRow(DB, row);
+      await dispatchPublishRow(env, row);
       await DB.prepare("UPDATE publish_queue SET status = 'done', finished_at = ? WHERE id = ?")
         .bind(nowIso, row.id)
         .run();
@@ -416,6 +417,547 @@ export async function sendPollCloseNotifications(DB: D1Database): Promise<number
     notified++;
   }
   return notified;
+}
+
+/** Minimal Markdown subset for newsletter issues: headings, bold, italic,
+ * links (http/https only), unordered and ordered lists, paragraphs. All text
+ * is HTML-escaped before inline formatting, so raw HTML in the source never
+ * reaches the email. */
+export function renderMarkdown(md: string): string {
+  const inline = (s: string): string => {
+    let t = esc(s);
+    t = t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    t = t.replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
+    t = t.replace(
+      /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
+      '<a href="$2" style="color:#0C9463;">$1</a>'
+    );
+    return t;
+  };
+  const out: string[] = [];
+  let list: "ul" | "ol" | null = null;
+  const closeList = () => {
+    if (list) {
+      out.push(list === "ul" ? "</ul>" : "</ol>");
+      list = null;
+    }
+  };
+  for (const raw of md.split("\n")) {
+    const line = raw.trimEnd();
+    if (/^\s*$/.test(line)) {
+      closeList();
+      continue;
+    }
+    let m: RegExpMatchArray | null;
+    if ((m = line.match(/^(#{1,3})\s+(.*)$/))) {
+      closeList();
+      const level = m[1].length;
+      out.push(`<h${level} style="color:#121A16;">${inline(m[2])}</h${level}>`);
+    } else if ((m = line.match(/^\s*[-*]\s+(.*)$/))) {
+      if (list !== "ul") {
+        closeList();
+        out.push("<ul>");
+        list = "ul";
+      }
+      out.push(`<li>${inline(m[1])}</li>`);
+    } else if ((m = line.match(/^\s*\d+\.\s+(.*)$/))) {
+      if (list !== "ol") {
+        closeList();
+        out.push("<ol>");
+        list = "ol";
+      }
+      out.push(`<li>${inline(m[1])}</li>`);
+    } else {
+      closeList();
+      out.push(`<p style="margin:0 0 12px;">${inline(line.trim())}</p>`);
+    }
+  }
+  closeList();
+  return out.join("\n");
+}
+
+/**
+ * Newsletter issue send (item 13, S21). A publish_queue row
+ * (item_type = 'newsletter_issue', action = 'send') lands here after the
+ * staff pre-send checklist gate (the 0032 trigger). The audience is
+ * snapshotted once into newsletter_sends (one row per active subscriber, so
+ * a retry cannot double-send); each recipient is joined against
+ * email_suppressions before sending and marked suppressed when listed.
+ * Throws on failure; the queue caller records it on the row.
+ */
+export async function sendNewsletterIssue(env: any, issueId: string): Promise<void> {
+  const DB: D1Database = env.DB;
+  const resendKey = env.RESEND_API_KEY as string | undefined;
+  if (!resendKey) throw new Error("RESEND_API_KEY is not configured");
+  if (!env.SESSION_SECRET) throw new Error("SESSION_SECRET is not configured");
+  const site = (env.SITE_URL || "https://brimwoodinnovation.com").replace(/\/$/, "");
+  const nowIso = new Date().toISOString();
+
+  const issue = await DB.prepare(
+    "SELECT id, subject, preview_text, body_md, status FROM newsletter_issues WHERE id = ?"
+  )
+    .bind(issueId)
+    .first<any>();
+  if (!issue) throw new Error(`Newsletter issue ${issueId} not found.`);
+  if (issue.status === "sent" || issue.status === "cancelled") return; // idempotent
+  if (issue.status !== "scheduled" && issue.status !== "sending") {
+    throw new Error(`Newsletter issue ${issueId} has status '${issue.status}', not scheduled.`);
+  }
+  if (issue.status === "scheduled") {
+    // The 0032 checklist trigger guards this transition for staff; the cron
+    // path moves it the same way so the state machine stays honest.
+    await DB.prepare(
+      "UPDATE newsletter_issues SET status = 'sending' WHERE id = ? AND status = 'scheduled'"
+    )
+      .bind(issueId)
+      .run();
+  }
+
+  // Snapshot the audience once: active subscribers at send time.
+  await DB.prepare(
+    `INSERT OR IGNORE INTO newsletter_sends (issue_id, subscriber_id, status)
+     SELECT ?, id, 'queued' FROM newsletter_subscribers WHERE status = 'active'`
+  )
+    .bind(issueId)
+    .run();
+
+  const bodyHtml = renderMarkdown(String(issue.body_md || ""));
+  const textBody = String(issue.body_md || "");
+  let sent = 0;
+  let suppressed = 0;
+
+  for (;;) {
+    const batch = await DB.prepare(
+      `SELECT s.subscriber_id, sub.email, sub.name
+       FROM newsletter_sends s
+       JOIN newsletter_subscribers sub ON sub.id = s.subscriber_id
+       WHERE s.issue_id = ? AND s.status = 'queued' AND s.attempts < 5
+       ORDER BY s.subscriber_id ASC LIMIT 50`
+    )
+      .bind(issueId)
+      .all();
+    const rows = (batch.results as any[]) || [];
+    if (rows.length === 0) break;
+
+    for (const r of rows) {
+      const email = String(r.email || "").toLowerCase();
+      try {
+        // S21: join the suppression list before each send.
+        if (await isSuppressed(DB, email)) {
+          await DB.prepare(
+            "UPDATE newsletter_sends SET status = 'suppressed' WHERE issue_id = ? AND subscriber_id = ?"
+          )
+            .bind(issueId, r.subscriber_id)
+            .run();
+          suppressed++;
+          continue;
+        }
+        const unsubUrl = await unsubUrlFor(env, site, email);
+        const html = shell(
+          issue.subject,
+          String(issue.preview_text || "News from Brimwood Innovation."),
+          bodyHtml +
+            '<p style="font-size:12px;color:#5B6862;margin:24px 0 0;"><a href="' +
+            esc(unsubUrl) +
+            '" style="color:#5B6862;">Unsubscribe</a></p>'
+        );
+        const text =
+          textBody + "\n\nUnsubscribe: " + unsubUrl;
+        const providerId = await sendEmail(resendKey, {
+          to: email,
+          subject: issue.subject,
+          html,
+          text,
+          headers: {
+            "List-Unsubscribe": "<" + unsubUrl + ">",
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+          },
+        });
+        await DB.prepare(
+          "UPDATE newsletter_sends SET status = 'sent', provider_id = ?, sent_at = ? WHERE issue_id = ? AND subscriber_id = ?"
+        )
+          .bind(providerId || null, nowIso, issueId, r.subscriber_id)
+          .run();
+        sent++;
+      } catch (e) {
+        await DB.prepare(
+          "UPDATE newsletter_sends SET status = 'failed', attempts = attempts + 1 WHERE issue_id = ? AND subscriber_id = ?"
+        )
+          .bind(issueId, r.subscriber_id)
+          .run()
+          .catch(() => {});
+        console.error("newsletter issue send failed for a subscriber:", e);
+      }
+      if (sent % 50 === 0) await new Promise((r2) => setTimeout(r2, 1000));
+    }
+  }
+
+  const remaining = await DB.prepare(
+    "SELECT COUNT(*) AS n FROM newsletter_sends WHERE issue_id = ? AND status = 'queued'"
+  )
+    .bind(issueId)
+    .first<{ n: number }>();
+  if (!remaining || remaining.n === 0) {
+    await DB.prepare("UPDATE newsletter_issues SET status = 'sent', sent_at = ? WHERE id = ?")
+      .bind(nowIso, issueId)
+      .run();
+  }
+  await DB.prepare(
+    "INSERT INTO email_log (id, kind, to_email, subject, status) VALUES (?, 'newsletter-issue', ?, ?, 'sent')"
+  )
+    .bind(crypto.randomUUID(), `${sent} sent, ${suppressed} suppressed (issue ${issueId})`, issue.subject)
+    .run()
+    .catch(() => {});
+  console.log(`newsletter issue ${issueId}: sent ${sent}, suppressed ${suppressed}`);
+}
+
+/**
+ * Retention purge (item 12, S24). Reads retention_policies and deletes rows
+ * older than each table's window. audit_log and privacy_breaches are
+ * skipped while their no-delete triggers stand (0014, 0035): the purge must
+ * never trip them. Table and column names come from our own policy table but
+ * are still validated as plain identifiers and checked against
+ * sqlite_master, so a bad policy row can only log an error, never inject.
+ * Best-effort per table; never throws out of the loop.
+ */
+const RETENTION_SKIP = new Set(["audit_log", "privacy_breaches"]);
+const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+export async function runRetentionPurge(DB: D1Database): Promise<Record<string, number>> {
+  const purged: Record<string, number> = {};
+  const policies = await DB.prepare(
+    "SELECT table_name, purge_column, retain_days FROM retention_policies"
+  ).all();
+  for (const p of ((policies.results as any[]) || [])) {
+    const table = String(p.table_name || "");
+    const column = String(p.purge_column || "");
+    const days = Number(p.retain_days);
+    try {
+      if (RETENTION_SKIP.has(table)) {
+        console.log(`retention purge: skipping ${table} (no-delete trigger stands)`);
+        continue;
+      }
+      if (!IDENT.test(table) || !IDENT.test(column)) {
+        console.error(`retention purge: bad identifier in policy row: ${table}.${column}`);
+        continue;
+      }
+      if (!(days >= 1 && days <= 3650)) {
+        console.error(`retention purge: bad retain_days for ${table}: ${p.retain_days}`);
+        continue;
+      }
+      const exists = await DB.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?"
+      )
+        .bind(table)
+        .first<{ name: string }>();
+      if (!exists) {
+        console.error(`retention purge: unknown table ${table}`);
+        continue;
+      }
+      const cutoff = new Date(Date.now() - days * 86400 * 1000).toISOString();
+      const res = await DB.prepare(`DELETE FROM "${table}" WHERE "${column}" < ?`)
+        .bind(cutoff)
+        .run();
+      const n = res.meta.changes || 0;
+      purged[table] = n;
+      console.log(`retention purge: ${table}: ${n} rows older than ${days}d`);
+    } catch (e) {
+      console.error(`retention purge failed for ${table}:`, e);
+    }
+  }
+  return purged;
+}
+
+/** Best-effort Resend contact deletion (S20). The newsletter list lives in
+ * D1, not in a Resend audience, so without a configured audience id there
+ * is nothing to delete; that case is logged, not faked. */
+async function deleteResendContact(
+  resendKey: string | undefined,
+  audienceId: string | undefined,
+  email: string
+): Promise<void> {
+  if (!resendKey || !audienceId) {
+    console.log("deletion: no Resend audience configured, skipping contact deletion");
+    return;
+  }
+  const r = await fetch(
+    `https://api.resend.com/audiences/${encodeURIComponent(audienceId)}/contacts/${encodeURIComponent(email)}`,
+    {
+      method: "DELETE",
+      headers: { authorization: "Bearer " + resendKey },
+      signal: AbortSignal.timeout(15000),
+    }
+  );
+  if (!r.ok && r.status !== 404) {
+    throw new Error(`Resend ${r.status} ${(await r.text().catch(() => "")).slice(0, 200)}`);
+  }
+}
+
+/**
+ * Complete one account deletion (item 12, S20). The request sat through its
+ * 14-day grace (the 0035 triggers refuse early completion or completion after
+ * a cancel); this job does the irreversible part:
+ * - PII-free tombstone first, so a Time Travel restore can re-apply this
+ *   deletion (the re-apply pass in runDeletionCompletions reads tombstones).
+ * - Consent rows keep their CASL proof: the member link goes to NULL (the
+ *   append-only trigger allows only that) while the hashed email stays.
+ * - The member row is anonymised in place: PII nulled, email replaced with a
+ *   non-routable placeholder (the column is NOT NULL UNIQUE), status moved to
+ *   suspended and deleted_at stamped. Suspended is already excluded by every
+ *   status = 'active' filter, so no query changes are needed; staff tooling
+ *   renders "Deleted" from deleted_at (migration 0037).
+ * - Sessions, passkeys, devices, owned media (R2 objects then rows), data
+ *   exports, profile rows and push subscriptions are deleted; certificates
+ *   are withdrawn (they stay verifiable as withdrawn); the Resend contact is
+ *   removed best-effort.
+ * - When the member asked for it (delete_content), their posts, comments and
+ *   stories go too (feed children cascade off feed_posts).
+ * There is no member OAuth table (oauth.ts is the Decap operator flow, kept
+ * per the item-16 decision), so that S20 line is a no-op here.
+ * Best-effort per substep; throws only on the core anonymisation so the
+ * caller can record the failure on the request row.
+ */
+export async function completeDeletion(
+  env: any,
+  userId: string,
+  deleteContent: boolean
+): Promise<void> {
+  const DB: D1Database = env.DB;
+  const nowIso = new Date().toISOString();
+  const user = await DB.prepare("SELECT id, email FROM users WHERE id = ?")
+    .bind(userId)
+    .first<{ id: string; email: string }>();
+  if (!user) {
+    console.log(`deletion: user ${userId} already gone, nothing to do`);
+    return;
+  }
+  const email = String(user.email || "").toLowerCase();
+  const emailH = await sha256Hex(email);
+
+  // Tombstone first (S20): PII-free, survives as the re-apply key.
+  await DB.prepare("INSERT OR IGNORE INTO deletion_tombstones (subject_hmac) VALUES (?)")
+    .bind(emailH)
+    .run();
+
+  // Consent proof survives as the hashed email; only the member link is cut.
+  try {
+    await DB.prepare("UPDATE consent_records SET user_id = NULL WHERE user_id = ?")
+      .bind(userId)
+      .run();
+  } catch (e) {
+    console.error("deletion: consent unlink failed for", userId, e);
+  }
+
+  // Anonymise the member row (core step: throws on failure).
+  await DB.prepare(
+    `UPDATE users SET
+       email = ?, name = 'Deleted member',
+       display_name = NULL, bio = NULL, avatar_key = NULL, avatar_r2_key = NULL,
+       username = NULL, username_changed_at = NULL, location = NULL, website = NULL,
+       social_links = NULL, work_history = NULL, education = NULL, hobbies = NULL,
+       achievements = NULL, dob = NULL, gender = NULL, life_events = NULL,
+       profile_visibility = NULL, referral = NULL,
+       password_hash = NULL, password_salt = NULL, password_set_at = NULL,
+       show_profile = 0, status = 'suspended', deleted_at = ?, updated_at = ?
+     WHERE id = ?`
+  )
+    .bind(`deleted-${userId}@deleted.invalid`, nowIso, nowIso, userId)
+    .run();
+
+  const bestEffort = async (label: string, fn: () => Promise<unknown>) => {
+    try {
+      await fn();
+    } catch (e) {
+      console.error(`deletion: ${label} failed for ${userId}:`, e);
+    }
+  };
+
+  await bestEffort("sessions", () =>
+    DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId).run()
+  );
+  // The staff last-passkey trigger can refuse a credential delete; the
+  // account is already anonymised above, so this stays best-effort.
+  await bestEffort(
+    "credentials",
+    () => DB.prepare("DELETE FROM webauthn_credentials WHERE user_id = ?").bind(userId).run()
+  );
+  await bestEffort(
+    "user handles",
+    () => DB.prepare("DELETE FROM webauthn_user_handles WHERE user_id = ?").bind(userId).run()
+  );
+  await bestEffort(
+    "devices",
+    () => DB.prepare("DELETE FROM devices WHERE user_id = ?").bind(userId).run()
+  );
+  await bestEffort("media", async () => {
+    const assets = await DB.prepare("SELECT r2_key FROM media_assets WHERE uploaded_by = ?")
+      .bind(userId)
+      .all();
+    for (const a of ((assets.results as any[]) || [])) {
+      try {
+        await env.MEDIA?.delete(a.r2_key);
+      } catch (e) {
+        console.error("deletion: R2 object delete failed:", a.r2_key, e);
+      }
+    }
+    await DB.prepare("DELETE FROM media_assets WHERE uploaded_by = ?").bind(userId).run();
+  });
+  await bestEffort("exports", async () => {
+    const ex = await DB.prepare(
+      "SELECT r2_key FROM data_export_requests WHERE user_id = ? AND r2_key IS NOT NULL"
+    )
+      .bind(userId)
+      .all();
+    for (const r of ((ex.results as any[]) || [])) {
+      try {
+        await env.MEDIA?.delete(r.r2_key);
+      } catch (e) {
+        console.error("deletion: export R2 delete failed:", r.r2_key, e);
+      }
+    }
+    await DB.prepare("DELETE FROM data_export_requests WHERE user_id = ?").bind(userId).run();
+  });
+  await bestEffort("profile rows", () =>
+    DB.batch([
+      DB.prepare("DELETE FROM member_profiles WHERE user_id = ?").bind(userId),
+      DB.prepare("DELETE FROM member_settings WHERE user_id = ?").bind(userId),
+      DB.prepare("DELETE FROM member_skills WHERE user_id = ?").bind(userId),
+      DB.prepare("DELETE FROM profile_field_visibility WHERE user_id = ?").bind(userId),
+      DB.prepare("DELETE FROM push_subscriptions WHERE user_id = ?").bind(userId),
+    ])
+  );
+  await bestEffort("certificates", () =>
+    DB.prepare(
+      `UPDATE certificates SET status = 'withdrawn', status_changed_at = ?,
+         status_reason = 'Member deleted their account.'
+       WHERE member_id = ? AND status = 'valid'`
+    )
+      .bind(nowIso, userId)
+      .run()
+  );
+  await bestEffort("resend contact", () =>
+    deleteResendContact(env.RESEND_API_KEY, env.RESEND_AUDIENCE_ID, email)
+  );
+
+  if (deleteContent) {
+    await bestEffort("stories", async () => {
+      const st = await DB.prepare("SELECT r2_key FROM stories WHERE author_id = ?")
+        .bind(userId)
+        .all();
+      for (const s of ((st.results as any[]) || [])) {
+        try {
+          await env.MEDIA?.delete(s.r2_key);
+        } catch (e) {
+          console.error("deletion: story R2 delete failed:", s.r2_key, e);
+        }
+      }
+      // story_replies and story_views cascade off stories.
+      await DB.prepare("DELETE FROM stories WHERE author_id = ?").bind(userId).run();
+      await DB.prepare("DELETE FROM story_replies WHERE from_user_id = ?").bind(userId).run();
+    });
+    await bestEffort("posts", () =>
+      // Post media, reactions, polls, comments, mentions and saves cascade
+      // off feed_posts; comments the member left on other posts go separately.
+      DB.batch([
+        DB.prepare("DELETE FROM feed_posts WHERE author_id = ?").bind(userId),
+        DB.prepare("DELETE FROM feed_comments WHERE author_id = ?").bind(userId),
+      ])
+    );
+  }
+
+  // The durable proof of completion is deletion_requests.completed_at plus the
+  // tombstone row. (security_events.kind has a closed CHECK with no
+  // 'deletion_completed' value, and widening it needs a table rebuild.)
+  console.log(`deletion: completed for ${userId} (content: ${deleteContent ? "wiped" : "kept"})`);
+}
+
+/**
+ * Deletion completion sweep (item 12, S20). Completes due deletion requests
+ * (grace over, not cancelled, not completed; the 0035 triggers enforce the
+ * same rules at the row level), then re-applies every tombstone whose
+ * subject somehow has a live member row again - the Time Travel restore
+ * case from S20. Best-effort per request; never throws out of the loop.
+ */
+export async function runDeletionCompletions(env: any): Promise<number> {
+  const DB: D1Database = env.DB;
+  const nowIso = new Date().toISOString();
+  let done = 0;
+
+  const due = await DB.prepare(
+    `SELECT id, user_id, delete_content FROM deletion_requests
+     WHERE due_at <= ? AND cancelled_at IS NULL AND completed_at IS NULL
+     ORDER BY due_at ASC LIMIT 25`
+  )
+    .bind(nowIso)
+    .all();
+  for (const row of ((due.results as any[]) || [])) {
+    try {
+      await completeDeletion(env, row.user_id, row.delete_content === 1);
+      await DB.prepare(
+        "UPDATE deletion_requests SET completed_at = ? WHERE id = ? AND completed_at IS NULL"
+      )
+        .bind(nowIso, row.id)
+        .run();
+      done++;
+    } catch (e) {
+      console.error("deletion completion failed for request", row.id, e);
+    }
+  }
+
+  // Tombstone re-apply (S20): after a Time Travel restore, a deleted
+  // subject's member row can exist again with its old email. Match live
+  // members against tombstones and re-complete them; without an open
+  // request the content choice is unknown, so content is kept (the member
+  // row is still anonymised, which is the irreversible part).
+  try {
+    const tombs = await DB.prepare("SELECT subject_hmac FROM deletion_tombstones").all();
+    const tombSet = new Set(((tombs.results as any[]) || []).map((r) => String(r.subject_hmac)));
+    if (tombSet.size > 0) {
+      const live = await DB.prepare(
+        "SELECT id, email FROM users WHERE status IN ('active', 'suspended') AND deleted_at IS NULL"
+      ).all();
+      for (const u of ((live.results as any[]) || [])) {
+        const h = await sha256Hex(String(u.email || "").toLowerCase());
+        if (!tombSet.has(h)) continue;
+        const open = await DB.prepare(
+          "SELECT id FROM deletion_requests WHERE user_id = ? AND cancelled_at IS NULL AND completed_at IS NULL"
+        )
+          .bind(u.id)
+          .first<{ id: string }>();
+        if (open) continue; // the due-request pass above handles it
+        console.log(`deletion: re-applying tombstoned deletion for ${u.id} (post-restore)`);
+        try {
+          await completeDeletion(env, u.id, false);
+        } catch (e) {
+          console.error("deletion: tombstone re-apply failed for", u.id, e);
+        }
+      }
+    }
+  } catch (e) {
+    console.error("deletion: tombstone re-apply pass failed:", e);
+  }
+  return done;
+}
+
+/** Daily compliance sweep: retention purge (S24) then deletion completions
+ * (S20), at most once per 24 hours, tracked in kv_meta like the health
+ * alert throttle. Runs inside the 15-minute job; never throws. */
+export async function runDailyComplianceJobs(env: any): Promise<void> {
+  const DB: D1Database = env.DB;
+  try {
+    const last = await DB.prepare("SELECT value FROM kv_meta WHERE key = 'last_compliance_sweep'")
+      .first<{ value: string }>()
+      .catch(() => null);
+    if (last && Date.now() - parseInt(last.value, 10) < 24 * 3600 * 1000) return;
+    await runRetentionPurge(DB);
+    await runDeletionCompletions(env);
+    await DB.prepare("INSERT OR REPLACE INTO kv_meta (key, value) VALUES ('last_compliance_sweep', ?)")
+      .bind(String(Date.now()))
+      .run()
+      .catch(() => {});
+  } catch (e) {
+    console.error("compliance sweep failed:", e);
+  }
 }
 
 /** Digest body for one subscriber - unsubUrl is fully built by the caller. */
@@ -489,13 +1031,18 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
       RESEND_API_KEY,
       env.SITE_URL || "https://brimwoodinnovation.com"
     ).catch((e) => console.error("due event reminders failed:", e));
-    // Publish queue (item 12, messaging half): staff-scheduled publishes go
-    // live. Rows record their own failures; this never throws.
-    await runPublishQueue(DB).catch((e) => console.error("publish queue failed:", e));
+    // Publish queue (item 12): staff-scheduled publishes go live, including
+    // newsletter issue sends. Rows record their own failures; this never throws.
+    await runPublishQueue(env).catch((e) => console.error("publish queue failed:", e));
     // Poll close notifications (social-UX reconciliation): voters of newly
     // closed polls get one `poll_closed` notification each. Idempotent.
     await sendPollCloseNotifications(DB).catch((e) =>
       console.error("poll close notifications failed:", e)
+    );
+    // Compliance sweep (item 12, S20/S24): retention purge + deletion
+    // completions, at most once per day. Never throws.
+    await runDailyComplianceJobs(env).catch((e) =>
+      console.error("compliance sweep failed:", e)
     );
     return;
   }
@@ -507,6 +1054,13 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
   if (cron === "0 9 * * 1") {
     if (!RESEND_API_KEY) {
       console.error("digest: RESEND_API_KEY not set");
+      return;
+    }
+    // S21: digest unsubscribe links are HMAC-signed (item 13); without the
+    // secret they cannot be minted, so fail loudly instead of sending mail
+    // with no way out.
+    if (!env.SESSION_SECRET) {
+      console.error("digest: SESSION_SECRET not set, cannot mint unsubscribe links");
       return;
     }
     // Digest id = the Monday (UTC) of this week, e.g. 'digest-2026-10-05'.
@@ -562,10 +1116,11 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
 
     // Active subscribers only.
     const subs = await DB.prepare(
-      "SELECT email, name, unsub_token FROM newsletter_subscribers WHERE status = 'active'"
+      "SELECT email, name FROM newsletter_subscribers WHERE status = 'active'"
     ).all();
 
     let sent = 0;
+    let suppressed = 0;
     for (const s of (subs.results as any[])) {
       // Dedupe first: if this subscriber already got this digest run (a retry
       // after a partial send), skip. INSERT OR IGNORE + changes is atomic.
@@ -576,8 +1131,15 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
         .run();
       if (claimed.meta.changes === 0) continue;
 
-      const unsubUrl =
-        `${site}/api/newsletter/unsubscribe?email=${encodeURIComponent(s.email)}&token=${encodeURIComponent(s.unsub_token)}`;
+      // S21: the sender joins email_suppressions before each send. The claim
+      // above already stands, so a retry will not resend to this address.
+      if (await isSuppressed(DB, s.email)) {
+        suppressed++;
+        continue;
+      }
+      // Item 13: tokens are stored hashed, so bulk mail mints a signed
+      // unsubscribe link instead of recovering the plain token.
+      const unsubUrl = await unsubUrlFor(env, site, s.email);
       const { html, text } = digestBody(postItems, lessonItems, unsubUrl, {
         posts: postList,
         lessons: lessonList,
@@ -599,13 +1161,13 @@ export async function handleScheduled(event: ScheduledEvent, env: any) {
       // Gentle pacing: Resend free tier is 3k/month; don't hammer.
       if (sent % 50 === 0) await new Promise((r) => setTimeout(r, 1000));
     }
-    console.log(`digest: sent to ${sent} subscribers`);
+    console.log(`digest: sent to ${sent} subscribers, ${suppressed} suppressed`);
 
     // Log to audit (tagged with the digest run id for traceability).
     await DB.prepare(
       "INSERT INTO email_log (id, kind, to_email, subject, status) VALUES (?, 'digest', ?, ?, 'sent')"
     )
-      .bind(crypto.randomUUID(), `${sent} subscribers (${digestId})`, "This week at Brimwood")
+      .bind(crypto.randomUUID(), `${sent} subscribers, ${suppressed} suppressed (${digestId})`, "This week at Brimwood")
       .run();
   }
 }

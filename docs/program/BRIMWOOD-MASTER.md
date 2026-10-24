@@ -371,3 +371,58 @@ from the self-chaining loop's first run on 2026-10-21.
   P0. Verdict: ACCEPT. Next improvement: Phase 1 work order compliance item 13
   (newsletter tokens, suppressions, consent records) and the rest of item 12
   (retention purge, deletion completion job).
+- Cycle 10, 2026-10-24: Phase 1 work order compliance item 13 and the rest of
+  item 12, on branch phase1/item13-12-compliance (no open loop PR; develop CI
+  green; #22 is the founder-tapped README PR, not loop work). Item 13
+  (newsletter.ts, S21): confirm_token and unsub_token are now stored as
+  SHA-256 hex in the same columns (the plain token travels only in the
+  emailed link); every send joins email_suppressions first (signup, welcome,
+  digest, issue sends; a suppressed signup returns ok with nothing stored,
+  no oracle); consent_records gets a double_opt_in row on verify and a
+  settings_toggle granted=0 row plus a suppression row on every unsubscribe.
+  Bulk mail (digest, issues) mints HMAC-signed unsubscribe links
+  (SESSION_SECRET) since the plain per-subscriber token is not recoverable
+  from the hash; the unsubscribe endpoints accept token or signature, with
+  constant-time comparison. The deferred publish_queue newsletter_issue send
+  now runs: checklist-gated issues move scheduled to sending to sent, the
+  audience snapshots once into newsletter_sends (retry-safe), suppressed
+  recipients are marked suppressed, bodies render from a small safe Markdown
+  subset. Item 12 rest (cron.ts, S20/S24): runRetentionPurge reads
+  retention_policies, skips audit_log and privacy_breaches while their
+  no-delete triggers stand, validates identifiers against sqlite_master, and
+  purges per-table; runDeletionCompletions completes due requests (tombstone
+  first, consent member-link cut with the hashed email kept as CASL proof,
+  member row anonymised, sessions/passkeys/devices/media/exports/profile
+  rows/push subscriptions deleted, certificates withdrawn, Resend contact
+  best-effort, optional content wipe) and re-applies tombstoned deletions
+  whose member row is back (the Time Travel restore case). Both ride the
+  15-minute cron behind a 24-hour kv_meta gate. CEO scope call, recorded:
+  S20 says status='deleted', but widening the users.status CHECK needs a
+  full table rebuild that 0024 explicitly ruled out (on D1 a rename rewrites
+  every child FK and trigger body, and PRAGMA legacy_alter_table is
+  disabled), so migration 0037 adds deleted_at and the job sets
+  status='suspended' + deleted_at (every status='active' filter already
+  excludes it; staff tooling renders "Deleted" from deleted_at). Blocked:
+  applying 0037 to preview D1 (no Cloudflare token in the environment);
+  the deletion request creation endpoint does not exist yet (no API writes
+  deletion_requests today), so the completion job currently processes rows a
+  future cycle's endpoint will create. Em dashes scrubbed from the touched
+  files. Verification before the PR: 694 API tests pass (34 files; 8 new
+  newsletter, 10 new cron/compliance; the mock's INSERT parsing went
+  paren-aware and OR IGNORE-aware for the new statements; 3 introduction
+  unsubscribe tests updated for the JS-side status check), tsc clean, site
+  build clean (24 pages), migration 0037 verified against the full 0001-0037
+  chain on local SQLite (additive column, active filters and effective roles
+  exclude the deleted account). Shipped in PR #36 (merged to develop on green
+  CI). Grade (dimensions this cycle touched, scored from
+  evidence): functional 2,500/2,500 (suppression gating, consent writes,
+  purge, deletion completion, issue sends all covered by tests); schema and
+  API 2,000/2,000 (0037 additive and verified; API matches the item specs);
+  security 1,250/1,250 (tokens hashed at rest, constant-time sig compare,
+  identifier validation in the purge, no new secrets); code quality
+  1,000/1,000 (tsc clean, 694 tests green, mock parsing hardened);
+  brand and copy 750/750 (em dashes scrubbed, calm Canadian copy kept).
+  Accessibility and performance untouched (API-only cycle). Pro-rated total
+  10,000/10,000, no zero dimension, no open P0. Verdict: ACCEPT.
+  Next improvement: Phase 1 work order stories item 14 (map blocked and
+  posting-paused to 403).

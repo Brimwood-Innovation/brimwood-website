@@ -1,4 +1,4 @@
-/* Route tests: introduction + newsletter — honeypot, validation, best-effort email. */
+/* Route tests: introduction + newsletter - honeypot, validation, best-effort email. */
 import { describe, it, expect } from "vitest";
 import introApp from "./introduction";
 import newsApp from "./newsletter";
@@ -83,7 +83,7 @@ describe("POST /api/introduction", () => {
 
   it("idempotency key: duplicate delivery stores and sends once", async () => {
     const env = mockEnv();
-    // The fake DB applies inserts to `inserts`, not to queries — teach the
+    // The fake DB applies inserts to `inserts`, not to queries - teach the
     // dup-check SELECT to see previously stored rows.
     env.DB.handler = (sql, params) => {
       if (/from\s+introduction_requests\s+where\s+idempotency_key/i.test(sql)) {
@@ -349,7 +349,7 @@ describe("GET /api/newsletter/unsubscribe", () => {
   it("unsubscribes with a valid email+token", async () => {
     const env = mockEnv();
     env.DB.handler = (sql) => {
-      if (/from\s+newsletter_subscribers/i.test(sql)) return { row: { id: "s1" } };
+      if (/from\s+newsletter_subscribers/i.test(sql)) return { row: { id: "s1", status: "active" } };
     };
     const res = await get(env, "?email=a%40b.co&token=t1");
     expect(res.status).toBe(200);
@@ -368,7 +368,7 @@ describe("GET /api/newsletter/unsubscribe", () => {
 });
 
 describe("POST /api/newsletter/unsubscribe (RFC 8058 one-click)", () => {
-  const subRow = { id: "sub-1" };
+  const subRow = { id: "sub-1", status: "active" };
   const withSub = (env: ReturnType<typeof mockEnv>, row: unknown) => {
     const prev = env.DB.handler;
     env.DB.handler = (sql, params) => {
