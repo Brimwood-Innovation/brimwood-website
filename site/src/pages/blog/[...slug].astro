@@ -168,7 +168,7 @@ const related = (await getCollection("blog", ({ data }) => !data.draft))
 
     <div class="cta" style="margin-top:2rem;">
       <h3 style="margin-bottom:8px;">Join the conversation</h3>
-      <p style="margin-bottom:16px;">Comments are moderated — be kind and on topic.</p>
+      <p style="margin-bottom:16px;">Comments are moderated, be kind and on topic.</p>
       <form id="commentForm">
         <label for="cName">Your name</label>
         <input id="cName" type="text" name="name" placeholder="Jane Appleseed" required />
@@ -180,7 +180,7 @@ const related = (await getCollection("blog", ({ data }) => !data.draft))
         <button class="btn" type="submit" id="commentBtn">Post comment</button>
         <p class="form-err" id="commentErr" style="display:none;" role="status"></p>
       </form>
-      <div class="thanks" id="commentThanks" role="status">Thanks — your comment is awaiting moderation.</div>
+      <div class="thanks" id="commentThanks" role="status">Thanks, your comment is awaiting moderation.</div>
     </div>
   </section>
 
