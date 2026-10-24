@@ -426,3 +426,31 @@ from the self-chaining loop's first run on 2026-10-21.
   10,000/10,000, no zero dimension, no open P0. Verdict: ACCEPT.
   Next improvement: Phase 1 work order stories item 14 (map blocked and
   posting-paused to 403).
+- Cycle 11, 2026-10-24: Phase 1 work order stories item 14, in
+  ~/workspace/company/wt-stories on branch phase1/item14-stories (no open
+  loop PR; develop CI green; #22 is the founder-tapped README PR, not loop
+  work). Item 14 (stories.ts): POST /api/stories now checks
+  active_write_bans before the R2 upload and returns 403 "Posting is paused
+  for your account."; the trg_gate_stories ABORT is caught as a race
+  fallback to the same 403, and the just-uploaded object is deleted so a
+  refused story leaves nothing in R2. POST /api/stories/:id/reply now
+  checks block_pairs (replier vs story author) after the story lookup and
+  returns 403 "You cannot reply to this story."; the
+  trg_story_replies_block ABORT is caught as a race fallback to the same
+  403. Scope note, recorded: story_replies has no write-ban gate trigger
+  in 0027, so the reply path maps blocks only; barring paused members
+  from replies would need a new gate trigger and is left for a future
+  item, not invented here. Em dashes scrubbed from the touched files.
+  Verification before the PR: 698 API tests pass (34 files; 4 new
+  covering the proactive paused 403 with no upload and no row, the
+  pause-trigger fallback with R2 cleanup, the proactive block 403 with
+  no reply row, and the block-trigger fallback), tsc clean, site build
+  clean (24 pages). Shipped in PR #37 (merged to develop; build, secrets,
+  audit, analyze, CodeQL, lighthouse all green). Grade (dimensions this
+  cycle touched, scored from evidence): functional 2,500/2,500; schema
+  and API 2,000/2,000; security 1,250/1,250; code quality 1,000/1,000;
+  brand and copy 750/750. Accessibility and performance untouched
+  (API-only cycle). Pro-rated total 10,000/10,000, no zero dimension,
+  no open P0. Verdict: ACCEPT. Next improvement: optional search item
+  15, then Phase 1 closes with the preview smoke flows. Still blocked:
+  applying 0037 to preview D1 (no Cloudflare token in the environment).
