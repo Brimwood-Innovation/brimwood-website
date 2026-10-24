@@ -621,3 +621,75 @@ from the self-chaining loop's first run on 2026-10-21.
   later slice. Still blocked: the Phase 1 preview smoke flows and
   applying 0037 to preview D1 (no Cloudflare token in the
   environment).
+- Cycle 15, 2026-10-24: Phase 2 slice 3, the Events public pages
+  (/events and /events/SLUG) from prototype section 06, in
+  ~/workspace/company/wt-phase2-public on branch phase2/events (no open
+  loop PR; develop CI green; #22 is the founder-tapped README PR, not
+  loop work). The founder ordered Phase 2 to start without waiting,
+  and slices run back to back. List: the header is now the deck header
+  (H1 Events; lede "Demo nights at 1365 Gerrard St E. Visitors come
+  only with a guest pass from a member."), replacing the stale Friday
+  lede, which also carried an em dash and the wrong weekday (demo
+  nights are Wednesdays, per the cycle 13 facts strip). Cards follow
+  the deck card model in the shared card grid: when line in
+  America/Toronto (the stored zone, R5; deck format "Wed, Oct 14,
+  6:30 p.m."), title, seats line "N going · C seats", a Full badge at
+  capacity (deck rule: no waitlist, a full event says Full), and a
+  View event button; the admin card markup is gone from the public
+  page. BreadcrumbList JSON-LD added (section 04 table); the meta
+  description follows the deck copy; loading, empty, error, and
+  noscript states kept. Detail: breadcrumb (Events / title,
+  aria-current); sub line in deck format (date and time in
+  America/Toronto, then location); seats line "N of C seats taken.
+  L left." with aria-live and a progress bar; the Full badge and
+  "This event is full." replace the at-capacity wording; an actions
+  row (RSVP anchor to the form, Add to calendar); the calendar file
+  is built client-side from the fetched event and downloads as an
+  .ics, no account needed, as the deck specifies; the guest pass
+  note in deck wording ("Visitors come with a guest pass from a
+  member host. Access details are on the house info page."; no public
+  house info route exists yet, so it is plain text). The head is now
+  built per event from getStaticPaths props: real title, description,
+  and Event plus BreadcrumbList JSON-LD (section 04: Event on events
+  with the Toronto offset); the body stays client-rendered from
+  GET /api/events/SLUG and the script still refreshes title and meta
+  after load. The RSVP form is untouched in behaviour (same fields,
+  honeypot, POST target and payload, lazy Turnstile); two em dashes
+  in its copy were scrubbed under the standing rule. New styles are
+  scoped under .events-ui in brand.css; shared components are
+  untouched. Recorded gaps: the deck's kind badge ("Demo night"),
+  the demo slots open count, and the past demo nights rail with
+  recaps are not ported, because the public API reads do not expose
+  them yet; the data exists in D1 (migration 0028: kind,
+  demo_slots_total, event_recaps), so surfacing them needs a public
+  API read extension, recorded here as a follow-up item rather than
+  invented client-side. Verification before the PR: site build clean
+  (24 pages without an API base), built /events inspected directly
+  (deck header and lede, BreadcrumbList, card render code; 8.7 KB),
+  a stub-API build produced a real detail page inspected directly
+  (per-event title, Event JSON-LD with start and end dates and a
+  Place, BreadcrumbList, the RSVP form with all fields, honeypot,
+  Turnstile widget, and the #rsvp anchor), 699 API tests pass (34
+  files), tsc clean, no API file changed. Shipped in PR #44 (merged
+  to develop; build, secrets, audit, analyze, CodeQL, lighthouse,
+  and Cloudflare Pages all green, so the page budgets and the 0.95
+  accessibility and SEO gates held). Grade (dimensions this cycle
+  touched, scored from evidence): functional 2,500/2,500; schema
+  and API 2,000/2,000 (no API change, suite green, Event and
+  BreadcrumbList per section 04); accessibility 1,250/1,250
+  (Lighthouse accessibility gate passed, breadcrumb with
+  aria-current, aria-live seats line, labelled controls
+  unchanged); performance 1,250/1,250 (budgets passed, no new
+  dependency, render changes inside the existing events script);
+  security 1,250/1,250 (no new endpoints or secrets, API-filled
+  text still escaped, ICS text escaped, honeypot and Turnstile
+  unchanged); code quality 1,000/1,000 (tsc clean, page-scoped
+  styles, admin markup removed from the public page); brand and
+  copy 750/750 (deck copy verbatim where ported, Canadian
+  spelling, no new em dash). Pro-rated total 10,000/10,000, no zero
+  dimension, no open P0. Verdict: ACCEPT. Next improvement: Phase 2
+  slice 4, the Academy public pages from prototype section 06; the
+  events API read extension (kind, demo slots, past recaps) and
+  Journal post pages remain recorded follow-ups. Still blocked: the
+  Phase 1 preview smoke flows and applying 0037 to preview D1 (no
+  Cloudflare token in the environment).
