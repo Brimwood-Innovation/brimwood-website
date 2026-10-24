@@ -1,10 +1,17 @@
 ---
-/* Event detail + RSVP form. Client-rendered: always fresh, no rebuild needed.
- * RSVP is Turnstile-protected server-side. */
+/* Event detail + RSVP form. Client-rendered body: always fresh, no
+ * rebuild needed. RSVP is Turnstile-protected server-side.
+ * Phase 2 slice 3: the head is built per event from prototype section
+ * 06 and the section 04 structured data table (Event on events, times
+ * in America/Toronto): title, description, Event and BreadcrumbList
+ * JSON-LD. The body stays client-rendered from GET /api/events/SLUG,
+ * the same source as before, and the client script still refreshes the
+ * title and meta after load. */
 import Base from "../../layouts/Base.astro";
 
 const { slug } = Astro.params;
 const apiBase = import.meta.env.PUBLIC_API_BASE || "";
+const event = (Astro.props as { event?: any }).event;
 
 export async function getStaticPaths() {
   const apiBase = import.meta.env.PUBLIC_API_BASE || "";
@@ -12,23 +19,60 @@ export async function getStaticPaths() {
     const r = await fetch(apiBase + "/api/events", { headers: { accept: "application/json" } });
     const d = await r.json();
     if (d.ok && Array.isArray(d.events)) {
-      return d.events.map((e: any) => ({ params: { slug: e.slug } }));
+      return d.events.map((e: any) => ({ params: { slug: e.slug }, props: { event: e } }));
     }
   } catch {}
   return [];
 }
+
+const pageTitle = event ? `${event.title} — Events — Brimwood Innovation` : "Event — Brimwood Innovation";
+const pageDescription = event
+  ? `${event.title} at Brimwood Innovation, 1365 Gerrard St E, Toronto. Details and RSVP.`
+  : "Event details and RSVP.";
+
+const jsonld = event
+  ? {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Event",
+          name: event.title,
+          startDate: event.starts_at,
+          ...(event.ends_at ? { endDate: event.ends_at } : {}),
+          eventStatus: "https://schema.org/EventScheduled",
+          ...(event.location
+            ? { location: { "@type": "Place", name: event.location } }
+            : {}),
+          organizer: {
+            "@type": "Organization",
+            name: "Brimwood Innovation",
+            url: "https://brimwoodinnovation.com",
+          },
+          url: `https://brimwoodinnovation.com/events/${event.slug}`,
+        },
+        {
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "Home", item: "https://brimwoodinnovation.com/" },
+            { "@type": "ListItem", position: 2, name: "Events", item: "https://brimwoodinnovation.com/events" },
+            { "@type": "ListItem", position: 3, name: event.title, item: `https://brimwoodinnovation.com/events/${event.slug}` },
+          ],
+        },
+      ],
+    }
+  : undefined;
 ---
 
-<Base title="Event — Brimwood Innovation" description="Event details and RSVP." path={`/events/${slug}`} turnstile>
-  <section class="block" id="eventWrap" data-slug={slug} data-api-base={apiBase}>
+<Base title={pageTitle} description={pageDescription} path={`/events/${slug}`} turnstile jsonld={jsonld}>
+  <section class="block events-ui" id="eventWrap" data-slug={slug} data-api-base={apiBase}>
     <p class="sec-lede" id="eventLoading">Loading…</p>
     <div id="eventBody" style="display:none;"></div>
   </section>
 
   <section class="block" id="rsvpSection" style="display:none;">
-    <div class="cta">
+    <div class="cta" id="rsvp">
       <h2>Save your spot.</h2>
-      <p>Tell us who is coming. One RSVP per email — update it anytime by submitting again.</p>
+      <p>Tell us who is coming. One RSVP per email. Update it anytime by submitting again.</p>
       <form class="intro" id="rsvpForm">
         <label for="rName">Your name</label>
         <input id="rName" type="text" name="name" placeholder="Jane Appleseed" required />
@@ -41,7 +85,7 @@ export async function getStaticPaths() {
         <button class="btn" type="submit" id="rsvpBtn">RSVP</button>
         <p class="form-err" id="rsvpErr" role="status" style="display:none"></p>
       </form>
-      <div class="thanks" id="rsvpThanks" role="status">You are on the list — check your inbox for confirmation. We will send a reminder 24 hours before it starts.</div>
+      <div class="thanks" id="rsvpThanks" role="status">You are on the list. Check your inbox for confirmation. We will send a reminder 24 hours before it starts.</div>
     </div>
   </section>
 
