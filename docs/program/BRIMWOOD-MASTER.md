@@ -557,3 +557,67 @@ from the self-chaining loop's first run on 2026-10-21.
   Journal (blog index) pages from prototype sections 05 and 06. Still
   blocked: the Phase 1 preview smoke flows and applying 0037 to
   preview D1 (no Cloudflare token in the environment).
+- Cycle 14, 2026-10-24: Phase 2 slice 2, the About page and the Journal
+  (blog index) from prototype sections 05 and 06, in
+  ~/workspace/company/wt-phase2-public on branch phase2/about-journal
+  (no open loop PR; develop CI green; #22 is the founder-tapped README
+  PR, not loop work). The founder ordered visible Phase 2 progress
+  without waiting. Section 05 sets the public-page rules; section 06
+  (More pages) carries the /about and /blog screens, and it covers
+  About lightly: the specified elements are ported faithfully and the
+  founder-approved body copy the deck does not address stays. About:
+  the hero headline becomes the deck line (Build a business. Build
+  yourself., with the home two-line italic accent on the closing line;
+  the old headline, A room where builders become owners, is retired
+  and its idea survives in the deck lede), the lede becomes A builder
+  community in a real room in Toronto. Invitation only, free, calm.,
+  and a new How the hub works trio in the home card markup carries the
+  deck one-liners verbatim (Build: Side by side. Show: Demo nights.
+  Learn: Foundations). The meta description leads with the deck copy
+  and keeps the standard line. The approved sections (story, standard,
+  hub, week rhythm, what we are not) and the closing invitation CTA are
+  unchanged, apart from two em dashes in the retained copy scrubbed
+  under the standing rule; the page already ended with the intro
+  button, as the deck requires. Journal: kicker and H1 become Journal
+  and the lede becomes What the hub learns, written down.; the title
+  tag and meta description follow the Journal vocabulary (the
+  pre-existing title separator is untouched, a recorded founder call).
+  Cards follow the deck spec: pillar label, title, and reading time
+  (N min read, computed at build time from the post body at 200 words
+  per minute, minimum one); the description and the date and author
+  meta line come off the cards, per the deck rule for the Journal,
+  the what, never the who. Posts still render from the blog content
+  collection (Git via Decap), drafts never built, card links
+  unchanged. An RSS discovery link for /rss.xml is added to the
+  Journal head only, via a new opt-in Base prop (rssAlternate) that
+  changes no other page; canonicals verified. A plain empty state
+  replaces an empty grid when no posts are published. BreadcrumbList
+  JSON-LD is added to both pages (section 04 structured data table).
+  Journal post pages show no screen in section 06, so they are a
+  later slice, untouched here. Verification before the PR: site build
+  clean (24 pages), built About and Journal inspected directly
+  (ported sections present, old About headline gone, three post cards
+  with read times, card hrefs unchanged, RSS link present on the
+  Journal and absent elsewhere), 699 API tests pass (34 files), tsc
+  clean, About 10.3 KB and Journal 7.9 KB of built HTML. Shipped in
+  PR #42 (merged to develop; build, secrets, audit, analyze, CodeQL,
+  lighthouse, and Cloudflare Pages all green, so the page budgets and
+  the 0.95 accessibility and SEO gates held). Grade (dimensions this
+  cycle touched, scored from evidence): functional 2,500/2,500;
+  schema and API 2,000/2,000 (no API change, suite green,
+  BreadcrumbList per section 04, BlogPosting on post pages
+  untouched); accessibility 1,250/1,250 (Lighthouse accessibility
+  gate passed, heading order kept, whole-card links keep real text);
+  performance 1,250/1,250 (budgets passed, read time computed at
+  build, no client script added, Base change off by default);
+  security 1,250/1,250 (no new endpoints, secrets, or dependencies);
+  code quality 1,000/1,000 (tsc clean, home card markup reused, the
+  Base prop is opt-in so other pages are undisturbed); brand and
+  copy 750/750 (deck copy verbatim, Canadian spelling, no new em
+  dash). Pro-rated total 10,000/10,000, no zero dimension, no open
+  P0. Verdict: ACCEPT. Next improvement: Phase 2 slice 3, the Events
+  public pages from prototype section 06 (/events and /events/SLUG),
+  then the Academy public pages; Journal post pages remain a recorded
+  later slice. Still blocked: the Phase 1 preview smoke flows and
+  applying 0037 to preview D1 (no Cloudflare token in the
+  environment).
