@@ -45,9 +45,17 @@ const EMAIL = "reader@example.com";
 
 /** Capture full email payloads (to/subject/html) instead of mailStub's summary. */
 function mailCapture(captured: { to: string; subject: string; html: string }[]) {
+  const hostOf = (url: unknown): string => {
+    try {
+      return new URL(String(url)).hostname;
+    } catch {
+      return "";
+    }
+  };
   return stubFetch((url, init) => {
-    if (String(url).includes("challenges.cloudflare.com")) return json({ success: true });
-    if (String(url).includes("api.resend.com")) {
+    const host = hostOf(url);
+    if (host === "challenges.cloudflare.com") return json({ success: true });
+    if (host === "api.resend.com") {
       const body = JSON.parse(String((init as any)?.body || "{}")) as {
         to?: string[];
         subject?: string;
