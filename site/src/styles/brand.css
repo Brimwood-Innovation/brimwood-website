@@ -255,6 +255,27 @@ p.sec-lede { color: var(--stone); max-width: 62ch; margin-bottom: 40px; font-siz
 .home-intro .field-hint { font-size: 13.5px; color: var(--stone); margin-top: 8px; }
 .home-intro form.intro .btn { background: var(--emerald-deep); color: #fff; }
 .home-intro form.intro .btn:hover { background: var(--forest); color: #fff; }
+
+/* Events pages (Phase 2 slice 3), scoped under .events-ui so the shared
+ * components stay untouched: the Full badge, the detail sub line, the
+ * seats progress, the actions row, and the breadcrumb. */
+.events-ui .full-badge {
+  display: inline-block; vertical-align: 2px;
+  background: var(--mint); color: var(--emerald-deep);
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 999px; margin-left: 6px;
+}
+.events-ui .crumbs { font-size: 14px; color: var(--stone); margin-bottom: 16px; }
+.events-ui .crumbs a { color: var(--emerald-deep); }
+.events-ui .event-sub { font-size: 17px; color: var(--stone); margin-bottom: 22px; }
+.events-ui .event-seats { margin-top: 26px; }
+.events-ui .event-seats p { font-size: 16px; margin: 0 0 10px; }
+.events-ui .event-progress {
+  height: 8px; border-radius: 999px; max-width: 420px;
+  background: rgba(18, 26, 22, 0.08); overflow: hidden;
+}
+.events-ui .event-progress i { display: block; height: 100%; background: var(--emerald); border-radius: 999px; }
+.events-ui .event-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 26px; }
 .home-intro .form-err { color: #a4262c; }
 .home-intro .thanks {
   max-width: none; margin: 0; text-align: left;
