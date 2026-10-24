@@ -1,15 +1,16 @@
-/* Stories — 24h ephemeral member photos/videos (Instagram/Facebook model,
+/* Stories - 24h ephemeral member photos/videos (Instagram/Facebook model,
  * Brimwood-adapted: calm, anonymous-by-default, members-only).
  *
  * Mounted at "/api/stories". Every endpoint requires a member session
  * (401 without one): stories are community content, never public.
- * Author display follows profiles.ts — user-controlled display_name,
+ * Author display follows profiles.ts - user-controlled display_name,
  * falling back to initials ("K."), never email or real name.
  *
  * - POST   /api/stories (multipart, field "file") → upload a story.
  *          Photos PNG/JPG/WEBP/GIF and video MP4 only; max 10 MB;
  *          rate-limited to 10 uploads per user per day.
  *          expires_at is written as created_at + 24h at insert time.
+ *          403 when the author's posting is paused (active write ban).
  * - GET    /api/stories/tray → unexpired stories grouped by author,
  *          newest stories first, the requester's own stories first.
  *          Each story carries a seen/unseen flag for the requester
@@ -17,16 +18,17 @@
  * - GET    /api/stories/:id → one story; 404 when expired or unknown
  *          (no way to distinguish the two). Marks the story viewed by
  *          the requester (idempotent: one view per viewer). The viewer
- *          list is returned ONLY to the story's author — viewers stay
+ *          list is returned ONLY to the story's author - viewers stay
  *          anonymous to everyone else.
  * - POST   /api/stories/:id/reply {body} → store a text reply (1-500
  *          chars). Replies are conversation starters for the DM/chat
  *          system, which surfaces each new reply to the story author.
+ *          403 when a block exists between the replier and the author.
  *          Contract: tasks/social-stories.md.
  *
  * Expiry is enforced lazily: every read filters on
  * `expires_at > <now>`. Periodic hard-deletion of expired rows (and their
- * R2 objects) is a scheduled-job concern — see 0018_stories.sql; expiry
+ * R2 objects) is a scheduled-job concern - see 0018_stories.sql; expiry
  * correctness never depends on that job running.
  */
 import { Hono } from "hono";
@@ -76,7 +78,7 @@ function mediaUrl(c: any, r2Key: string): string {
   return `https://${host}/api/media/${r2Key}`;
 }
 
-/* --- POST /api/stories — upload a story (member session, multipart) --- */
+/* --- POST /api/stories - upload a story (member session, multipart) --- */
 
 app.post("/", async (c) => {
   const userId = await getUserId(c);
@@ -110,6 +112,18 @@ app.post("/", async (c) => {
     );
   }
 
+  // Members whose posting is paused (an active write ban) may not post
+  // stories (403; trg_gate_stories enforces this at the write gate too).
+  // Checked before the R2 upload so a refused story leaves no orphan object.
+  const paused: any = await DB.prepare(
+    "SELECT 1 FROM active_write_bans WHERE user_id = ? LIMIT 1"
+  )
+    .bind(userId)
+    .first();
+  if (paused) {
+    return c.json({ ok: false, error: "Posting is paused for your account." }, 403);
+  }
+
   // Server-generated flat key: unique per upload, no client input in the path.
   const key = `story-${crypto.randomUUID()}.${type.ext}`;
   await c.env.MEDIA.put(key, await file.arrayBuffer(), {
@@ -120,17 +134,33 @@ app.post("/", async (c) => {
   const nowMs = Date.now();
   const created = new Date(nowMs).toISOString();
   const expires = new Date(nowMs + STORY_TTL_MS).toISOString();
-  await DB.prepare(
-    `INSERT INTO stories (id, author_id, r2_key, kind, created_at, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  )
-    .bind(id, userId, key, type.kind, created, expires)
-    .run();
+  try {
+    await DB.prepare(
+      `INSERT INTO stories (id, author_id, r2_key, kind, created_at, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    )
+      .bind(id, userId, key, type.kind, created, expires)
+      .run();
+  } catch (err) {
+    // The trigger stays the final guard for the race between the check
+    // above and the write; map its error to 403 instead of 500, and drop
+    // the just-uploaded object so the refused story leaves nothing behind.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/posting is paused/.test(msg)) {
+      try {
+        await c.env.MEDIA.delete(key);
+      } catch {
+        /* orphan cleanup is best effort */
+      }
+      return c.json({ ok: false, error: "Posting is paused for your account." }, 403);
+    }
+    throw err;
+  }
 
   return c.json({ ok: true, id, kind: type.kind, url: mediaUrl(c, key), expires_at: expires });
 });
 
-/* --- GET /api/stories/tray — unexpired stories grouped by author --- */
+/* --- GET /api/stories/tray - unexpired stories grouped by author --- */
 
 app.get("/tray", async (c) => {
   const userId = await getUserId(c);
@@ -186,7 +216,7 @@ app.get("/tray", async (c) => {
   return c.json({ ok: true, authors: groups });
 });
 
-/* --- GET /api/stories/:id — one story; marks viewed; author sees viewers --- */
+/* --- GET /api/stories/:id - one story; marks viewed; author sees viewers --- */
 
 app.get("/:id", async (c) => {
   const userId = await getUserId(c);
@@ -228,7 +258,7 @@ app.get("/:id", async (c) => {
     },
   };
 
-  // Viewer list is author-only. Chronological (most recent first) — no
+  // Viewer list is author-only. Chronological (most recent first) - no
   // engagement ranking; calm over "who's watching me" folklore.
   if (story.author_id === userId) {
     const viewers = await DB.prepare(
@@ -250,7 +280,7 @@ app.get("/:id", async (c) => {
   return c.json(out);
 });
 
-/* --- POST /api/stories/:id/reply — reply to a story (stored for DM surfacing) --- */
+/* --- POST /api/stories/:id/reply - reply to a story (stored for DM surfacing) --- */
 
 app.post("/:id/reply", async (c) => {
   const userId = await getUserId(c);
@@ -269,6 +299,17 @@ app.post("/:id/reply", async (c) => {
     .first();
   if (!story) return c.json({ ok: false, error: "Not found." }, 404);
 
+  // A block between the replier and the story author forbids replies
+  // (403; trg_story_replies_block enforces this at the write gate too).
+  const blocked: any = await DB.prepare(
+    "SELECT 1 FROM block_pairs WHERE a = ? AND b = ? LIMIT 1"
+  )
+    .bind(userId, story.author_id)
+    .first();
+  if (blocked) {
+    return c.json({ ok: false, error: "You cannot reply to this story." }, 403);
+  }
+
   let data: Record<string, unknown>;
   try {
     data = await c.req.json();
@@ -283,12 +324,22 @@ app.post("/:id/reply", async (c) => {
   const body = raw;
 
   const replyId = crypto.randomUUID();
-  await DB.prepare(
-    `INSERT INTO story_replies (id, story_id, from_user_id, body)
-     VALUES (?, ?, ?, ?)`
-  )
-    .bind(replyId, story.id, userId, body)
-    .run();
+  try {
+    await DB.prepare(
+      `INSERT INTO story_replies (id, story_id, from_user_id, body)
+       VALUES (?, ?, ?, ?)`
+    )
+      .bind(replyId, story.id, userId, body)
+      .run();
+  } catch (err) {
+    // The trigger stays the final guard for the race between the check
+    // above and the write; map its error to 403 instead of 500.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/blocked/.test(msg)) {
+      return c.json({ ok: false, error: "You cannot reply to this story." }, 403);
+    }
+    throw err;
+  }
 
   // The DM/chat system surfaces this row to the story author; the reply is
   // not shown anywhere else (stories have no public comment thread).

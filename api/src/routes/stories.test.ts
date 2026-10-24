@@ -1,4 +1,4 @@
-/* Route tests: stories — upload validation, tray grouping/seen state,
+/* Route tests: stories - upload validation, tray grouping/seen state,
  * expiry filtering, view marking, author-only viewer list, replies. */
 import { describe, it, expect } from "vitest";
 import app from "./stories";
@@ -177,6 +177,57 @@ describe("POST / (upload)", () => {
     expect(res.status).toBe(429);
     expect(env.DB.inserts.get("stories")?.length || 0).toBe(0);
   });
+
+  it("403s when posting is paused for the author (no upload, no row)", async () => {
+    const env = mockEnv();
+    const s = memberSession(env);
+    let putKey = "";
+    env.MEDIA = {
+      async put(...a: unknown[]) {
+        putKey = (a[0] as string) ?? "";
+      },
+      async get() {
+        return null;
+      },
+      async delete() {},
+    } as any;
+    const prev = env.DB.handler;
+    env.DB.handler = (sql: string, params: unknown[]) => {
+      if (/from\s+active_write_bans/i.test(sql)) return { row: { 1: 1 } };
+      return prev?.(sql, params);
+    };
+    const res = await postFile(env, s, jpg());
+    expect(res.status).toBe(403);
+    expect(putKey).toBe("");
+    expect(env.DB.inserts.get("stories")?.length || 0).toBe(0);
+  });
+
+  it("403s when the posting-pause trigger fires on the write itself", async () => {
+    const env = mockEnv();
+    const s = memberSession(env);
+    let deletedKey = "";
+    env.MEDIA = {
+      async put() {},
+      async get() {
+        return null;
+      },
+      async delete(...a: unknown[]) {
+        deletedKey = (a[0] as string) ?? "";
+      },
+    } as any;
+    const prev = env.DB.handler;
+    env.DB.handler = (sql: string, params: unknown[]) => {
+      if (/insert\s+into\s+stories/i.test(sql)) {
+        throw new Error("D1_ERROR: posting is paused for this member: TRIGGER trg_gate_stories");
+      }
+      return prev?.(sql, params);
+    };
+    const res = await postFile(env, s, jpg());
+    expect(res.status).toBe(403);
+    // The just-uploaded object is removed, so the refused story leaves
+    // nothing behind in R2.
+    expect(deletedKey).toMatch(/^story-[0-9a-f-]+\.jpg$/);
+  });
 });
 
 describe("GET /tray", () => {
@@ -259,7 +310,7 @@ describe("GET /:id", () => {
     withStories(env, { story: storyRow, viewers: [] });
     const res = await app.request("/s1", { headers: s }, env as any);
     expect(res.status).toBe(200);
-    // Idempotent mark: INSERT OR IGNORE — one row per (story, viewer), and
+    // Idempotent mark: INSERT OR IGNORE - one row per (story, viewer), and
     // re-watching is a no-op rather than a duplicate.
     const mark = env.DB.calls.find((c) =>
       /INSERT OR IGNORE INTO story_views/i.test(c.sql)
@@ -362,5 +413,34 @@ describe("POST /:id/reply", () => {
     withStories(env, {});
     const res = await postJSON(app, "/s1/reply", { body: "Hi" }, env, s);
     expect(res.status).toBe(429);
+  });
+
+  it("403s when a block exists between the replier and the author", async () => {
+    const env = mockEnv();
+    const s = memberSession(env);
+    withStories(env, {});
+    const prev = env.DB.handler;
+    env.DB.handler = (sql: string, params: unknown[]) => {
+      if (/from\s+block_pairs/i.test(sql)) return { row: { 1: 1 } };
+      return prev?.(sql, params);
+    };
+    const res = await postJSON(app, "/s1/reply", { body: "Hi" }, env, s);
+    expect(res.status).toBe(403);
+    expect(env.DB.inserts.get("story_replies")?.length || 0).toBe(0);
+  });
+
+  it("403s when the block trigger fires on the write itself", async () => {
+    const env = mockEnv();
+    const s = memberSession(env);
+    withStories(env, {});
+    const prev = env.DB.handler;
+    env.DB.handler = (sql: string, params: unknown[]) => {
+      if (/insert\s+into\s+story_replies/i.test(sql)) {
+        throw new Error("D1_ERROR: blocked: TRIGGER trg_story_replies_block");
+      }
+      return prev?.(sql, params);
+    };
+    const res = await postJSON(app, "/s1/reply", { body: "Hi" }, env, s);
+    expect(res.status).toBe(403);
   });
 });
