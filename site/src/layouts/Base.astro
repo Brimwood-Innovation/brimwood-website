@@ -106,7 +106,7 @@ const siteTitle = siteSettings.site_title || "Brimwood Innovation";
       crossorigin
     />
 
-    {/* set:html — expressions are not evaluated inside <script> bodies. */}
+    {/* set:html: expressions are not evaluated inside <script> bodies. */}
     <script type="application/ld+json" set:html={JSON.stringify({
         "@context": "https://schema.org",
         "@type": "Organization",
