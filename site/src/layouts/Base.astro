@@ -28,6 +28,10 @@ interface Props {
   /* audit/social/wiring: canonical override. /u/<id> profile pages pass the
    * /@username URL here so search engines see one canonical profile. */
   canonicalPath?: string;
+  /* Phase 2: pages that list Journal posts (the index) opt in to the RSS
+   * discovery link for /rss.xml. Off everywhere else, so no other page's
+   * head changes. */
+  rssAlternate?: boolean;
 }
 const {
   title,
@@ -39,6 +43,7 @@ const {
   articleMeta,
   jsonld,
   canonicalPath,
+  rssAlternate = false,
 } = Astro.props;
 const canonical = `https://brimwoodinnovation.com${canonicalPath || path}`;
 const ogImage = image || "https://brimwoodinnovation.com/img/brimwood-og.png";
@@ -61,6 +66,9 @@ const siteTitle = siteSettings.site_title || "Brimwood Innovation";
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
+    {rssAlternate && (
+      <link rel="alternate" type="application/rss+xml" title="Brimwood Innovation Journal" href="/rss.xml" />
+    )}
 
     <meta property="og:type" content={ogType} />
     <meta property="og:site_name" content={siteTitle} />
