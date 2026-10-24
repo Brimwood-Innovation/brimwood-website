@@ -1,5 +1,16 @@
 ---
-/* Academy index (T21): list published courses. Brand-kit styled. */
+/* Academy index: course catalogue.
+ * Phase 2 slice 4: ported from prototype section 06 (v5 UX deck). The
+ * deck header is Academy, with the line that courses are built from
+ * what the hub ships and are free for members. Cards follow the deck
+ * card model: an Open badge, the title, the tagline with the counts
+ * line (modules, lessons, about hours), and a View course button.
+ * Courses still render from GET /api/courses; the counts come from a
+ * build-time fetch of each course detail, the same pattern the lesson
+ * paths use. The deck's two Later cards (courses not yet open) are
+ * shown as static cards with the deck copy, skipped if a published
+ * course ever carries the same title. Visitors see the same cards;
+ * members-only lessons keep their notes and the calm sign-in gate. */
 import Base from "../../layouts/Base.astro";
 const apiBase = import.meta.env.PUBLIC_API_BASE || "";
 let courses: any[] = [];
@@ -8,25 +19,74 @@ try {
   const d = await r.json();
   if (d.ok) courses = d.courses;
 } catch {}
+
+/* Counts per course, for the deck counts line. Best effort: a course
+ * whose detail fetch fails simply shows no counts. */
+async function countsLine(slug: string): Promise<string> {
+  try {
+    const r = await fetch(apiBase + "/api/courses/" + encodeURIComponent(slug), {
+      headers: { accept: "application/json" },
+    });
+    const d = await r.json();
+    if (!d.ok) return "";
+    const mods = d.modules || [];
+    const lessons = mods.flatMap((m: any) => m.lessons || []);
+    if (!mods.length) return "";
+    const minutes = lessons.reduce((sum: number, l: any) => sum + (l.duration_minutes || 0), 0);
+    const hours = minutes >= 60 ? Math.round(minutes / 60) : 0;
+    let s = `${mods.length} module${mods.length === 1 ? "" : "s"}, ${lessons.length} lesson${lessons.length === 1 ? "" : "s"}`;
+    if (hours) s += `, about ${hours} hour${hours === 1 ? "" : "s"}`;
+    return s + ".";
+  } catch {
+    return "";
+  }
+}
+for (const c of courses) c.counts = await countsLine(c.slug);
+
+/* Deck section 06: courses planned but not yet open. */
+const laterCourses = [
+  { title: "Shipping Software", copy: "From prototype to production. The boring parts, done well." },
+  { title: "Demo Craft", copy: "Five minutes, one story, no slides that apologize." },
+].filter((l) => !courses.some((c) => c.title.toLowerCase() === l.title.toLowerCase()));
 ---
 
-<Base title="Academy — Brimwood Innovation" description="Courses for builders. Learn by shipping.">
-  <section class="block">
+<Base
+  title="Academy — Brimwood Innovation"
+  description="Courses built from what the hub ships. Free for members."
+  path="/academy"
+  jsonld={{
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: "https://brimwoodinnovation.com/" },
+      { "@type": "ListItem", position: 2, name: "Academy", item: "https://brimwoodinnovation.com/academy" },
+    ],
+  }}
+>
+  <section class="block academy-ui">
     <div class="kicker">Academy</div>
-    <h1 class="sec" style="font-size:clamp(34px,5.4vw,56px);margin-bottom:18px;">Learn by shipping.</h1>
-    <p class="sec-lede">Courses for builders. Previews are open to everyone; full lessons are for members.</p>
+    <h1 class="sec" style="font-size:clamp(34px,5.4vw,56px);margin-bottom:18px;">Academy</h1>
+    <p class="sec-lede">Courses built from what the hub ships. Free for members.</p>
 
-    <div class="cards" style="grid-template-columns:repeat(2,1fr);">
-      {courses.map((c) => (
-        <a href={`/academy/${c.slug}`} class="card" style="text-decoration:none;display:block;">
-          <div class="n">{c.level}</div>
-          <h3>{c.title}</h3>
-          <p>{c.tagline}</p>
-        </a>
-      ))}
-    </div>
     {courses.length === 0 && (
       <p class="sec-lede">No courses published yet. Check back soon.</p>
     )}
+    <div class="cards cards-3">
+      {courses.map((c) => (
+        <article class="card">
+          <span class="badge badge-open">Open</span>
+          <h3>{c.title}</h3>
+          <p>{c.tagline}{c.counts ? ` ${c.counts}` : ""}</p>
+          <p style="margin-top:16px;"><a class="btn btn-ghost small" href={`/academy/${c.slug}`}>View course</a></p>
+        </article>
+      ))}
+      {laterCourses.map((l) => (
+        <article class="card">
+          <span class="badge badge-later">Later</span>
+          <h3>{l.title}</h3>
+          <p>{l.copy}</p>
+        </article>
+      ))}
+    </div>
   </section>
 </Base>

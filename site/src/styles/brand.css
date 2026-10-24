@@ -276,6 +276,48 @@ p.sec-lede { color: var(--stone); max-width: 62ch; margin-bottom: 40px; font-siz
 }
 .events-ui .event-progress i { display: block; height: 100%; background: var(--emerald); border-radius: 999px; }
 .events-ui .event-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 26px; }
+
+/* Academy pages (Phase 2 slice 4), scoped under .academy-ui so the shared
+ * components stay untouched: the Open and Later card badges, the
+ * breadcrumb, the syllabus table, the enrol row, and the reflection
+ * panel on lesson pages. */
+.academy-ui .badge {
+  display: inline-block; margin-bottom: 12px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 999px;
+}
+.academy-ui .badge-open { background: var(--mint); color: var(--emerald-deep); }
+.academy-ui .badge-later { background: rgba(18, 26, 22, 0.06); color: var(--stone); }
+.academy-ui .crumbs { font-size: 14px; color: var(--stone); margin-bottom: 16px; }
+.academy-ui .crumbs ol { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.academy-ui .crumbs li + li::before { content: "/"; margin-right: 8px; color: var(--stone); }
+.academy-ui .crumbs a { color: var(--emerald-deep); }
+.academy-ui .table-wrap { overflow-x: auto; }
+.academy-ui .syllabus { width: 100%; border-collapse: collapse; margin-top: 8px; }
+.academy-ui .syllabus caption { text-align: left; font-weight: 700; font-size: 18px; padding-bottom: 12px; }
+.academy-ui .syllabus th, .academy-ui .syllabus td {
+  text-align: left; vertical-align: top; padding: 14px 12px;
+  border-top: 1px solid rgba(18, 26, 22, 0.08); font-size: 15px;
+}
+.academy-ui .syllabus th { font-weight: 600; white-space: nowrap; }
+.academy-ui .syllabus td { color: var(--stone); }
+.academy-ui .syllabus td a { color: var(--emerald-deep); font-weight: 600; }
+.academy-ui .syllabus .preview-tag { color: var(--stone); font-size: 13px; }
+.academy-ui .enrol-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 32px; }
+.academy-ui .enrol-row p { flex-basis: 100%; margin: 4px 0 0; }
+.academy-ui .reflection { margin-top: 40px; max-width: 680px; }
+.academy-ui .reflection label { display: block; font-weight: 600; margin-bottom: 8px; }
+.academy-ui .reflection textarea {
+  width: 100%; font: inherit; color: var(--ink);
+  border: 1px solid rgba(18, 26, 22, 0.25); border-radius: 10px;
+  padding: 12px 14px; background: #fff;
+}
+.academy-ui .reflection textarea:focus { border-color: var(--emerald-deep); outline: 2px solid var(--mint); }
+.academy-ui .reflection .hint { font-size: 13.5px; color: var(--stone); margin-top: 8px; }
+.academy-ui .progress-line { margin-top: 20px; font-size: 15px; color: var(--stone); }
+.academy-ui .progress-line b { color: var(--ink); }
+.academy-ui .gate-note { margin-top: 12px; font-size: 14px; color: var(--stone); }
+.academy-ui a.disabled-link { color: var(--stone); pointer-events: none; text-decoration: none; }
 .home-intro .form-err { color: #a4262c; }
 .home-intro .thanks {
   max-width: none; margin: 0; text-align: left;

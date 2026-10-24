@@ -19,6 +19,8 @@
       if (!d.ok) return;
       if ((d.enrolments || []).some(function (e) { return e.slug === slug; })) {
         document.getElementById("enrolBtn").style.display = "none";
+        var signinLink = document.getElementById("enrolSignin");
+        if (signinLink) signinLink.style.display = "none";
         var msg = document.getElementById("enrolMsg");
         msg.style.display = "block";
         msg.textContent = "You're enrolled in this course.";
@@ -51,10 +53,12 @@
       var d = await r.json().catch(function () { return {}; });
       if (!r.ok || !d.ok) throw new Error(d.error || "enrol failed");
       btn.style.display = "none";
+      var signinLink2 = document.getElementById("enrolSignin");
+      if (signinLink2) signinLink2.style.display = "none";
       msg.style.display = "block";
       msg.textContent = "You're enrolled. Start with the first lesson below.";
     } catch (e) {
-      btn.disabled = false; btn.textContent = "Enrol in this course";
+      btn.disabled = false; btn.textContent = "Enrol (free for members)";
       msg.style.display = "block";
       msg.textContent = e.message === "Sign in required" ? "Please sign in first." : "Could not enrol. Try again.";
     }
