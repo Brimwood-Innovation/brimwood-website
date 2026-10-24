@@ -1,7 +1,9 @@
 ---
-/* Home (T7): v7 page migrated to Astro, pixel-equivalent. Vanilla JS only.
+/* Home (Phase 2): public sections rebuilt from prototype section 05
+ * (v5 UX deck). Vanilla JS only.
  * Site integration: hero copy from CMS settings.json; section visibility
- * from homepage.json enabled flags. */
+ * from homepage.json enabled flags. The introduction form keeps its
+ * fields, submit target, honeypot, and lazy Turnstile exactly as before. */
 import Base from "../layouts/Base.astro";
 import HeroDots from "../components/HeroDots.astro";
 import siteSettings from "../content/settings.json";
@@ -13,126 +15,137 @@ const ctaText = siteSettings.cta_text || "Request an introduction";
 const ctaLink = siteSettings.cta_link || "#introduce";
 const sectionOn = (type: string) =>
   (homepage.sections || []).some((s: any) => s.type === type && s.enabled);
-const showFeatures = sectionOn("features");
+const showLoop = sectionOn("features");
 const showCta = sectionOn("cta");
-// Split hero headline on ". " for the two-line display treatment.
+// Split hero headline on ". " for the two-line display treatment; the
+// closing line takes the prototype's italic accent.
 const heroLines = heroHeadline.split(/\.\s*/).filter(Boolean);
 ---
 
 <Base
   title="Brimwood Innovation — Build a business. Build yourself."
-  description="Brimwood Innovation is a selective innovation hub in Toronto for ambitious people building AI-powered micro businesses. Build a business. Build yourself."
+  description="Brimwood Innovation is a calm builder community and hub at 1365 Gerrard St E, Toronto. Work side by side, show your work at demo nights, learn in the Academy."
   path="/"
   turnstile
 >
   <div class="hero">
     <HeroDots />
     <img class="lockup" src="/img/brimwood-logo-reversed.svg" alt="Brimwood Innovation logo" />
-    <div class="eyebrow">Toronto &middot; Coming soon</div>
-    <h1>{heroLines.map((line, i) => <>{line}.{i < heroLines.length - 1 && <br />}</>)}</h1>
+    <h1>{heroLines.map((line, i) => i === heroLines.length - 1 && heroLines.length > 1
+      ? <em>{line}.</em>
+      : <>{line}.{i < heroLines.length - 1 && <br />}</>)}</h1>
     <p class="lede">
       {heroSubtext}
     </p>
     <a class="btn" href={ctaLink}>{ctaText}</a>
-    <div class="countdown">
-      <div class="cd-lbl">Expected to launch</div>
-      <div class="cd-digits" aria-hidden="true">
-        <span><b id="cdD">00</b><i>days</i></span>
-        <span><b id="cdH">00</b><i>hrs</i></span>
-        <span><b id="cdM">00</b><i>min</i></span>
-        <span><b id="cdS">00</b><i>sec</i></span>
-      </div>
-      <p class="visually-hidden">Demo night: Friday, October 30, 2026, 7:00 p.m. local time.</p>
-    </div>
+  </div>
+
+  <div class="facts-strip">
+    <ul class="facts" aria-label="Facts">
+      <li><b>1365 Gerrard St E</b><span>Toronto, second floor</span></li>
+      <li><b>Demo nights</b><span>Wednesdays, 6:30 p.m.</span></li>
+      <li><b>Membership is free</b><span>By invitation</span></li>
+      <li><b>Anonymous by default</b><span>We share the what, never the who</span></li>
+    </ul>
   </div>
 
   <div class="belief">
     <p>Elite by effort, not by background.</p>
   </div>
 
-  {showFeatures && (
+  {showLoop && (
   <section class="block">
-    <div class="kicker">The four promises</div>
-    <h2 class="sec">What every member gets</h2>
-    <p class="sec-lede">We give ambitious people the space, skills, community, and partnership to build something of their own.</p>
-    <div class="cards">
-      <div class="card"><div class="n">01</div><h3>Space</h3><p>A beautiful, physical hub to work, meet, and build. Not just a group chat.</p></div>
-      <div class="card"><div class="n">02</div><h3>Skills</h3><p>Hands-on AI training from people who use it every day in real businesses.</p></div>
-      <div class="card"><div class="n">03</div><h3>Community</h3><p>A small, vetted group of builders who push each other to be better.</p></div>
-      <div class="card"><div class="n">04</div><h3>Partnership</h3><p>Support and backing from a team that builds alongside you.</p></div>
+    <h2 class="sec">How the hub works</h2>
+    <p class="sec-lede">One loop, every week.</p>
+    <div class="cards cards-3">
+      <div class="card"><h3>Build</h3><p>Work sessions at the hub, side by side.</p></div>
+      <div class="card"><h3>Show</h3><p>Five-minute demos. Written feedback, no scores.</p></div>
+      <div class="card"><h3>Learn</h3><p>Foundations: 3 modules, 9 lessons.</p></div>
     </div>
   </section>
   )}
 
-  {showFeatures && (
   <section class="block">
-    <div class="kicker">How it works</div>
-    <h2 class="sec">Small teams, powered by AI</h2>
-    <p class="sec-lede">Small teams, powered by AI, backed by a community that makes each other better.</p>
-    <div class="steps">
-      <div class="step"><div class="num">1</div><h3>Introduction</h3><p>Membership is by invitation or referral. Know someone who belongs here? Introduce them.</p><div class="arrow">&rarr;</div></div>
-      <div class="step"><div class="num">2</div><h3>Build</h3><p>Work from the hub on your own schedule. Learn AI hands-on, ship weekly, and grow alongside other owners.</p><div class="arrow">&rarr;</div></div>
-      <div class="step"><div class="num">3</div><h3>Grow together</h3><p>When you grow, we grow together. Building a business is one of the best ways to build yourself.</p></div>
+    <div class="next-panel">
+      <div>
+        <h2>Next at Brimwood</h2>
+        <p id="nextEventLine">Demo nights run Wednesdays at 6:30 p.m. at 1365 Gerrard St E.</p>
+      </div>
+      <a class="btn small" id="nextEventLink" href="/events">See upcoming events</a>
     </div>
   </section>
-  )}
 
   {showCta && (
-  <section class="block" id="introduce">
-    <div class="cta">
-      <h2>Membership is by invitation.</h2>
-      <p>We build our reputation so the right people want in. If you, or someone you know, belongs at Brimwood, request an introduction and tell us a little about yourself.</p>
+  <section class="block home-intro" id="introduce">
+    <h2 class="sec">Request an introduction</h2>
+    <p class="sec-lede">Membership is free and by invitation. We read every request and reply within 5 days.</p>
+    <div class="intro-card">
       <form class="intro" id="introForm">
         <label for="fName">Your name</label>
-        <input id="fName" type="text" name="name" placeholder="Jane Appleseed" required />
+        <input id="fName" type="text" name="name" autocomplete="name" placeholder="Jane Appleseed" required />
         <label for="fEmail">Email</label>
-        <input id="fEmail" type="email" name="email" placeholder="you@example.com" required />
+        <input id="fEmail" type="email" name="email" autocomplete="email" placeholder="you@example.com" required />
         <label for="fRef">Who referred you? <span style="text-transform:none;letter-spacing:0">(optional)</span></label>
         <input id="fRef" type="text" name="referral" placeholder="A member's name, or how you heard of us" />
         <label for="fMsg">What are you building?</label>
-        <textarea id="fMsg" name="message" rows="3" placeholder="A line or two is plenty."></textarea>
+        <textarea id="fMsg" name="message" rows="3" aria-describedby="fMsgHint"></textarea>
+        <p class="field-hint" id="fMsgHint">Tell us in one line. For example: a booking tool for small clinics.</p>
         <input type="text" name="website" id="fSite" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true" />
         <div class="cf-turnstile" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx" style="margin:16px 0;"></div>
-        <button class="btn" type="submit">{ctaText}</button>
-        <p class="form-err" id="formErr" role="status" style="display:none">Something went wrong on our end. Please email <a href="mailto:info@brimwoodinnovation.com" style="color:#fff;text-decoration:underline">info@brimwoodinnovation.com</a> directly and we will take it from there.</p>
+        <button class="btn btn-primary" type="submit">Send request</button>
+        <p class="form-err" id="formErr" role="status" style="display:none">Something went wrong on our end. Please email <a href="mailto:info@brimwoodinnovation.com" style="color:inherit;text-decoration:underline">info@brimwoodinnovation.com</a> directly and we will take it from there.</p>
       </form>
-      <div class="thanks" id="thanksMsg" role="status">Thank you. Your introduction request is on its way &mdash; we read every one personally and will be in touch.</div>
+      <div class="thanks" id="thanksMsg" role="status">
+        <span class="sent-badge">Sent</span>
+        <h3 id="thanksName">Thanks.</h3>
+        <p>We read every request and reply within 5 days. If we invite you, the email holds your invite link. Nothing else goes to your inbox.</p>
+      </div>
     </div>
   </section>
   )}
 
   <script>
 
-// --- demo-night countdown (fixed target: Friday 2026-10-30 19:00 viewer-local) ---
-const demoAt = new Date(2026, 9, 30, 19, 0, 0, 0);
-const cdD = document.getElementById('cdD'), cdH = document.getElementById('cdH'),
-      cdM = document.getElementById('cdM'), cdS = document.getElementById('cdS');
-const p2 = n => String(n).padStart(2, '0');
-function tick(){
-  let diff = demoAt - new Date();
-  if (diff < 0) diff = 0;
-  cdD.textContent = p2(Math.floor(diff / 864e5));
-  cdH.textContent = p2(Math.floor(diff / 36e5) % 24);
-  cdM.textContent = p2(Math.floor(diff / 6e4) % 60);
-  cdS.textContent = p2(Math.floor(diff / 1e3) % 60);
-}
-tick(); setInterval(tick, 1000);
+const API_BASE = import.meta.env.PUBLIC_API_BASE || '';
+
+// --- next event (progressive enhancement; the standing line stays if
+// the API has nothing upcoming or cannot be reached) ---
+(async () => {
+  const line = document.getElementById('nextEventLine');
+  const link = document.getElementById('nextEventLink');
+  if (!line || !link) return;
+  try {
+    const r = await fetch(API_BASE + '/api/events', { headers: { accept: 'application/json' } });
+    const d = await r.json().catch(() => ({}));
+    const ev = d.ok && d.events && d.events[0];
+    if (!ev) return;
+    const when = new Date(ev.starts_at);
+    const date = when.toLocaleDateString('en-CA', { timeZone: 'America/Toronto', weekday: 'short', month: 'short', day: 'numeric' });
+    const time = when.toLocaleTimeString('en-CA', { timeZone: 'America/Toronto', hour: 'numeric', minute: '2-digit' });
+    line.textContent = [ev.title, date + ', ' + time, ev.location].filter(Boolean).join(' · ');
+    if (ev.slug) { link.href = '/events/' + ev.slug; link.textContent = 'Event details'; }
+  } catch {}
+})();
 
 // --- introduction form (POSTs to /api/introduction; Worker sends via Resend) ---
-const API_BASE = import.meta.env.PUBLIC_API_BASE || '';
 document.getElementById('introForm').addEventListener('submit', async function(e){
   e.preventDefault();
   const v = id => document.getElementById(id).value.trim();
   const btn = this.querySelector('button[type=submit]');
-  const btnLabel = btn.textContent; // restore exactly what the CMS rendered
+  const btnLabel = btn.textContent; // restore exactly what the page rendered
   const err = document.getElementById('formErr');
   err.style.display = 'none';
   btn.disabled = true;
   btn.textContent = 'Sending\u2026';
+  const showThanks = () => {
+    const first = v('fName').split(/\s+/)[0];
+    document.getElementById('thanksName').textContent = first ? 'Thanks, ' + first + '.' : 'Thanks.';
+    document.getElementById('introForm').style.display = 'none';
+    document.getElementById('thanksMsg').style.display = 'block';
+  };
   try {
-    if (v('fSite')){ // honeypot filled: bot — silently accept, send nothing
-      document.getElementById('introForm').style.display = 'none';
-      document.getElementById('thanksMsg').style.display = 'block';
+    if (v('fSite')){ // honeypot filled: bot, silently accept, send nothing
+      showThanks();
       return;
     }
     const res = await fetch(API_BASE + '/api/introduction', {
@@ -147,8 +160,7 @@ document.getElementById('introForm').addEventListener('submit', async function(e
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok) throw new Error(data.error || 'send failed');
-    document.getElementById('introForm').style.display = 'none';
-    document.getElementById('thanksMsg').style.display = 'block';
+    showThanks();
   } catch (ex) {
     btn.disabled = false;
     btn.textContent = btnLabel;

@@ -46,6 +46,7 @@ const ogImage = image || "https://brimwoodinnovation.com/img/brimwood-og.png";
 // are ignored so the CMS can never break the nav structure.
 const headerLinks = (navigation.header_links || []).slice(0, 4);
 const footerLinks = navigation.footer_links || [];
+const footerTagline = (navigation as any).footer_tagline || "";
 const ctaText = siteSettings.cta_text || "Request an introduction";
 const ctaLink = siteSettings.cta_link || "#introduce";
 const announcement = (siteSettings.announcement_bar || "").trim();
@@ -217,7 +218,10 @@ const siteTitle = siteSettings.site_title || "Brimwood Innovation";
     <footer class="site">
       <div class="foot-inner">
         <div class="foot-top">
-          <img src="/img/brimwood-logo-reversed.svg" alt="Brimwood Innovation" />
+          <div class="foot-brand">
+            <img src="/img/brimwood-logo-reversed.svg" alt="Brimwood Innovation" />
+            {footerTagline && <p class="foot-tagline">{footerTagline}</p>}
+          </div>
           <div class="foot-links">
             {footerLinks.map((l) => (
               <a href={l.url} id={l.url === "/members" ? "footMember" : undefined}>{l.label}</a>
