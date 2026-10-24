@@ -146,6 +146,8 @@ header.site img.logo { height: 38px; width: auto; display: block; }
   letter-spacing: -0.025em; line-height: 1.12;
   max-width: 18ch; margin: 0 auto 18px;
 }
+/* Prototype section 05: the closing hero line takes an italic accent. */
+.hero h1 em { font-style: italic; }
 .hero p.lede {
   font-size: clamp(16px, 2.2vw, 19px); color: rgba(255, 255, 255, 0.88);
   max-width: 52ch; margin: 0 auto 34px;
@@ -157,19 +159,16 @@ header.site img.logo { height: 38px; width: auto; display: block; }
   display: block; pointer-events: none; opacity: 0.22;
 }
 
-/* ---- countdown ---- */
-.countdown { margin-top: 44px; }
-.cd-lbl {
-  font-size: 11px; letter-spacing: 0.3em; text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.72); margin-bottom: 12px;
+/* ---- facts strip (home, prototype section 05) ----
+ * Only facts a visitor can check. No headcounts, no adjectives. */
+.facts-strip { border-bottom: 1px solid rgba(18, 26, 22, 0.08); }
+.facts {
+  list-style: none; max-width: 1080px; margin: 0 auto;
+  padding: 30px 24px;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px;
 }
-.cd-digits { display: flex; gap: 26px; justify-content: center; }
-.cd-digits span { display: flex; flex-direction: column; min-width: 64px; }
-.cd-digits b { font-size: clamp(28px, 4.6vw, 42px); font-weight: 700; font-variant-numeric: tabular-nums; }
-.cd-digits i {
-  font-style: normal; font-size: 10px; letter-spacing: 0.28em;
-  text-transform: uppercase; color: rgba(255, 255, 255, 0.65); margin-top: 4px;
-}
+.facts li b { display: block; font-size: 15.5px; font-weight: 700; color: var(--ink); margin-bottom: 2px; }
+.facts li span { font-size: 14px; color: var(--stone); }
 
 /* ---- belief strip ---- */
 .belief { background: var(--mint); text-align: center; padding: 34px 24px; }
@@ -222,6 +221,55 @@ p.sec-lede { color: var(--stone); max-width: 62ch; margin-bottom: 40px; font-siz
   color: var(--emerald-deep); font-size: 22px; font-weight: 700; z-index: 2;
 }
 
+/* ---- next at Brimwood (home, prototype section 05) ---- */
+.next-panel {
+  background: var(--mint); border-radius: 24px;
+  padding: 40px clamp(24px, 5vw, 48px);
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 24px; flex-wrap: wrap;
+}
+.next-panel h2 { font-size: clamp(22px, 3vw, 26px); font-weight: 700; letter-spacing: -0.02em; margin-bottom: 6px; }
+.next-panel p { color: var(--stone); font-size: 16px; margin: 0; }
+
+/* ---- introduction card (home, prototype section 05) ----
+ * Light-card treatment scoped to the home section; the shared dark
+ * form.intro pattern on the newsletter, members, and event pages is
+ * untouched. */
+.intro-card {
+  background: #fff; border: 1px solid rgba(18, 26, 22, 0.08);
+  border-radius: 24px; padding: clamp(28px, 5vw, 48px);
+  max-width: 680px;
+}
+.home-intro form.intro { max-width: none; margin: 0; }
+.home-intro form.intro label {
+  font-size: 13.5px; font-weight: 600; letter-spacing: 0;
+  text-transform: none; color: var(--ink);
+}
+.home-intro form.intro label:first-child { margin-top: 0; }
+.home-intro form.intro input, .home-intro form.intro textarea {
+  border: 1px solid rgba(18, 26, 22, 0.18);
+  background: #fff; color: var(--ink);
+}
+.home-intro form.intro input::placeholder, .home-intro form.intro textarea::placeholder { color: var(--stone); }
+.home-intro form.intro input:focus, .home-intro form.intro textarea:focus { border-color: var(--emerald-deep); }
+.home-intro .field-hint { font-size: 13.5px; color: var(--stone); margin-top: 8px; }
+.home-intro form.intro .btn { background: var(--emerald-deep); color: #fff; }
+.home-intro form.intro .btn:hover { background: var(--forest); color: #fff; }
+.home-intro .form-err { color: #a4262c; }
+.home-intro .thanks {
+  max-width: none; margin: 0; text-align: left;
+  background: var(--mint); border: 1px solid rgba(12, 148, 99, 0.25);
+  color: var(--ink);
+}
+.home-intro .thanks h3 { font-size: 22px; font-weight: 700; margin: 12px 0 8px; }
+.home-intro .thanks p { margin: 0; color: var(--stone); }
+.sent-badge {
+  display: inline-block; background: #fff; color: var(--forest);
+  border: 1px solid rgba(12, 148, 99, 0.4); border-radius: 999px;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; padding: 4px 12px;
+}
+
 /* ---- CTA / introduction form ---- */
 .cta {
   background: var(--forest); border-radius: 24px; color: #fff;
@@ -267,6 +315,8 @@ footer.site { background: var(--forest); color: #fff; margin-top: 88px; }
 .foot-inner { max-width: 1080px; margin: 0 auto; padding: 56px 24px 32px; }
 .foot-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 32px; flex-wrap: wrap; margin-bottom: 40px; }
 .foot-top img { height: 44px; width: auto; }
+.foot-brand { max-width: 260px; }
+.foot-tagline { margin-top: 14px; color: rgba(255, 255, 255, 0.7); font-size: 14px; }
 .foot-links { display: flex; gap: 26px; flex-wrap: wrap; }
 .foot-links a {
   color: rgba(255, 255, 255, 0.7); text-decoration: none; font-size: 13.5px;
@@ -290,6 +340,7 @@ footer.site { background: var(--forest); color: #fff; margin-top: 88px; }
 /* ---- responsive ---- */
 @media (max-width: 860px) {
   .cards, .cards-3 { grid-template-columns: repeat(2, 1fr); }
+  .facts { grid-template-columns: repeat(2, 1fr); }
   .steps { grid-template-columns: 1fr; }
   .step .arrow { display: none; }
 }
@@ -299,7 +350,6 @@ footer.site { background: var(--forest); color: #fff; margin-top: 88px; }
   .cards, .cards-3 { grid-template-columns: 1fr; }
   .hero { padding: 72px 20px 64px; }
   section.block { padding: 64px 20px 16px; }
-  .cd-digits { gap: 14px; }
 }
 
 /* ---- reduced motion ---- */
@@ -332,7 +382,7 @@ a.profile-link:hover { text-decoration: underline; }
   form, .btn, #comments, #rsvpSection, .cf-turnstile { display: none !important; }
   body { background: #fff; color: #000; font-size: 12pt; }
   .hero { background: none; color: #000; padding: 24px 0; }
-  .hero p.lede, .eyebrow, .cd-lbl, .cd-digits i { color: #333; }
+  .hero p.lede, .eyebrow { color: #333; }
   a { color: #000; text-decoration: underline; }
   a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 0.85em; }
   section.block { padding: 24px 0; }
