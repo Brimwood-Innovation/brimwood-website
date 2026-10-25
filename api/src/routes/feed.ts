@@ -4,7 +4,12 @@
  * Mounted at "/api" (same convention as routes/comments.ts and routes/media.ts):
  *   POST /api/media/upload        member upload of photo/video (multipart, field "file")
  *                                 → { key, url, kind: photo|video|reel, duration_s }
- *   POST /api/posts               member post: text + media refs + optional poll
+ *   POST /api/posts               member post: text + media refs + optional poll,
+ *                                 plus the deck composer fields: intent (one of the
+ *                                 four member intents) and audience (members,
+ *                                 only_me, or group with group_id)
+ *   GET  /api/groups/mine         the caller's active groups, for the composer
+ *                                 audience picker
  *   GET  /api/feed?limit=&cursor= chronological feed, embeds media + poll state
  *   POST /api/polls/:id/vote      { option_id } - one vote per member, changeable
  *                                 until the poll closes
@@ -48,6 +53,12 @@ const POLL_DURATIONS: Record<string, number> = {
   "7d": 7 * 86400,
 };
 
+/* Phase 3 slice 4, deck feed screen: the member composer offers exactly
+ * these four intents (the deck's intent chips). Staff post types
+ * (announcement, spotlight, ritual, event_recap, intro) are not member
+ * composer values; they arrive through the Studio slice instead. */
+const MEMBER_INTENTS = ["progress", "question", "feedback", "resource"] as const;
+
 /** Require a signed-in member; returns the user id, or null. */
 async function needUser(c: any): Promise<string | null> {
   return getUserId(c);
@@ -65,7 +76,9 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-/** Public-safe member shape for feed authors/voters. Never email or real name. */
+/** Public-safe member shape for feed authors/voters. Never email or real name.
+ * is_staff marks admin authors, which the deck feed screen shows with a
+ * Staff badge (the deck's "Brimwood team" staff posts). */
 function publicAuthor(row: any, c: any) {
   const key = row.avatar_r2_key || row.avatar_key;
   const username = row.username || row.author_username || null;
@@ -75,6 +88,7 @@ function publicAuthor(row: any, c: any) {
     username,
     profile_url: username ? `/@${username}` : `/u/${row.id}`,
     avatar_url: key ? mediaUrl(c, key) : null,
+    is_staff: row.role === "admin" || row.author_role === "admin",
   };
 }
 
@@ -173,6 +187,26 @@ app.post("/media/upload", async (c) => {
   });
 });
 
+/* --- Member: their active groups, for the composer audience picker --- */
+
+app.get("/groups/mine", async (c) => {
+  const userId = await needUser(c);
+  if (!userId) return c.json({ ok: false, error: "Sign in required." }, 401);
+  const { DB } = c.env;
+  const rows = await DB.prepare(
+    `SELECT g.id, g.name, g.slug FROM groups g
+     JOIN group_members gm ON gm.group_id = g.id
+     WHERE gm.user_id = ? AND gm.state = 'active' AND g.status = 'active'
+     ORDER BY g.name`
+  )
+    .bind(userId)
+    .all();
+  return c.json({
+    ok: true,
+    groups: (rows.results as any[]).map((g) => ({ id: g.id, name: g.name, slug: g.slug })),
+  });
+});
+
 /* --- Member: create a post --- */
 
 app.post("/posts", async (c) => {
@@ -193,6 +227,22 @@ app.post("/posts", async (c) => {
   const body = cleanStr(data.body, 2000);
   const mediaIn = Array.isArray(data.media) ? data.media : [];
   const pollIn = data.poll as Record<string, unknown> | undefined;
+
+  // Deck composer fields: intent chips and the audience picker. The column
+  // defaults (intent progress, audience members) apply when omitted, so old
+  // clients keep posting exactly as before.
+  const intent = typeof data.intent === "string" && data.intent ? data.intent : "progress";
+  if (!(MEMBER_INTENTS as readonly string[]).includes(intent)) {
+    return c.json({ ok: false, error: "Pick one of the four post types: progress, question, feedback, or resource." }, 400);
+  }
+  const audience = typeof data.audience === "string" && data.audience ? data.audience : "members";
+  if (!["members", "only_me", "group"].includes(audience)) {
+    return c.json({ ok: false, error: "Pick who can see this post: members, only you, or a group." }, 400);
+  }
+  const groupId = typeof data.group_id === "string" ? data.group_id.slice(0, 40) : "";
+  if ((audience === "group") !== (groupId !== "")) {
+    return c.json({ ok: false, error: "Group posts need a group, and other posts must not name one." }, 400);
+  }
 
   if (mediaIn.length > MAX_MEDIA_PER_POST) {
     return c.json({ ok: false, error: `Posts can carry at most ${MAX_MEDIA_PER_POST} photos or videos.` }, 400);
@@ -268,13 +318,33 @@ app.post("/posts", async (c) => {
   const postId = crypto.randomUUID();
   const createdAt = nowIso();
 
+  // Group posts need an active membership (the 0026 trigger enforces this
+  // too, but a clean 403 beats a trigger error). The caller must be an
+  // active member of the named group, and the group must be active.
+  if (audience === "group") {
+    const member: any = await DB.prepare(
+      `SELECT 1 FROM group_members gm JOIN groups g ON g.id = gm.group_id
+       WHERE gm.group_id = ? AND gm.user_id = ? AND gm.state = 'active' AND g.status = 'active'`
+    )
+      .bind(groupId, userId)
+      .first();
+    if (!member) {
+      return c.json({ ok: false, error: "You are not an active member of that group." }, 403);
+    }
+  }
+
   const stmts: any[] = [
     // Phase 1 item 1: the feed table is feed_posts (0022 fixed the P0
     // collision with the blog "posts" table from 0002).
-    DB.prepare("INSERT INTO feed_posts (id, author_id, body, created_at) VALUES (?, ?, ?, ?)").bind(
+    DB.prepare(
+      "INSERT INTO feed_posts (id, author_id, body, intent, audience, group_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).bind(
       postId,
       userId,
       body,
+      intent,
+      audience,
+      audience === "group" ? groupId : null,
       createdAt
     ),
   ];
@@ -437,9 +507,14 @@ async function enrichPosts(c: any, userId: string, page: any[]): Promise<any[]> 
     const posts = page.map((p: any) => ({
       id: p.id,
       body: p.body,
+      intent: p.intent || "progress",
+      audience: p.audience || "members",
+      group: p.group_id
+        ? { id: p.group_id, name: p.group_name || "", slug: p.group_slug || "" }
+        : null,
       created_at: p.created_at,
       author: publicAuthor(
-        { id: p.author_id, name: p.author_name, display_name: p.display_name, author_username: p.author_username, avatar_key: p.avatar_key, avatar_r2_key: p.avatar_r2_key },
+        { id: p.author_id, name: p.author_name, display_name: p.display_name, author_username: p.author_username, avatar_key: p.avatar_key, avatar_r2_key: p.avatar_r2_key, author_role: p.author_role },
         c
       ),
       media: mediaRows
@@ -468,10 +543,12 @@ app.get("/posts/:id", async (c) => {
   const { DB } = c.env;
   const id = (c.req.param("id") || "").slice(0, 40);
   const row: any = await DB.prepare(
-    `SELECT p.id, p.body, p.created_at,
+    `SELECT p.id, p.body, p.intent, p.audience, p.group_id, p.created_at,
             u.id AS author_id, u.name AS author_name, u.display_name, u.username AS author_username,
-            u.avatar_key, u.avatar_r2_key
+            u.avatar_key, u.avatar_r2_key, u.role AS author_role,
+            g.name AS group_name, g.slug AS group_slug
      FROM feed_posts p JOIN users u ON u.id = p.author_id
+     LEFT JOIN groups g ON g.id = p.group_id
      WHERE p.id = ?${FEED_VISIBILITY}`
   )
     .bind(id, userId, userId, userId)
@@ -492,11 +569,13 @@ app.get("/feed", async (c) => {
   const cursor = (c.req.query("cursor") || "").slice(0, 40);
 
   const rows = await DB.prepare(
-    `SELECT p.id, p.body, p.created_at,
+    `SELECT p.id, p.body, p.intent, p.audience, p.group_id, p.created_at,
             u.id AS author_id, u.name AS author_name, u.display_name, u.username AS author_username,
-            u.avatar_key, u.avatar_r2_key
+            u.avatar_key, u.avatar_r2_key, u.role AS author_role,
+            g.name AS group_name, g.slug AS group_slug
      FROM feed_posts p
      JOIN users u ON u.id = p.author_id
+     LEFT JOIN groups g ON g.id = p.group_id
      WHERE (? = '' OR p.created_at < ?)${FEED_VISIBILITY}
      ORDER BY p.created_at DESC LIMIT ?`
   )

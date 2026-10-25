@@ -7,7 +7,7 @@ import HubShell from "../../../components/HubShell.astro";
 ---
 
 <Base
-  title="Post — Brimwood Innovation"
+  title="Post - Brimwood Innovation"
   description="A post from a Brimwood member."
   path="/hub/post/"
 >
@@ -37,6 +37,7 @@ import HubShell from "../../../components/HubShell.astro";
   <style>
     .feed-post { background: #fff; border: 1px solid rgba(18,26,22,0.08); border-radius: 16px; padding: 18px; }
     .feed-post .meta { font-size: 12.5px; color: var(--stone); }
+    .staff-badge { font-size: 11px; font-weight: 700; color: var(--emerald-deep); background: var(--mint); border-radius: 999px; padding: 2px 8px; margin-left: 4px; }
     .feed-body { font-size: 15px; line-height: 1.6; margin: 8px 0 0; white-space: pre-wrap; word-wrap: break-word; }
     .feed-body a { color: var(--emerald-deep); }
     .media-grid { display: grid; gap: 8px; margin-top: 10px; }
@@ -110,6 +111,8 @@ import HubShell from "../../../components/HubShell.astro";
     }
 
     function render(p) {
+      const audienceLabel = p.group ? esc(p.group.name) : (p.audience === "only_me" ? "Only me" : "Members");
+      const staffBadge = p.author && p.author.is_staff ? ` <span class="staff-badge">Staff</span>` : "";
       const reacts = REACTS.map((r) => {
         const n = (p.reactions && p.reactions.counts && p.reactions.counts[r.kind]) || 0;
         const on = p.reactions && p.reactions.my_reaction === r.kind ? " on" : "";
@@ -118,12 +121,12 @@ import HubShell from "../../../components/HubShell.astro";
       $("pp-article").innerHTML =
         `<div style="display:flex;gap:10px;align-items:center;">` +
         `<a href="${esc(p.author.profile_url || "/members")}" style="display:inline-flex;flex:none;text-decoration:none;" aria-label="${esc(p.author.display)}'s profile">${brimwoodAvatar({ src: p.author.avatar_url, name: p.author.display, size: 48 })}</a>` +
-        `<div><a href="${esc(p.author.profile_url || "/members")}" style="font-size:15px;font-weight:700;color:inherit;text-decoration:none;">${esc(p.author.display)}</a><br /><span class="meta">${relTime(p.created_at)} · Members</span></div>` +
+        `<div><a href="${esc(p.author.profile_url || "/members")}" style="font-size:15px;font-weight:700;color:inherit;text-decoration:none;">${esc(p.author.display)}</a>${staffBadge}<br /><span class="meta">${relTime(p.created_at)} · ${audienceLabel}</span></div>` +
         `<button type="button" id="pp-share" class="btn btn-ghost btn-sm" style="margin-left:auto;" aria-label="Share post">↗ Share</button></div>` +
         (p.body ? `<p class="feed-body">${Brimwood.renderMentions(p.body)}</p>` : "") +
         mediaHtml(p.media || []) + pollHtml(p.poll) +
         `<div class="reactbar">${reacts}</div>`;
-      document.title = `${p.author.display} — Brimwood Innovation`;
+      document.title = `${p.author.display} - Brimwood Innovation`;
 
       $("pp-article").querySelectorAll(".react").forEach((b) =>
         b.addEventListener("click", async () => {

@@ -1073,3 +1073,66 @@ from the self-chaining loop's first run on 2026-10-21.
   renaming remain recorded follow-ups. Still blocked: the
   Phase 1 preview smoke flows and applying 0037 to preview D1
   (no Cloudflare token in the environment).
+- Cycle 21, 2026-10-25: Phase 3 slice 4, the hub feed page from the
+  deck (section 20 feed screen), in
+  ~/workspace/company/wt-phase3-hub-feed on branch phase3/hub-feed
+  (no open loop PR; develop CI green; #22 is the founder-tapped
+  README PR, not loop work). Reconciled the existing feed page with
+  the deck screen, element by element. Stories: the shared
+  StoriesTray component now mounts at the top of /hub/feed (its
+  comment updated; it was previously only on the members home page).
+  Intent chips: Share progress, Ask a question, Ask for feedback,
+  Share a resource sit above the composer; each chip sets the
+  composer placeholder, and the deck's "Be specific. Be kind. No
+  pitches." line sits under the composer. Audience picker: Members,
+  Only me, plus the caller's active groups, in the composer; it
+  writes feed_posts.audience and group_id. API: POST /api/posts now
+  accepts intent (only the four member intents; staff post types
+  stay out, arriving through the Studio slice) and audience, with
+  shape validation (400) and an active-membership check for group
+  posts (403; mirrors the 0026 trigger); new GET /api/groups/mine
+  lists the caller's active groups for the picker; the feed list
+  and the post permalink now return intent, audience, the group
+  (id, name, slug), and author is_staff. Post meta names the group
+  ("Forge Talk - 2 h" in the deck), or Only me, or Members, on both
+  the feed and the post detail page; staff authors carry a Staff
+  badge. Already deck-true and untouched: newest first with no
+  ranking, four calm reactions with each count once inside its
+  button, no scheduling (D9). Em dashes scrubbed from the touched
+  files (page titles, old comments). Verification before the PR:
+  723 API tests pass (35 files, 8 new: intent and audience
+  storage and defaults, rejected intents, group audience shape
+  errors, group non-member 403, group member success, groups/mine
+  auth and shape), tsc clean, site build clean (25 pages), and
+  the built /hub/feed page inspected directly (chips, audience
+  select, stories section, staff-badge style all present). No new
+  dependency, no migration (0022 and 0026 already carry the
+  columns). Shipped in PR #55 (merged to develop; build, secrets,
+  audit, analyze, CodeQL, lighthouse, and Cloudflare Pages all
+  green). Grade (dimensions this cycle touched, scored from
+  evidence): functional 2,500/2,500 (every deck feed-screen
+  element that has a backing endpoint is live and wired: tray,
+  chips, picker, group and staff meta); schema and API
+  2,000/2,000 (audience and intent write the existing columns,
+  membership enforced in API and trigger, suite green); security
+  1,250/1,250 (CodeQL and analyze green, group posts gated on
+  active membership, no new secrets, escaped output); code
+  quality 1,000/1,000 (tsc clean, tests in the existing style,
+  shared fragments untouched); brand and copy 750/750 (deck chips
+  and labels verbatim, Canadian spelling, no new em dash, no
+  member named). Accessibility and performance untouched in
+  substance (Lighthouse gate passed, no new dependency, no page
+  weight change of note). Pro-rated total 10,000/10,000, no zero
+  dimension, no open P0. Verdict: ACCEPT. Next improvement:
+  Phase 3 slice 5, the hub messages page from the deck (section
+  20 messages screen: Chats and Requests tabs, seen receipts,
+  retry on failed send), reconciling the existing messages page.
+  The events API read extension (kind, demo slots, past recaps),
+  the events my_rsvp field for a real Going badge, a rituals read
+  API for live thread state, member space bookings and check-ins
+  for the Today card, the deck command palette, the /hub route
+  renaming, the feed header notices (next Demo Night, questions
+  needing answers), and the staff spotlight post type remain
+  recorded follow-ups. Still blocked: the Phase 1 preview smoke
+  flows and applying 0037 to preview D1 (no Cloudflare token in
+  the environment).

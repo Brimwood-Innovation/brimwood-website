@@ -3,14 +3,20 @@
  * Composer (text + photo/video/reel attach + poll builder), chronological
  * member feed, reels rail, poll cards with live counts and voter visibility,
  * media grid + inline video player, and the four calm reactions.
+ * Phase 3 slice 4, deck feed screen: the stories tray above the feed, the
+ * four intent chips that set the composer placeholder, and the audience
+ * picker (members, only me, or one of the caller's groups) that writes
+ * feed_posts.audience. Post meta names the group, or Only me, or Members,
+ * and staff authors carry a Staff badge.
  * Brand Kit v1.0; members-only; anonymous by default (initials, never email).
  */
 import Base from "../../layouts/Base.astro";
 import HubShell from "../../components/HubShell.astro";
+import StoriesTray from "../../components/StoriesTray.astro";
 ---
 
 <Base
-  title="Feed — Brimwood Innovation"
+  title="Feed - Brimwood Innovation"
   description="The member feed. Chronological, calm, and members-only."
   path="/hub/feed"
 >
@@ -30,6 +36,9 @@ import HubShell from "../../components/HubShell.astro";
       <div class="kicker">Hub feed</div>
       <h1 class="sec" style="font-size:clamp(30px,4.6vw,44px);margin-bottom:18px;">The room.</h1>
 
+      <!-- Stories tray (deck feed screen): rings above the feed -->
+      <StoriesTray />
+
       <!-- Reels rail: vertical clips ≤90s, surfaced above the feed -->
       <div id="reels-rail" style="display:none;margin-bottom:20px;">
         <div style="font-weight:700;font-size:13px;letter-spacing:0.12em;text-transform:uppercase;color:var(--stone);margin-bottom:10px;">
@@ -40,14 +49,22 @@ import HubShell from "../../components/HubShell.astro";
 
       <!-- Composer -->
       <div class="card" id="composer" style="margin-bottom:18px;">
+        <!-- Intent chips (deck feed screen): each chip sets the placeholder -->
+        <div id="intent-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;" role="group" aria-label="What kind of post is this">
+          <button type="button" class="btn btn-ghost btn-sm intent-chip" data-intent="progress" aria-pressed="true">Share progress</button>
+          <button type="button" class="btn btn-ghost btn-sm intent-chip" data-intent="question" aria-pressed="false">Ask a question</button>
+          <button type="button" class="btn btn-ghost btn-sm intent-chip" data-intent="feedback" aria-pressed="false">Ask for feedback</button>
+          <button type="button" class="btn btn-ghost btn-sm intent-chip" data-intent="resource" aria-pressed="false">Share a resource</button>
+        </div>
         <div style="display:flex;gap:10px;">
           <span id="composer-avatar" class="feed-avatar">·</span>
           <textarea
             id="post-body"
-            placeholder="Share what you're building…"
+            placeholder="Share what you shipped, built, or learned…"
             style="flex:1;min-height:64px;border:0;resize:vertical;font:inherit;font-size:15px;background:transparent;"
           ></textarea>
         </div>
+        <p style="font-size:12.5px;color:var(--stone);margin:6px 0 0 50px;">Be specific. Be kind. No pitches.</p>
         <div id="attach-preview" style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 0;"></div>
         <!-- Poll builder -->
         <div id="poll-builder" style="display:none;margin-top:10px;border-top:1px solid rgba(18,26,22,0.08);padding-top:10px;">
@@ -73,6 +90,14 @@ import HubShell from "../../components/HubShell.astro";
             </label>
           </div>
         </div>
+        <!-- Audience picker (deck feed screen): writes feed_posts.audience -->
+        <div style="display:flex;gap:8px;align-items:center;margin-top:12px;font-size:13.5px;color:var(--stone);">
+          <label for="audience">Who can see this</label>
+          <select id="audience" style="font:inherit;font-size:13.5px;padding:6px 8px;border-radius:8px;border:1px solid rgba(18,26,22,0.14);">
+            <option value="members">Members</option>
+            <option value="only_me">Only me</option>
+          </select>
+        </div>
         <div style="display:flex;gap:6px;align-items:center;margin-top:12px;">
           <button type="button" id="btn-photo" class="btn btn-ghost btn-sm" title="Add a photo">🖼 Photo</button>
           <button type="button" id="btn-video" class="btn btn-ghost btn-sm" title="Add a video or reel (≤90s is a reel)">🎬 Video / reel</button>
@@ -96,6 +121,8 @@ import HubShell from "../../components/HubShell.astro";
   <style>
     .feed-post { background: #fff; border: 1px solid rgba(18,26,22,0.08); border-radius: 16px; padding: 18px; }
     .feed-post .meta { font-size: 12.5px; color: var(--stone); }
+    .staff-badge { font-size: 11px; font-weight: 700; color: var(--emerald-deep); background: var(--mint); border-radius: 999px; padding: 2px 8px; margin-left: 4px; }
+    .intent-chip[aria-pressed="true"] { background: var(--mint); color: var(--emerald-deep); font-weight: 700; }
     .feed-body { font-size: 15px; line-height: 1.6; margin: 8px 0 0; white-space: pre-wrap; word-wrap: break-word; }
     .media-grid { display: grid; gap: 8px; margin-top: 10px; }
     .media-grid.cols-2 { grid-template-columns: 1fr 1fr; }
@@ -150,7 +177,7 @@ import HubShell from "../../components/HubShell.astro";
     let cursor = null;
     let posting = false;
 
-    /* Shared renderer (public/js/avatar.js) — matches Avatar.astro exactly. */
+    /* Shared renderer (public/js/avatar.js) - matches Avatar.astro exactly. */
     function avatarHtml(a, size) {
       return brimwoodAvatar({ src: a.avatar_url, name: a.display, size: size || 40 });
     }
@@ -209,10 +236,14 @@ import HubShell from "../../components/HubShell.astro";
         const on = p.reactions && p.reactions.my_reaction === r.kind ? " on" : "";
         return `<button type="button" class="react${on}" data-post="${p.id}" data-kind="${r.kind}">${r.icon} ${esc(r.label)}${n ? " " + n : ""}</button>`;
       }).join("");
+      // Deck feed screen: the meta names the group ("Forge Talk · 2 h"), or
+      // Only me, or Members; staff authors carry a Staff badge.
+      const audienceLabel = p.group ? esc(p.group.name) : (p.audience === "only_me" ? "Only me" : "Members");
+      const staffBadge = p.author && p.author.is_staff ? ` <span class="staff-badge">Staff</span>` : "";
       return `<article class="feed-post" id="post-${p.id}">
         <div style="display:flex;gap:10px;align-items:center;">
           <a href="${esc(p.author.profile_url || "/members")}" style="display:inline-flex;flex:none;text-decoration:none;" aria-label="${esc(p.author.display)}'s profile">${avatarHtml(p.author)}</a>
-          <div><a href="${esc(p.author.profile_url || "/members")}" style="font-size:14px;font-weight:700;color:inherit;text-decoration:none;">${esc(p.author.display)}</a><br /><span class="meta">${relTime(p.created_at)} · Members</span></div>
+          <div><a href="${esc(p.author.profile_url || "/members")}" style="font-size:14px;font-weight:700;color:inherit;text-decoration:none;">${esc(p.author.display)}</a>${staffBadge}<br /><span class="meta">${relTime(p.created_at)} · ${audienceLabel}</span></div>
           <button type="button" class="btn btn-ghost btn-sm" data-share="${p.id}" data-share-author="${esc(p.author.display)}" style="margin-left:auto;" aria-label="Share post">↗</button>
         </div>
         ${p.body ? `<p class="feed-body">${Brimwood.renderMentions(p.body)}</p>` : ""}
@@ -323,6 +354,12 @@ import HubShell from "../../components/HubShell.astro";
     async function submitPost() {
       if (posting) return;
       const body = $("post-body").value.trim();
+      // Deck composer fields: the active intent chip and the audience picker.
+      const intent = (document.querySelector(".intent-chip[aria-pressed='true']") || {}).dataset?.intent || "progress";
+      const audienceVal = $("audience").value;
+      let audience = "members", groupId = null;
+      if (audienceVal === "only_me") audience = "only_me";
+      else if (audienceVal.startsWith("group:")) { audience = "group"; groupId = audienceVal.slice(6); }
       const pollOn = $("poll-builder").style.display !== "none";
       let poll = null;
       if (pollOn) {
@@ -345,6 +382,9 @@ import HubShell from "../../components/HubShell.astro";
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             body,
+            intent,
+            audience,
+            ...(groupId ? { group_id: groupId } : {}),
             media: attachments.map((a) => ({ key: a.key, width: a.width, height: a.height, duration_s: a.duration_s })),
             ...(pollOn ? { poll } : {}),
           }),
@@ -406,7 +446,7 @@ import HubShell from "../../components/HubShell.astro";
           (d.voters || []).forEach((v) => { (byOpt[v.option_id] ||= []).push(v.voter); });
           list.innerHTML = d.options.map((o) =>
             `<div class="voter-row"><b>${esc(o.label)}:</b> ` +
-            ((byOpt[o.id] || []).map((v) => `<a href="${esc(v.profile_url || "/members")}" title="${esc(v.display)}" style="display:inline-flex;text-decoration:none;">${brimwoodAvatar({ src: v.avatar_url, name: v.display, size: 24 })}</a>`).join("") || "—") +
+            ((byOpt[o.id] || []).map((v) => `<a href="${esc(v.profile_url || "/members")}" title="${esc(v.display)}" style="display:inline-flex;text-decoration:none;">${brimwoodAvatar({ src: v.avatar_url, name: v.display, size: 24 })}</a>`).join("") || "-") +
             `</div>`
           ).join("");
           list.dataset.loaded = "1";
@@ -425,7 +465,7 @@ import HubShell from "../../components/HubShell.astro";
           });
           const d = await r.json();
           if (!r.ok || !d.ok) throw 0;
-          // Re-read the feed for exact counts — calm and honest, never guessed.
+          // Re-read the feed for exact counts - calm and honest, never guessed.
           cursor = null;
           await loadFeed(false);
         } catch { /* keep calm, counts stay as they were */ }
@@ -449,6 +489,38 @@ import HubShell from "../../components/HubShell.astro";
     });
 
     /* --- Wire up the composer --- */
+
+    // Intent chips set the composer placeholder (deck feed screen).
+    const INTENT_PLACEHOLDERS = {
+      progress: "Share what you shipped, built, or learned…",
+      question: "Ask the room a question…",
+      feedback: "What do you want feedback on…",
+      resource: "Share a link, tool, or reading…",
+    };
+    document.querySelectorAll(".intent-chip").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".intent-chip").forEach((b) => b.setAttribute("aria-pressed", "false"));
+        btn.setAttribute("aria-pressed", "true");
+        $("post-body").placeholder = INTENT_PLACEHOLDERS[btn.dataset.intent] || INTENT_PLACEHOLDERS.progress;
+      })
+    );
+
+    // Audience picker: add the caller's groups (Members and Only me are
+    // always there, even if the groups call fails).
+    (async () => {
+      try {
+        const g = await (await api("/api/groups/mine")).json();
+        if (g && g.ok && Array.isArray(g.groups)) {
+          const sel = $("audience");
+          g.groups.forEach((gr) => {
+            const o = document.createElement("option");
+            o.value = "group:" + gr.id;
+            o.textContent = gr.name;
+            sel.appendChild(o);
+          });
+        }
+      } catch { /* picker keeps Members and Only me */ }
+    })();
 
     $("btn-photo").addEventListener("click", () => $("file-photo").click());
     $("btn-video").addEventListener("click", () => $("file-video").click());
