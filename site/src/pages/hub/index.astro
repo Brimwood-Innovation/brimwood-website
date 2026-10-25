@@ -1,0 +1,227 @@
+---
+/* Member hub home (Phase 3 slice 3, deck section 07, /hub screen).
+ * The deck's four cards, filled only with data the shipped API returns:
+ * Today at the hub (public facts a visitor can check), Your next event
+ * (GET /api/events), Continue learning (GET /api/progress plus the
+ * course detail and progress detail for the resume link), and This
+ * week's rituals (the standing weekly rhythm; live ritual thread state
+ * has no read API yet, so the card shows the rhythm, not thread state).
+ * No streaks and no activity feed (D7, C14, per the deck caption).
+ * Members-only: a signed-out visitor gets the sign-in gate, the same
+ * pattern as the feed and dashboard pages. Brand Kit v1.0.
+ */
+import Base from "../../layouts/Base.astro";
+import HubShell from "../../components/HubShell.astro";
+---
+
+<Base
+  title="Hub — Brimwood Innovation"
+  description="Your hub home. Today at the hub, your next event, continue learning, and this week's rituals."
+  path="/hub"
+>
+  <HubShell current="home">
+  <section class="block">
+    <div id="hub-loading"><p class="sec-lede">Loading…</p></div>
+
+    <div id="hub-login" style="display:none;text-align:center;padding:48px 0;">
+      <div class="kicker">Members</div>
+      <h2 class="sec">Sign in to see your hub.</h2>
+      <p class="sec-lede" style="margin-inline:auto;">
+        The hub is members-only. <a href="/members">Sign in</a> to see your home page.
+      </p>
+    </div>
+
+    <div id="hub-home" style="display:none;">
+      <div class="kicker">Hub home</div>
+      <h1 class="sec" id="hubGreeting" style="font-size:clamp(30px,4.6vw,44px);margin-bottom:8px;">Good day.</h1>
+      <p class="sec-lede" id="hubSub"></p>
+
+      <div class="cards" style="margin-top:24px;">
+        <!-- Today at the hub: public facts only. Live room counts and
+             member bookings have no read API yet; they arrive with the
+             Space slice, and nothing here pretends otherwise. -->
+        <article class="card">
+          <div class="n">Today at the hub</div>
+          <dl class="hub-home-facts">
+            <div><dt>Where</dt><dd>1365 Gerrard St E, second floor</dd></div>
+            <div><dt>Demo nights</dt><dd>Wednesdays, 6:30 p.m.</dd></div>
+          </dl>
+          <p class="hub-home-note">Live room counts and your bookings arrive with the Space slice.</p>
+        </article>
+
+        <!-- Your next event: filled from GET /api/events. -->
+        <article class="card" id="hubEventCard">
+          <div class="n">Your next event</div>
+          <p class="hub-home-note" id="hubEventBody">Loading…</p>
+        </article>
+
+        <!-- Continue learning: filled from /api/progress. -->
+        <article class="card" id="hubLearnCard">
+          <div class="n">Continue learning</div>
+          <p class="hub-home-note" id="hubLearnBody">Loading…</p>
+        </article>
+
+        <!-- This week's rituals: the standing weekly rhythm. Live
+             thread state (open, closed, thread links) has no read API
+             yet; the build log row links to the feed composer, the one
+             real place to add yours today. -->
+        <article class="card">
+          <div class="n">This week's rituals</div>
+          <div class="hub-home-row"><span>Mon debrief</span></div>
+          <div class="hub-home-row"><span>Wed build log</span><a class="btn btn-secondary btn-sm" href="/hub/feed">Add yours</a></div>
+          <div class="hub-home-row"><span>Fri feedback</span></div>
+          <p class="hub-home-note">Ritual threads appear in the feed.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <style>
+    .hub-home-facts { display: grid; gap: 10px; margin: 0 0 12px; font-size: 14.5px; }
+    .hub-home-facts div { display: flex; justify-content: space-between; gap: 12px; }
+    .hub-home-facts dt { color: var(--stone); }
+    .hub-home-facts dd { margin: 0; font-weight: 600; text-align: right; }
+    .hub-home-row {
+      display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+      padding: 10px 0; font-size: 14.5px; border-bottom: 1px solid rgba(18, 26, 22, 0.08);
+    }
+    .hub-home-row:last-of-type { border-bottom: 0; }
+    .hub-home-row > :first-child { flex: 1; min-width: 8em; }
+    .hub-home-note { font-size: 13.5px; color: var(--stone); margin: 12px 0 0; }
+    .hub-home-progress {
+      height: 8px; background: var(--mint); border-radius: 4px; overflow: hidden; margin: 12px 0;
+    }
+    .hub-home-progress i { display: block; height: 100%; background: var(--emerald); border-radius: 4px; }
+  </style>
+
+  <script>
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s || "").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const api = (p) =>
+      fetch(API_BASE + p, { credentials: "include", headers: { accept: "application/json" } });
+
+    /* Deck format (prototype section 06): "Wed, Oct 14, 6:30 p.m.".
+     * Times show in America/Toronto, the stored zone (R5). */
+    const fmtEvent = (iso) => new Date(iso).toLocaleString("en-CA", {
+      timeZone: "America/Toronto",
+      weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+    });
+    const fmtDay = (iso) => new Date(iso).toLocaleDateString("en-CA", {
+      timeZone: "America/Toronto",
+      weekday: "short", month: "short", day: "numeric",
+    });
+    const sameTorontoDay = (a, b) => {
+      const f = (d) => new Date(d).toLocaleDateString("en-CA", { timeZone: "America/Toronto" });
+      return f(a) === f(b);
+    };
+
+    function renderEvent(ev) {
+      const card = $("hubEventCard");
+      if (!ev) {
+        $("hubEventBody").textContent = "No upcoming events yet.";
+        card.insertAdjacentHTML("beforeend",
+          `<p style="margin-top:12px;"><a class="btn btn-secondary btn-sm" href="/events">Browse events</a></p>`);
+        return;
+      }
+      const seats = ev.capacity != null
+        ? `<p class="hub-home-note">${esc(ev.rsvp_count || 0)} of ${esc(ev.capacity)} seats taken.</p>`
+        : "";
+      const full = ev.capacity != null && (ev.rsvp_count || 0) >= ev.capacity;
+      card.innerHTML =
+        `<div class="n">Your next event</div>` +
+        `<h3>${esc(ev.title)}</h3>` +
+        `<p class="hub-home-note" style="margin-top:4px;">${esc(fmtEvent(ev.starts_at))}${ev.location ? ` · ${esc(ev.location)}` : ""}</p>` +
+        seats +
+        (full ? `<p style="margin-top:12px;"><span class="badge badge-dark">Full</span></p>` : "") +
+        `<p style="margin-top:12px;"><a class="btn btn-secondary btn-sm" href="/events/${esc(ev.slug)}">View event</a></p>`;
+    }
+
+    function renderLearn(current) {
+      const body = $("hubLearnBody");
+      const card = $("hubLearnCard");
+      if (!current) {
+        body.textContent = "You are not enrolled in anything yet. Pick a course to get started.";
+        card.insertAdjacentHTML("beforeend",
+          `<p style="margin-top:12px;"><a class="btn btn-secondary btn-sm" href="/academy">Browse courses</a></p>`);
+        return;
+      }
+      const { enrolment, lessonNo, lesson } = current;
+      const pct = enrolment.total_lessons
+        ? Math.round((enrolment.done_lessons / enrolment.total_lessons) * 100)
+        : 0;
+      card.innerHTML =
+        `<div class="n">Continue learning</div>` +
+        `<h3>${esc(enrolment.title)}</h3>` +
+        `<p class="hub-home-note" style="margin-top:4px;">Lesson ${esc(lessonNo)} of ${esc(enrolment.total_lessons)}</p>` +
+        `<div class="hub-home-progress" role="progressbar" aria-label="${esc(enrolment.title)}" aria-valuemin="0" aria-valuemax="${esc(enrolment.total_lessons)}" aria-valuenow="${esc(enrolment.done_lessons)}"><i style="width:${pct}%"></i></div>` +
+        `<p style="margin-top:12px;"><a class="btn btn-primary btn-sm" href="/academy/${esc(enrolment.slug)}/${esc(lesson.id)}">Resume lesson ${esc(lessonNo)}</a></p>`;
+    }
+
+    (async () => {
+      try {
+        const me = await (await api("/api/profiles/me")).json();
+        if (!me || !me.ok || !me.user) throw 0;
+
+        $("hub-loading").style.display = "none";
+        $("hub-home").style.display = "block";
+
+        /* Greeting: time of day in America/Toronto, first name only. */
+        const hour = Number(new Date().toLocaleString("en-CA", {
+          timeZone: "America/Toronto", hour: "numeric", hour12: false,
+        })) % 24;
+        const part = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
+        const first = String(me.user.display_name || "member").trim().split(/\s+/)[0];
+        $("hubGreeting").textContent = `Good ${part}, ${first}.`;
+
+        /* Next event first: the sub line names it when it is tonight. */
+        let next = null;
+        try {
+          const d = await (await api("/api/events")).json();
+          if (d && d.ok && Array.isArray(d.events) && d.events.length) next = d.events[0];
+        } catch {}
+        renderEvent(next);
+        const now = new Date();
+        $("hubSub").textContent = next && sameTorontoDay(next.starts_at, now)
+          ? `${fmtDay(now)}. ${next.title} is tonight.`
+          : fmtDay(now);
+
+        /* Continue learning: first incomplete enrolment, first lesson
+         * not yet completed, in module order. */
+        try {
+          const p = await (await api("/api/progress")).json();
+          const enrolments = (p && p.ok && p.enrolments) || [];
+          const current = enrolments.find((e) => e.done_lessons < e.total_lessons);
+          if (!current && enrolments.length) {
+            $("hubLearnBody").textContent = "All caught up. Every enrolled course is complete.";
+            $("hubLearnCard").insertAdjacentHTML("beforeend",
+              `<p style="margin-top:12px;"><a class="btn btn-secondary btn-sm" href="/academy">Browse courses</a></p>`);
+          } else if (!current) {
+            renderLearn(null);
+          } else {
+            const [course, detail] = await Promise.all([
+              (await api(`/api/courses/${encodeURIComponent(current.slug)}`)).json(),
+              (await api("/api/progress/detail")).json(),
+            ]);
+            const doneIds = new Set((detail && detail.done) || []);
+            const flat = [];
+            (course.modules || []).forEach((m) => (m.lessons || []).forEach((l) => flat.push(l)));
+            const idx = flat.findIndex((l) => !doneIds.has(l.id));
+            const lesson = idx >= 0 ? flat[idx] : flat[flat.length - 1];
+            if (lesson) {
+              renderLearn({ enrolment: current, lessonNo: (idx >= 0 ? idx : flat.length - 1) + 1, lesson });
+            } else {
+              renderLearn(null);
+            }
+          }
+        } catch {
+          $("hubLearnBody").textContent = "Could not load your progress.";
+        }
+      } catch {
+        $("hub-loading").style.display = "none";
+        $("hub-login").style.display = "block";
+      }
+    })();
+  </script>
+  </HubShell>
+</Base>

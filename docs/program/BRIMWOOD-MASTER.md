@@ -1005,3 +1005,71 @@ from the self-chaining loop's first run on 2026-10-21.
   recorded follow-ups. Still blocked: the Phase 1 preview smoke
   flows and applying 0037 to preview D1 (no Cloudflare token in
   the environment).
+- Cycle 20, 2026-10-25: Phase 3 slice 3, the hub home page from the
+  deck (section 07, /hub screen), in
+  ~/workspace/company/wt-phase3-hub-home on branch phase3/hub-home
+  (no open loop PR; develop CI green; #22 is the founder-tapped
+  README PR, not loop work). New site/src/pages/hub/index.astro,
+  inside the shared HubShell with current="home": the deck's four
+  cards, filled only with data the shipped API returns. Greeting
+  (time of day in America/Toronto plus the first name from GET
+  /api/profiles/me) with a date sub line that names the next event
+  when it is tonight. Today at the hub carries public facts only
+  (1365 Gerrard St E, second floor; Wednesdays, 6:30 p.m.); live
+  room counts and member bookings have no read API yet, so the
+  card names them as arriving with the Space slice instead of
+  faking them. Your next event comes from GET /api/events (deck
+  date format, location, seats taken, Full badge at capacity per
+  the cycle 15 rule; no Going badge, since no endpoint returns
+  the caller's RSVP). Continue learning comes from GET
+  /api/progress plus the course detail and progress detail,
+  resuming at the first incomplete lesson in module order with a
+  labelled progress bar and a resume link in the existing
+  /academy/SLUG/ID shape; no enrolments and all-complete states
+  have their own copy and links. This week's rituals shows the
+  standing weekly rhythm (Mon debrief, Wed build log, Fri
+  feedback); the build log row links to the feed composer, the
+  one real place to add yours today, and live thread state awaits
+  a rituals read API. No streaks and no activity feed, per the
+  deck caption. Members-only: a signed-out visitor gets the
+  sign-in gate, the feed and dashboard pattern. HubShell gains
+  its first real Home link: /hub in the sidebar and the phone
+  tabs, with aria-current on the home page; Groups, Space,
+  People, Saved, Settings, and Safety stay plain text until their
+  slices land. The members sitemap is untouched (hub pages stay
+  unlisted). One fix during review: the midnight hour normalizes
+  (hour 24 reads as evening otherwise). Verification before the
+  PR: 715 API tests pass (35 files), tsc clean, site build clean
+  (25 pages, was 24), and the built /hub page inspected directly
+  (all four cards, the sign-in gate, the hub-shell.js script tag,
+  both Home links with aria-current on /hub, the feed shell now
+  linking /hub too; 17.1 KB). No API file changed, no new
+  dependency. Shipped in PR #54 (merged to develop; build,
+  secrets, audit, analyze, CodeQL, lighthouse, and Cloudflare
+  Pages all green). Grade (dimensions this cycle touched, scored
+  from evidence): functional 2,500/2,500 (the deck /hub screen,
+  every live card wired to a shipped endpoint and verified in
+  the built page, the gate and the Home links verified);
+  schema and API 2,000/2,000 (no API change, suite green, the
+  page uses only shipped endpoints in their established shapes);
+  accessibility 1,250/1,250 (Lighthouse gate passed,
+  aria-current on the shell, labelled progress bar, menus that
+  work without JavaScript); performance 1,250/1,250 (budgets
+  passed, 17.1 KB built page, no new dependency, page-only
+  fetches); security 1,250/1,250 (CodeQL and analyze green, no
+  new endpoints or secrets, API-filled text escaped, the
+  members-only gate kept); code quality 1,000/1,000 (tsc clean,
+  page-scoped styles, the shell diff is two links plus a
+  comment); brand and copy 750/750 (deck copy and labels,
+  Canadian spelling, no new em dash, no member named).
+  Pro-rated total 10,000/10,000, no zero dimension, no open P0.
+  Verdict: ACCEPT. Next improvement: Phase 3 slice 4, the hub
+  feed page from the deck (section 07 feed screen), reconciling
+  the existing feed page with the deck. The events API read
+  extension (kind, demo slots, past recaps), the events my_rsvp
+  field for a real Going badge, a rituals read API for live
+  thread state, member space bookings and check-ins for the
+  Today card, the deck command palette, and the /hub route
+  renaming remain recorded follow-ups. Still blocked: the
+  Phase 1 preview smoke flows and applying 0037 to preview D1
+  (no Cloudflare token in the environment).
