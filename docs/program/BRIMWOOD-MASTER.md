@@ -934,3 +934,74 @@ from the self-chaining loop's first run on 2026-10-21.
   party is not a suffix of the page origin. That is a deployment
   fact, not a code path; preview verification for this slice is
   the test suite plus the site build.
+- Cycle 19, 2026-10-25: Phase 3 slice 2, the hub shell from the
+  deck (section 07), in ~/workspace/company/wt-phase3-hub-shell on
+  branch phase3/hub-shell (no open loop PR; develop CI green; #22 is
+  the founder-tapped README PR, not loop work). New shared component
+  site/src/components/HubShell.astro, applied to the existing signed-in
+  pages: hub/feed (Feed), hub/post (Feed, a post detail), messages
+  (Messages), notifications (bell destination), dashboard (Academy,
+  the member learning home), and members/profile (Profile in the
+  avatar menu). The shell is one markup pattern on every screen:
+  desktop sidebar with the nine deck places in deck order (Home,
+  Feed, Messages, Groups, Events, Space, People, Academy, Saved);
+  top bar with a search pill, a bell, and an avatar menu (Profile,
+  Settings, Safety, Sign out); phone tabs (Home, Feed, Space,
+  Messages, Me) with Me holding the other places plus the avatar
+  items. The switch is a container query at 640px of shell width,
+  as the deck specifies, so the shell itself decides, not the
+  viewport. Menus use details and summary, so they work without
+  JavaScript; the script only adds live state. Honest gaps, not
+  invented pages: places with no page yet (Home, Groups, Space,
+  People, Saved) and avatar items with no page yet (Settings,
+  Safety) render as plain text, never as links to a page that does
+  not exist. Existing routes are kept exactly: Messages stays at
+  /messages and the bell inbox at /notifications, so notification
+  deep links do not break; renaming routes under /hub is a later
+  slice, not a restyle. Search links to the existing /search page
+  and Ctrl K (or Cmd K) navigates there; the deck command palette
+  (people, posts, events, lessons in one palette) is not claimed,
+  since /search covers blog posts, lessons, and pages only. The
+  bell dot reads the shipped /api/notifications unread count; the
+  avatar initials read /api/auth/me; sign out posts to
+  /api/auth/logout and lands on /members. One build finding:
+  Astro dropped the component bundled script (the shell markup
+  shipped but its script did not), so the behaviour moved to
+  site/public/js/hub-shell.js loaded is:inline, the pattern
+  StoriesTray and ProfileView already use; the built pages were
+  re-checked for the script tag and the file. Styles are scoped
+  under .hub-ui in brand.css, following the academy and journal
+  pattern; no new dependency, no API file changed, no new em dash.
+  Verification before the PR: 715 API tests pass (35 files), tsc
+  clean, site build clean (24 pages), and all six built hub pages
+  inspected directly (sidebar with all nine places, search pill,
+  bell, phone tabs, the correct aria-current on each page, the
+  hub-shell.js script tag, and the container query in the built
+  stylesheet). Shipped in PR #52 (merged to develop; build,
+  secrets, audit, analyze, CodeQL, lighthouse, and Cloudflare
+  Pages all green). Grade (dimensions this cycle touched, scored
+  from evidence): functional 2,500/2,500 (the deck shell on all
+  six existing signed-in pages, every control verified in the
+  built pages, existing flows untouched); schema and API
+  2,000/2,000 (no API change, suite green, the shell only reads
+  shipped endpoints); accessibility 1,250/1,250 (Lighthouse gate
+  passed, navs with aria-label and aria-current, labelled bell
+  and avatar controls, menus that work without JavaScript, 44px
+  minimum targets); performance 1,250/1,250 (budgets passed, no
+  new dependency, one small script, styles scoped to the shell);
+  security 1,250/1,250 (CodeQL and analyze green, no new
+  endpoints, no new secrets, sign out through the shipped logout
+  route, API-filled text still escaped); code quality 1,000/1,000
+  (tsc clean, one shared component for six pages, page diffs are
+  three lines each); brand and copy 750/750 (deck places and
+  labels verbatim, Canadian spelling, no new em dash, no member
+  named). Pro-rated total 10,000/10,000, no zero dimension, no
+  open P0. Verdict: ACCEPT. Next improvement: Phase 3 slice 3, the
+  hub home page from the deck (the /hub screen: Today at the hub,
+  next event, continue learning, this week's rituals), which also
+  gives the shell's Home place its first real destination. The
+  events API read extension (kind, demo slots, past recaps), the
+  deck command palette, and the /hub route renaming remain
+  recorded follow-ups. Still blocked: the Phase 1 preview smoke
+  flows and applying 0037 to preview D1 (no Cloudflare token in
+  the environment).
