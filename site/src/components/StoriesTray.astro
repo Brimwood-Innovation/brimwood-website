@@ -2,8 +2,9 @@
 /* Stories tray + viewer (social stories area).
  *
  * Self-contained: markup, styles, and client logic live here so the feed
- * area can drop <StoriesTray /> at the top of /hub/feed when it ships.
- * Currently mounted on the members home page (#members-home).
+ * area can drop <StoriesTray /> at the top of /hub/feed.
+ * Mounted on the members home page (#members-home) and, since Phase 3
+ * slice 4, at the top of /hub/feed (the deck feed screen).
  *
  * Behaviour mirrors the API contract in api/src/routes/stories.ts:
  * - GET /api/stories/tray → round avatars; emerald ring = unseen stories,
@@ -26,8 +27,8 @@
     <div class="sv-bar" id="svBar"></div>
     <div class="sv-head">
       <span class="sv-avatar" id="svAvatar">?</span>
-      <b id="svAuthor">—</b>
-      <small id="svTime">—</small>
+      <b id="svAuthor">-</b>
+      <small id="svTime">-</small>
       <button class="sv-close" id="svClose" aria-label="Close story viewer">✕</button>
     </div>
     <div class="sv-media" id="svMedia"></div>
@@ -107,7 +108,7 @@
       if (s < 86400) return Math.floor(s / 3600) + 'h';
       return Math.floor(s / 86400) + 'd';
     }
-    /* Shared avatar (public/js/avatar.js) — matches Avatar.astro exactly. */
+    /* Shared avatar (public/js/avatar.js) - matches Avatar.astro exactly. */
     function setViewerAvatar(url, name) {
       document.getElementById('svAvatar').outerHTML =
         '<span id="svAvatar" style="display:inline-flex;flex:none;">' +
@@ -288,7 +289,7 @@
         const d = await r.json().catch(() => ({}));
         if (!r.ok || !d.ok) throw new Error(d.error || 'Could not send the reply.');
         input.value = '';
-        input.placeholder = 'Sent — the author will see it as a DM ✓';
+        input.placeholder = 'Sent - the author will see it as a DM ✓';
         setTimeout(() => { input.placeholder = 'Reply…'; }, 2500);
       } catch (ex) {
         err.textContent = ex.message;

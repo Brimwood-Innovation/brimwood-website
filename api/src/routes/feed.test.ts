@@ -675,3 +675,131 @@ describe("GET /polls/:id/results", () => {
     expect(d.voters[0].voter.email).toBeUndefined();
   });
 });
+
+describe("POST /posts deck composer fields (Phase 3 slice 4)", () => {
+  it("stores the chosen intent and only_me audience", async () => {
+    const env = envWithMedia();
+    const h = memberSession(env);
+    const res = await postJSON(
+      app,
+      "/posts",
+      { body: "Stuck on the scheduler retry.", intent: "question", audience: "only_me" },
+      env,
+      h
+    );
+    expect(res.status).toBe(200);
+    const ins = env.DB.inserts.get("feed_posts");
+    expect(ins?.length).toBe(1);
+    expect(ins?.[0].intent).toBe("question");
+    expect(ins?.[0].audience).toBe("only_me");
+    expect(ins?.[0].group_id).toBeNull();
+  });
+
+  it("defaults to progress intent and members audience when omitted", async () => {
+    const env = envWithMedia();
+    const h = memberSession(env);
+    const res = await postJSON(app, "/posts", { body: "Shipped v0.3." }, env, h);
+    expect(res.status).toBe(200);
+    const ins = env.DB.inserts.get("feed_posts");
+    expect(ins?.[0].intent).toBe("progress");
+    expect(ins?.[0].audience).toBe("members");
+  });
+
+  it("rejects intents the member composer does not offer", async () => {
+    const env = envWithMedia();
+    const h = memberSession(env);
+    const res = await postJSON(
+      app,
+      "/posts",
+      { body: "Team news.", intent: "announcement" },
+      env,
+      h
+    );
+    expect(res.status).toBe(400);
+    expect(env.DB.inserts.get("feed_posts")).toBeUndefined();
+  });
+
+  it("rejects a group audience without a group, and a group on other audiences", async () => {
+    const env = envWithMedia();
+    const h = memberSession(env);
+    const noGroup = await postJSON(app, "/posts", { body: "Hi.", audience: "group" }, env, h);
+    expect(noGroup.status).toBe(400);
+    const strayGroup = await postJSON(
+      app,
+      "/posts",
+      { body: "Hi.", audience: "members", group_id: "g1" },
+      env,
+      h
+    );
+    expect(strayGroup.status).toBe(400);
+    expect(env.DB.inserts.get("feed_posts")).toBeUndefined();
+  });
+
+  it("rejects group posts from non-members with 403", async () => {
+    const env = envWithMedia();
+    env.DB.handler = (sql) => {
+      if (/from\s+group_members/i.test(sql)) return { row: null };
+      return undefined;
+    };
+    const h = memberSession(env);
+    const res = await postJSON(
+      app,
+      "/posts",
+      { body: "Hi group.", audience: "group", group_id: "g1" },
+      env,
+      h
+    );
+    expect(res.status).toBe(403);
+    expect(env.DB.inserts.get("feed_posts")).toBeUndefined();
+  });
+
+  it("stores group posts for active members", async () => {
+    const env = envWithMedia();
+    env.DB.handler = (sql) => {
+      if (/from\s+group_members/i.test(sql)) return { row: { "1": 1 } };
+      return undefined;
+    };
+    const h = memberSession(env);
+    const res = await postJSON(
+      app,
+      "/posts",
+      { body: "Hi group.", audience: "group", group_id: "g1" },
+      env,
+      h
+    );
+    expect(res.status).toBe(200);
+    const ins = env.DB.inserts.get("feed_posts");
+    expect(ins?.[0].audience).toBe("group");
+    expect(ins?.[0].group_id).toBe("g1");
+  });
+});
+
+describe("GET /groups/mine (Phase 3 slice 4)", () => {
+  it("requires sign in", async () => {
+    const env = envWithMedia();
+    const res = await app.request("/groups/mine", { headers: {} }, env);
+    expect(res.status).toBe(401);
+  });
+
+  it("lists the caller's active groups in name order", async () => {
+    const env = envWithMedia();
+    env.DB.handler = (sql) => {
+      if (/from\s+groups/i.test(sql)) {
+        return {
+          results: [
+            { id: "g2", name: "Forge Talk", slug: "forge-talk" },
+            { id: "g1", name: "Demo Crew", slug: "demo-crew" },
+          ],
+        };
+      }
+      return undefined;
+    };
+    const h = memberSession(env);
+    const res = await app.request("/groups/mine", { headers: h }, env);
+    expect(res.status).toBe(200);
+    const d: any = await res.json();
+    expect(d.ok).toBe(true);
+    expect(d.groups.map((g: any) => g.name)).toEqual(["Forge Talk", "Demo Crew"]);
+    expect(d.groups[0].slug).toBe("forge-talk");
+  });
+});
