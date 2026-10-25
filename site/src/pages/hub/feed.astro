@@ -6,6 +6,7 @@
  * Brand Kit v1.0; members-only; anonymous by default (initials, never email).
  */
 import Base from "../../layouts/Base.astro";
+import HubShell from "../../components/HubShell.astro";
 ---
 
 <Base
@@ -13,6 +14,7 @@ import Base from "../../layouts/Base.astro";
   description="The member feed. Chronological, calm, and members-only."
   path="/hub/feed"
 >
+  <HubShell current="feed">
   <section class="block">
     <div id="feed-loading"><p class="sec-lede">Loading…</p></div>
 
@@ -483,4 +485,5 @@ import Base from "../../layouts/Base.astro";
       }
     })();
   </script>
+  </HubShell>
 </Base>

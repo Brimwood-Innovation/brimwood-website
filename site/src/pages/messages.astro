@@ -5,6 +5,7 @@
  * All data loads client-side from /api/chat; signed-out visitors see the
  * sign-in prompt. */
 import Base from "../layouts/Base.astro";
+import HubShell from "../components/HubShell.astro";
 ---
 
 <Base
@@ -12,6 +13,7 @@ import Base from "../layouts/Base.astro";
   description="Private messages for Brimwood members."
   path="/messages"
 >
+  <HubShell current="messages">
   <section class="block" id="msg-loading">
     <div class="kicker">Members</div>
     <p class="sec-lede">Checking your session…</p>
@@ -664,4 +666,5 @@ import Base from "../layouts/Base.astro";
       }
     })();
   </script>
+  </HubShell>
 </Base>

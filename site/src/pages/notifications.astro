@@ -3,6 +3,7 @@
  * Client-rendered — always fresh, no rebuild needed. Signed-in members only;
  * anonymous visitors get the sign-in prompt. */
 import Base from "../layouts/Base.astro";
+import HubShell from "../components/HubShell.astro";
 ---
 
 <Base
@@ -10,6 +11,7 @@ import Base from "../layouts/Base.astro";
   description="Your Brimwood activity: mentions, replies, follows, reminders."
   path="/notifications"
 >
+  <HubShell current="notifications">
   <section class="block" id="notif-loading">
     <div class="kicker">Activity</div>
     <p class="sec-lede">Loading…</p>
@@ -35,4 +37,5 @@ import Base from "../layouts/Base.astro";
   </section>
 
   <script is:inline src="/js/notifications-page.js"></script>
+  </HubShell>
 </Base>

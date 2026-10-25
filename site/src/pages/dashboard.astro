@@ -1,9 +1,11 @@
 ---
 /* Member dashboard: enrolled courses, progress bars, continue learning. Brand-kit styled. */
 import Base from "../layouts/Base.astro";
+import HubShell from "../components/HubShell.astro";
 ---
 
 <Base title="Dashboard — Brimwood Innovation" description="Your learning progress.">
+  <HubShell current="academy">
   <section class="block">
     <div id="dash-loading"><p class="sec-lede">Loading…</p></div>
 
@@ -70,4 +72,5 @@ import Base from "../layouts/Base.astro";
       }
     })();
   </script>
+  </HubShell>
 </Base>

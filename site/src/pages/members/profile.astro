@@ -6,11 +6,13 @@
  * D11: date of birth, gender, and life events are not collected.
  * Brand rule: anonymous by default; a preview panel shows what others see. */
 import Base from "../../layouts/Base.astro";
+import HubShell from "../../components/HubShell.astro";
 import Avatar from "../../components/Avatar.astro";
 import VisSelect from "../../components/VisSelect.astro";
 ---
 
 <Base title="Your profile - Brimwood Innovation" description="Edit your member profile.">
+  <HubShell current="profile">
   <section class="block">
     <div id="prof-loading"><p class="sec-lede">Loading…</p></div>
 
@@ -608,4 +610,5 @@ import VisSelect from "../../components/VisSelect.astro";
 
     load();
   </script>
+  </HubShell>
 </Base>
