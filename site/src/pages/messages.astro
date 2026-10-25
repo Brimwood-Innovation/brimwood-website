@@ -1,7 +1,12 @@
 ---
 /* Messages (audit/social/chat): members-only two-pane chat.
- * Clean by design — five-item conversation rows, hairline dividers, one
- * emerald unread pill, day-divided thread, quiet "Seen" receipts.
+ * Deck section 20 messages screen: Chats and Requests are real tabs
+ * (arrow keys move between them), a request thread carries Accept,
+ * Decline and Block, ticks run Sent then Seen from last_read_at, and
+ * a failed send stays in the thread with a retry. Requests stay quiet:
+ * the sender sees no Seen receipt while a request is pending (the API
+ * hides receipts then), and request rows never badge the Chats list.
+ * No typing indicator and no presence (D8).
  * All data loads client-side from /api/chat; signed-out visitors see the
  * sign-in prompt. */
 import Base from "../layouts/Base.astro";
@@ -36,6 +41,10 @@ import HubShell from "../components/HubShell.astro";
           <input id="convSearch" type="search" placeholder="Search conversations" aria-label="Search conversations" autocomplete="off" />
           <button class="chat-new" id="newChatBtn" title="Start a new chat" aria-label="Start a new chat">+</button>
         </div>
+        <div class="msg-tabs" role="tablist" aria-label="Message lists">
+          <button class="msg-tab active" id="tabChats" role="tab" aria-selected="true" aria-controls="convList">Chats</button>
+          <button class="msg-tab" id="tabRequests" role="tab" aria-selected="false" aria-controls="convList">Requests <span class="req-badge" id="reqBadge" style="display:none"></span></button>
+        </div>
         <div id="storyReplies" style="display:none;"></div>
         <div id="convList" class="conv-list" role="list"></div>
         <div id="convEmpty" class="chat-empty" style="display:none;">
@@ -58,6 +67,15 @@ import HubShell from "../components/HubShell.astro";
             <button class="chat-ghost" id="infoBtn" style="display:none;">Info</button>
           </header>
           <div id="groupInfo" class="group-info" style="display:none;"></div>
+          <div id="reqBanner" class="req-banner" style="display:none;">
+            <p id="reqText" class="req-text"></p>
+            <div class="req-actions">
+              <button class="btn small" id="reqAccept">Accept</button>
+              <button class="chat-ghost" id="reqDecline">Decline</button>
+              <button class="chat-ghost" id="reqBlock">Block</button>
+            </div>
+            <p class="thread-sub">This request stays quiet. The sender sees no Seen receipt, and it stays out of Chats until you accept.</p>
+          </div>
           <div id="threadMsgs" class="thread-msgs"></div>
           <form id="composer" class="composer">
             <label class="attach" title="Attach a photo or video">
@@ -201,6 +219,29 @@ import HubShell from "../components/HubShell.astro";
     .msg-meta { font-size: 11px; color: var(--brimwood-stone, #5b6862); margin-top: 4px; text-align: right; }
     .msg-row.mine .msg-meta { color: rgba(255,255,255,.75); }
     .seen-line { text-align: right; font-size: 12px; color: var(--brimwood-stone, #5b6862); margin: 2px 0 6px; }
+    .msg-tabs { display: flex; gap: 8px; padding: 0 16px 12px; }
+    .msg-tab {
+      border: 1px solid var(--brimwood-mint, #ddf5e9); background: #fff; border-radius: 999px;
+      padding: 8px 18px; font: inherit; font-size: 14px; cursor: pointer;
+    }
+    .msg-tab.active { background: var(--emerald-deep); border-color: var(--emerald-deep); color: #fff; }
+    .msg-tab:focus-visible { outline: 2px solid var(--emerald); outline-offset: 1px; }
+    .req-badge {
+      background: var(--emerald); color: #fff; font-size: 12px; font-weight: 700;
+      min-width: 22px; height: 22px; border-radius: 999px; display: inline-flex;
+      align-items: center; justify-content: center; padding: 0 6px; margin-left: 4px;
+    }
+    .msg-tab.active .req-badge { background: #fff; color: var(--emerald-deep); }
+    .req-banner { padding: 16px 20px; border-bottom: 1px solid var(--brimwood-mint, #ddf5e9); background: var(--brimwood-paper, #f6f8f7); }
+    .req-text { margin: 0 0 10px; font-size: 15px; }
+    .req-actions { display: flex; gap: 10px; margin-bottom: 8px; }
+    .failed-note { font-size: 12px; color: #b3261e; margin-top: 4px; }
+    .msg-row.failed .bubble { border: 1px solid #e5a8a3; background: #fff; color: inherit; }
+    .retry-btn {
+      border: 1px solid var(--brimwood-mint, #ddf5e9); background: #fff; border-radius: 999px;
+      padding: 6px 14px; font: inherit; font-size: 13px; cursor: pointer; color: var(--emerald-deep); margin-top: 6px;
+    }
+    .retry-btn:hover { border-color: var(--emerald); }
     .composer {
       display: flex; gap: 10px; align-items: center; padding: 14px 20px;
       border-top: 1px solid var(--brimwood-mint, #ddf5e9); background: #fff;
@@ -264,9 +305,12 @@ import HubShell from "../components/HubShell.astro";
 
     let me = null;
     let conversations = [];
-    let current = null; // {id, kind, title, participants, role}
+    let current = null; // {id, kind, title, participants, role, my_state}
     let readReceipts = {};
     let pollTimer = null;
+    let msgTab = "chats"; // "chats" (accepted) or "requests"
+    let requestCount = 0;
+    let failedSends = []; // {convId, body, file, fileName, isVideo} kept in memory for retry
 
     /* --- formatting --- */
     function relTime(iso) {
@@ -297,22 +341,54 @@ import HubShell from "../components/HubShell.astro";
       return brimwoodAvatar({ src: p.avatar_url, name: p.display_name, size: cls === "sm" ? 32 : 48 });
     }
 
-    /* --- conversation list --- */
+    /* --- conversation list: Chats (accepted) and Requests tabs --- */
     async function loadConversations(q) {
-      const r = await fetch(API_BASE + "/api/chat/conversations" + (q ? "?q=" + encodeURIComponent(q) : ""), { ...withCreds });
+      const state = msgTab === "requests" ? "request" : "accepted";
+      const params = new URLSearchParams({ state });
+      if (q) params.set("q", q);
+      const r = await fetch(API_BASE + "/api/chat/conversations?" + params.toString(), { ...withCreds });
       const d = await r.json();
       if (!r.ok || !d.ok) throw 0;
       conversations = d.conversations || [];
+      requestCount = d.request_count || 0;
+      renderRequestBadge();
       renderList();
+    }
+    function renderRequestBadge() {
+      const badge = $("reqBadge");
+      if (requestCount > 0) {
+        badge.textContent = requestCount > 99 ? "99+" : String(requestCount);
+        badge.style.display = "";
+        $("tabRequests").setAttribute("aria-label", "Requests, " + requestCount + " pending");
+      } else {
+        badge.style.display = "none";
+        $("tabRequests").removeAttribute("aria-label");
+      }
+    }
+    function selectTab(tab) {
+      msgTab = tab;
+      const chats = tab === "chats";
+      $("tabChats").classList.toggle("active", chats);
+      $("tabRequests").classList.toggle("active", !chats);
+      $("tabChats").setAttribute("aria-selected", chats ? "true" : "false");
+      $("tabRequests").setAttribute("aria-selected", chats ? "false" : "true");
+      return loadConversations($("convSearch").value.trim()).catch(() => {});
     }
     function renderList() {
       const list = $("convList");
-      if (!conversations.length) { hide("convList"); show("convEmpty"); return; }
+      if (!conversations.length) {
+        hide("convList"); show("convEmpty");
+        $("convEmpty").querySelector("p").innerHTML = msgTab === "requests"
+          ? "No message requests.<br />Requests wait here until you accept one."
+          : "No conversations yet.<br />Start one with the + button.";
+        return;
+      }
       hide("convEmpty"); show("convList");
       list.innerHTML = conversations.map((c) => {
         const others = (c.participants || []).filter((p) => p.id !== me.id);
         const av = c.kind === "dm" ? avatar(others[0] || { id: c.id, display_name: c.title }) : avatar({ id: c.id, display_name: c.title });
         const last = c.last_message;
+        const showUnread = msgTab === "chats" && c.unread;
         return (
           `<button class="conv${current && current.id === c.id ? " active" : ""}" data-id="${esc(c.id)}" role="listitem">` +
           av +
@@ -321,7 +397,7 @@ import HubShell from "../components/HubShell.astro";
           (last ? `<span class="conv-time${c.unread ? " unread" : ""}">${esc(relTime(last.created_at))}</span>` : "") +
           `</span><span class="conv-bottom">` +
           `<span class="conv-preview">${last ? esc(last.preview) : "No messages yet."}</span>` +
-          (c.unread ? `<span class="unread-pill">${c.unread > 99 ? "99+" : c.unread}</span>` : "") +
+          (showUnread ? `<span class="unread-pill">${c.unread > 99 ? "99+" : c.unread}</span>` : "") +
           `</span></span></button>`
         );
       }).join("");
@@ -367,8 +443,9 @@ import HubShell from "../components/HubShell.astro";
         ? '<a id="threadAvatar" href="/u/' + esc(dmPeer.id) + '" style="display:inline-flex;flex:none;text-decoration:none;" aria-label="View profile">' + avInner + "</a>"
         : '<span id="threadAvatar" style="display:inline-flex;flex:none;">' + avInner + "</span>";
       $("infoBtn").style.display = c.kind === "group" ? "" : "none";
+      renderRequestBanner();
       await loadMessages();
-      markRead();
+      if (c.my_state !== "request") markRead();
       if (pollTimer) clearInterval(pollTimer);
       pollTimer = setInterval(() => { if (current) loadMessages(true); }, 15000);
     }
@@ -401,27 +478,84 @@ import HubShell from "../components/HubShell.astro";
           `<div class="msg-row ${m.mine ? "mine" : "theirs"}${runStart ? " run-start" : ""}">` +
           `<div class="bubble">${nameLine}${media}${m.body ? esc(m.body) : ""}` +
           `<div class="msg-meta">${esc(clock(m.created_at))}</div></div></div>`;
-        // Quiet read receipt under the reader's newest message.
-        const isLast = i === msgs.length - 1;
-        if (isLast && m.mine) {
-          const seen = seenBy(m.created_at);
-          if (seen) html += `<div class="seen-line">${esc(seen)}</div>`;
+        // Tick state under the reader's newest own message: Sent, then
+        // Seen once a reader's last_read_at passes it. Delivered has no
+        // separate signal in this schema: a stored message is already
+        // available to the reader, so Sent covers it until Seen.
+        const isLastOwn = i === msgs.length - 1 && m.mine;
+        if (isLastOwn) {
+          html += `<div class="seen-line">${esc(tickFor(m.created_at))}</div>`;
         }
       });
-      box.innerHTML = html || `<p class="sec-lede" style="margin:auto;">No messages yet — say hello.</p>`;
+      // Failed sends stay in the thread with a retry.
+      failedSends.forEach((f, idx) => {
+        if (f.convId !== current.id) return;
+        const mediaLabel = f.file ? (f.isVideo ? "Video" : "Photo") : "";
+        html +=
+          `<div class="msg-row mine failed"><div class="bubble">` +
+          (mediaLabel ? esc(mediaLabel) + "<br />" : "") +
+          (f.body ? esc(f.body) : "") +
+          `<div class="failed-note">Not sent. Check your connection and try again.</div>` +
+          `<button class="retry-btn" data-failed="${idx}">Retry</button></div></div>`;
+      });
+      box.innerHTML = html || `<p class="sec-lede" style="margin:auto;">No messages yet. Say hello.</p>`;
+      box.querySelectorAll(".retry-btn").forEach((btn) => {
+        btn.addEventListener("click", () => retryFailed(Number(btn.dataset.failed)));
+      });
       box.scrollTop = box.scrollHeight;
     }
-    function seenBy(createdAt) {
+    function tickFor(createdAt) {
       const t = new Date(createdAt).getTime();
       const readers = (current.participants || []).filter(
         (p) => p.id !== me.id && readReceipts[p.id] && new Date(readReceipts[p.id]).getTime() >= t
       );
-      if (!readers.length) return null;
-      if (current.kind === "dm") return "Seen";
-      return readers.length === 1 ? `Seen by ${readers[0].display_name}` : `Seen by ${readers.length}`;
+      if (!readers.length) return "✓ Sent";
+      if (current.kind === "dm") {
+        const latest = Math.max(...readers.map((p) => new Date(readReceipts[p.id]).getTime()));
+        return "✓✓ Seen " + clock(new Date(latest).toISOString());
+      }
+      return readers.length === 1 ? `✓✓ Seen by ${readers[0].display_name}` : `✓✓ Seen by ${readers.length}`;
+    }
+
+    /* --- message requests: Accept, Decline, Block --- */
+    function renderRequestBanner() {
+      const isRequest = current && current.kind === "dm" && current.my_state === "request";
+      $("reqBanner").style.display = isRequest ? "" : "none";
+      $("composer").style.display = isRequest ? "none" : "";
+      if (isRequest) {
+        const others = (current.participants || []).filter((p) => p.id !== me.id);
+        $("reqText").textContent = (others[0]?.display_name || "This member") + " would like to message you.";
+      }
+    }
+    async function requestAction(action) {
+      if (!current) return;
+      const id = current.id;
+      try {
+        const r = await fetch(API_BASE + `/api/chat/conversations/${encodeURIComponent(id)}/${action}`, {
+          method: "POST", ...withCreds,
+        });
+        const d = await r.json();
+        if (!r.ok || !d.ok) throw new Error(d.error || "Could not do that.");
+        if (action === "accept") {
+          await selectTab("chats");
+          const conv = conversations.find((x) => x.id === id);
+          if (conv) openConversation(id);
+          else { hide("threadView"); show("threadWelcome"); }
+        } else {
+          if (pollTimer) clearInterval(pollTimer);
+          pollTimer = null;
+          current = null;
+          hide("threadView"); show("threadWelcome");
+          await selectTab("requests");
+        }
+      } catch (err) {
+        const el = $("msgErr");
+        el.textContent = err.message;
+        el.style.display = "";
+      }
     }
     async function markRead() {
-      if (!current) return;
+      if (!current || current.my_state === "request") return;
       try {
         await fetch(API_BASE + `/api/chat/conversations/${encodeURIComponent(current.id)}/read`, {
           method: "POST", ...withCreds,
@@ -431,45 +565,75 @@ import HubShell from "../components/HubShell.astro";
       } catch { /* best effort */ }
     }
 
-    /* --- sending --- */
+    /* --- sending: a failed send stays in the thread with a retry --- */
+    async function postMessage(convId, body, file) {
+      let res;
+      if (file) {
+        const form = new FormData();
+        form.set("body", body);
+        form.set("file", file);
+        res = await fetch(API_BASE + `/api/chat/conversations/${encodeURIComponent(convId)}/messages`, {
+          method: "POST", body: form, ...withCreds,
+        });
+      } else {
+        res = await fetch(API_BASE + `/api/chat/conversations/${encodeURIComponent(convId)}/messages`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ body }),
+          ...withCreds,
+        });
+      }
+      const d = await res.json();
+      if (!res.ok || !d.ok) throw new Error(d.error || "Could not send.");
+      return d;
+    }
     async function sendMessage(e) {
       e.preventDefault();
       if (!current) return;
       const body = $("msgInput").value.trim();
-      const file = $("fileInput").files[0];
+      const file = $("fileInput").files[0] || null;
       if (!body && !file) return;
       hide("msgErr");
       $("sendBtn").disabled = true;
       try {
-        let res;
-        if (file) {
-          const form = new FormData();
-          form.set("body", body);
-          form.set("file", file);
-          res = await fetch(API_BASE + `/api/chat/conversations/${encodeURIComponent(current.id)}/messages`, {
-            method: "POST", body: form, ...withCreds,
-          });
-        } else {
-          res = await fetch(API_BASE + `/api/chat/conversations/${encodeURIComponent(current.id)}/messages`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ body }),
-            ...withCreds,
-          });
-        }
-        const d = await res.json();
-        if (!res.ok || !d.ok) throw new Error(d.error || "Could not send.");
+        await postMessage(current.id, body, file);
         $("msgInput").value = "";
         $("fileInput").value = "";
         await loadMessages(true);
-        // Refresh the preview row.
+        loadConversations($("convSearch").value.trim()).catch(() => {});
+      } catch (err) {
+        failedSends.push({
+          convId: current.id,
+          body,
+          file,
+          fileName: file ? file.name : "",
+          isVideo: file ? file.type.indexOf("video") === 0 : false,
+        });
+        $("msgInput").value = "";
+        $("fileInput").value = "";
+        try { await loadMessages(true); }
+        catch {
+          const el = $("msgErr");
+          el.textContent = err.message;
+          el.style.display = "";
+        }
+      } finally {
+        $("sendBtn").disabled = false;
+      }
+    }
+    async function retryFailed(idx) {
+      const f = failedSends[idx];
+      if (!f || !current || f.convId !== current.id) return;
+      try {
+        await postMessage(f.convId, f.body, f.file);
+        failedSends.splice(idx, 1);
+        await loadMessages(true);
         loadConversations($("convSearch").value.trim()).catch(() => {});
       } catch (err) {
         const el = $("msgErr");
         el.textContent = err.message;
         el.style.display = "";
-      } finally {
-        $("sendBtn").disabled = false;
+        await loadMessages(true).catch(() => {});
       }
     }
 
@@ -626,6 +790,19 @@ import HubShell from "../components/HubShell.astro";
           deb = setTimeout(() => loadConversations(e.target.value.trim()).catch(() => {}), 250);
         });
         $("composer").addEventListener("submit", sendMessage);
+        $("tabChats").addEventListener("click", () => selectTab("chats"));
+        $("tabRequests").addEventListener("click", () => selectTab("requests"));
+        document.querySelector(".msg-tabs").addEventListener("keydown", (e) => {
+          if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+          e.preventDefault();
+          const next = msgTab === "chats" ? "requests" : "chats";
+          selectTab(next).then(() => {
+            $(next === "chats" ? "tabChats" : "tabRequests").focus();
+          });
+        });
+        $("reqAccept").addEventListener("click", () => requestAction("accept"));
+        $("reqDecline").addEventListener("click", () => requestAction("decline"));
+        $("reqBlock").addEventListener("click", () => requestAction("block"));
         $("newChatBtn").addEventListener("click", openModal);
         $("ncCancel").addEventListener("click", closeModal);
         $("newChatModal").addEventListener("click", (e) => { if (e.target.id === "newChatModal") closeModal(); });

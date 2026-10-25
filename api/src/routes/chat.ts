@@ -28,6 +28,9 @@
  *                                              dm_request notification.
  *   POST /chat/conversations/:id/accept      - accept your own DM request
  *   POST /chat/conversations/:id/decline     - decline your own DM request
+ *   POST /chat/conversations/:id/block       - block the sender of your own
+ *                                              DM request and decline it
+ *                                              (deck messages screen)
  *   GET  /chat/conversations/:id/messages?cursor=&limit=
  *   POST /chat/conversations/:id/messages    - JSON {body} or multipart
  *                                              {body, file}; media uploads to
@@ -457,6 +460,38 @@ app.post("/conversations/:id/decline", async (c) => {
     .bind(cid, me)
     .run();
   return c.json({ ok: true, state: "declined" });
+});
+
+/* --- Block the sender of a DM request --- */
+
+app.post("/conversations/:id/block", async (c) => {
+  const { DB } = c.env;
+  const me = c.get("user").userId as string;
+  const cid = cleanStr(c.req.param("id"), 64);
+  if (!cid) return c.json({ ok: false }, 400);
+
+  const mem = await membership(DB, cid, me);
+  if (!mem) return c.json({ ok: false, error: "Conversation not found." }, 404);
+  if (mem.kind !== "dm" || mem.state !== "request") {
+    return c.json({ ok: false, error: "There is no message request to block here." }, 400);
+  }
+  const peer = (await DB.prepare(
+    "SELECT user_id FROM conversation_members WHERE conversation_id = ? AND user_id != ?"
+  )
+    .bind(cid, me)
+    .first()) as { user_id: string } | null;
+  if (!peer) return c.json({ ok: false, error: "There is no message request to block here." }, 400);
+  await DB.prepare(
+    "INSERT OR IGNORE INTO blocks (blocker_id, blocked_id) VALUES (?, ?)"
+  )
+    .bind(me, peer.user_id)
+    .run();
+  await DB.prepare(
+    "UPDATE conversation_members SET state = 'declined' WHERE conversation_id = ? AND user_id = ? AND state = 'request'"
+  )
+    .bind(cid, me)
+    .run();
+  return c.json({ ok: true, state: "declined", blocked: true });
 });
 
 /* --- Thread: messages with cursor pagination --- */
