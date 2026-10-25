@@ -3,6 +3,7 @@
  * notification deep links (mentions, replies, poll results) and shares.
  * Members-only; signed-out visitors see the sign-in prompt. */
 import Base from "../../../layouts/Base.astro";
+import HubShell from "../../../components/HubShell.astro";
 ---
 
 <Base
@@ -10,6 +11,7 @@ import Base from "../../../layouts/Base.astro";
   description="A post from a Brimwood member."
   path="/hub/post/"
 >
+  <HubShell current="feed">
   <section class="block" id="pp-loading">
     <div class="kicker">Members</div>
     <p class="sec-lede">Loading post…</p>
@@ -172,4 +174,5 @@ import Base from "../../../layouts/Base.astro";
     }
     load();
   </script>
+  </HubShell>
 </Base>
