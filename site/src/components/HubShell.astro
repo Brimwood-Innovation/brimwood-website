@@ -6,11 +6,12 @@
  * The shell switches by its own width, so one markup pattern serves
  * desktop and phone, as the deck specifies.
  *
- * Honest gaps, not invented pages: places with no page yet (Home,
- * Groups, Space, People, Saved) and avatar items with no page yet
- * (Settings, Safety) render as plain text, never as links to a page
- * that does not exist. Their slices land later; until then the shell
- * shows the deck structure without promising a destination.
+ * Honest gaps, not invented pages: places with no page yet (Groups,
+ * Space, People, Saved) and avatar items with no page yet (Settings,
+ * Safety) render as plain text, never as links to a page that does
+ * not exist. Their slices land later; until then the shell shows the
+ * deck structure without promising a destination. Home gained its
+ * page in Phase 3 slice 3 (/hub) and is a real link now.
  * Existing routes are kept exactly as they are: Messages stays at
  * /messages and the bell inbox at /notifications, even though the
  * deck routes them under /hub. Renaming routes is a separate slice,
@@ -34,7 +35,7 @@ interface Place {
   href: string | null;
 }
 const places: Place[] = [
-  { key: "home", label: "Home", href: null },
+  { key: "home", label: "Home", href: "/hub" },
   { key: "feed", label: "Feed", href: "/hub/feed" },
   { key: "messages", label: "Messages", href: "/messages" },
   { key: "groups", label: "Groups", href: null },
@@ -45,7 +46,7 @@ const places: Place[] = [
   { key: "saved", label: "Saved", href: null },
 ];
 const tabs: Place[] = [
-  { key: "home", label: "Home", href: null },
+  { key: "home", label: "Home", href: "/hub" },
   { key: "feed", label: "Feed", href: "/hub/feed" },
   { key: "space", label: "Space", href: null },
   { key: "messages", label: "Messages", href: "/messages" },
