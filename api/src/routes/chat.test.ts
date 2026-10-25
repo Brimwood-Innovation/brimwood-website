@@ -31,6 +31,8 @@ interface Fixture {
   memberSettings: Record<string, { dm_policy?: string; seen_receipts?: number }>;
   /** pending DM request count for the inbox badge (item 8) */
   requestCount: number;
+  /** other DM member returned by the block peer lookup */
+  blockPeer: string;
 }
 
 const USER = (over: Partial<FixtureUser> = {}): FixtureUser => ({
@@ -63,6 +65,10 @@ function chatEnv(f: Partial<Fixture> = {}): { env: MockEnv; cookie: Record<strin
     // and existing-DM checks below, whose patterns also match this query.
     if (/SELECT COUNT\(\*\) AS n FROM conversation_members/i.test(sql)) {
       return { row: { n: f.requestCount ?? 0 } };
+    }
+    // Block peer lookup for a DM request: the other member of the pair.
+    if (/^SELECT user_id FROM conversation_members WHERE conversation_id = \? AND user_id != \?$/.test(sql.trim())) {
+      return { row: { user_id: f.blockPeer ?? "member-2" } };
     }
     // Conversation membership (every read/write gates on this).
     if (/FROM conversation_members cm\s+JOIN conversations/i.test(sql)) {
@@ -679,6 +685,41 @@ describe("POST /chat/conversations/:id/accept and :id/decline (item 8)", () => {
     const { env, cookie } = chatEnv({ memberships: mem });
     const res = await postJSON(app, "/conversations/g1/accept", {}, env, cookie);
     expect(res.status).toBe(400);
+  });
+});
+
+describe("POST /chat/conversations/:id/block (deck messages screen)", () => {
+  const reqMem = {
+    "c1:member-1": { role: "member", last_read_at: null, state: "request", kind: "dm", title: null },
+  };
+
+  it("blocks the sender and declines the request", async () => {
+    const { env, cookie } = chatEnv({ memberships: reqMem });
+    const res = await postJSON(app, "/conversations/c1/block", {}, env, cookie);
+    expect(res.status).toBe(200);
+    const d = await res.json();
+    expect(d.blocked).toBe(true);
+    expect(d.state).toBe("declined");
+    const ins = env.DB.calls.find(
+      (cl) => cl.op === "run" && /INSERT OR IGNORE INTO blocks/i.test(cl.sql)
+    );
+    expect(ins?.params).toEqual(["member-1", "member-2"]);
+    const upd = env.DB.calls.find(
+      (cl) => cl.op === "run" && /UPDATE conversation_members SET state = 'declined'/i.test(cl.sql)
+    );
+    expect(upd?.params).toEqual(["c1", "member-1"]);
+  });
+
+  it("returns 404 for a non-member and 400 without a pending request", async () => {
+    const { env, cookie } = chatEnv();
+    const res = await postJSON(app, "/conversations/c1/block", {}, env, cookie);
+    expect(res.status).toBe(404);
+    const accMem = {
+      "c1:member-1": { role: "member", last_read_at: null, state: "accepted", kind: "dm", title: null },
+    };
+    const second = chatEnv({ memberships: accMem });
+    const res2 = await postJSON(app, "/conversations/c1/block", {}, second.env, second.cookie);
+    expect(res2.status).toBe(400);
   });
 });
 

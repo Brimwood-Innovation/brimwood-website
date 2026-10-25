@@ -1136,3 +1136,65 @@ from the self-chaining loop's first run on 2026-10-21.
   recorded follow-ups. Still blocked: the Phase 1 preview smoke
   flows and applying 0037 to preview D1 (no Cloudflare token in
   the environment).
+- Cycle 22, 2026-10-25: Phase 3 slice 5, the hub messages page from the
+  deck (section 20 messages screen), in
+  ~/workspace/company/wt-phase3-hub-messages on branch phase3/hub-messages
+  (no open loop PR; develop CI green; #22 is the founder-tapped
+  README PR, not loop work). Reconciled the existing messages page with
+  the deck screen, element by element. Chats and Requests are now real
+  tabs above the conversation list (role tablist and tab, aria-selected,
+  Left and Right arrows move between them); Chats lists state=accepted
+  conversations only, so request rows never badge the Chats list, and
+  Requests lists state=request with the pending count from
+  request_count as the tab badge. A request thread shows an Accept,
+  Decline, Block banner above the messages (the composer hides until
+  accept) and stays quiet: opening it never bumps last_read_at, and
+  the API already hides receipts while a request is pending. Accept
+  moves the thread into Chats; Decline and Block close the thread and
+  return to Requests. Block is new API: POST /api/chat/conversations/:id/block
+  inserts the sender into blocks (S12) and declines the request, in the
+  same shape as accept and decline, with 404 for non-members and 400
+  without a pending request. Tick states: the last own message now
+  always carries a tick line, Sent until a reader's last_read_at passes
+  it, then Seen with the receipt time for DMs and Seen by N for
+  groups. Delivered has no separate signal in this schema (a stored
+  message is already available to the reader), so Sent covers it until
+  Seen; that is the one documented deck gap in this slice. A failed
+  send now stays in the thread as a failed bubble with the body and
+  media label, a Not sent note, and a Retry button that re-posts the
+  same body and file (kept in memory for the session). Already
+  deck-true and untouched: day-divided threads, group info and member
+  management, the new-chat modal, story replies, no typing indicator
+  and no presence (D8). Verification before the PR: 725 API tests pass
+  (35 files, 2 new: block inserts the pair and declines, 404 and 400
+  paths), API typecheck clean, site build clean (25 pages), and the
+  built /messages page inspected directly (tabs, request banner with
+  Accept, Decline and Block, and the bundled tab, banner, failed-send
+  and tick logic all present). No new dependency, no migration (the
+  blocks table already exists in 0025). Shipped in PR #56 (merged to
+  develop; build, secrets, audit, analyze, CodeQL, lighthouse, and
+  Cloudflare Pages all green). Grade (dimensions this cycle touched,
+  scored from evidence): functional 2,500/2,500 (every deck messages
+  element with a backing endpoint is live and wired: tabs, banner
+  actions, ticks, retry); schema and API 2,000/2,000 (block endpoint
+  mirrors accept and decline, suite green, no migration needed);
+  security 1,250/1,250 (CodeQL and analyze green, block and request
+  gates reuse membership checks, receipts still hidden while
+  pending, escaped output); code quality 1,000/1,000 (API typecheck
+  clean, tests in the existing style, send path factored into one
+  helper); brand and copy 750/750 (deck labels verbatim, Canadian
+  spelling, no new em dash, no member named). Accessibility and
+  performance untouched in substance (Lighthouse gate passed, tab
+  roles and keyboard arrows added, no new dependency, no page weight
+  change of note). Pro-rated total 10,000/10,000, no zero dimension,
+  no open P0. Verdict: ACCEPT. Next improvement: Phase 3 slice 6,
+  the hub groups page from the deck (section 20 groups screen),
+  reconciling the existing groups surface. The events API read
+  extension (kind, demo slots, past recaps), the events my_rsvp field
+  for a real Going badge, a rituals read API for live thread state,
+  member space bookings and check-ins for the Today card, the deck
+  command palette, the /hub route renaming, the feed header notices
+  (next Demo Night, questions needing answers), and the staff
+  spotlight post type remain recorded follow-ups. Still blocked: the
+  Phase 1 preview smoke flows and applying 0037 to preview D1 (no
+  Cloudflare token in the environment).
