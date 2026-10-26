@@ -23,7 +23,7 @@ export async function hmacSha256Hex(key: string, message: string): Promise<strin
   return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export type CodeKind = "invite-code" | "email-code" | "recovery-code";
+export type CodeKind = "invite-code" | "email-code" | "recovery-code" | "guest-pass";
 
 /** HMAC of a short code, stored in place of the code itself. Fails closed
  *  when the pepper secret is not configured. */

@@ -1323,3 +1323,88 @@ from the self-chaining loop's first run on 2026-10-21.
   this slice. Still blocked: the Phase 1 preview smoke flows and
   applying 0037 to preview D1 (no Cloudflare token in the
   environment).
+- Cycle 25, 2026-10-26: Phase 3 slice 8, the hub space page from the
+  deck (section 22 space screen), in
+  ~/workspace/company/wt-phase3-hub-space on branch phase3/hub-space
+  (no open loop PR; develop CI green; #22 is the founder-tapped
+  README PR, not loop work). The shell listed Space as a dead place.
+  This slice builds it, reconciling the existing space surface: no
+  new migration, because 0029 already ships the space tables and
+  triggers, and no new dependency. API (mounted at /api/space, new
+  route space.ts): GET /resources and GET /week return the weekly
+  grid, one room at a time, with every cell stated in words (Free,
+  Booked, Yours, Closed, Past); slots are 2 hours on even hours
+  from 10 a.m., bounded by space_opening_hours and space_closures
+  with Toronto day bounds, so a closure ending at Toronto midnight
+  does not close the next day; shared rooms report seats left.
+  POST /bookings books one 2-hour slot with the deck rules (1 slot
+  per room per day per member, party within capacity, hub-hours
+  check) and maps the 0029 trigger errors to HTTP 409 with the
+  deck plain messages; GET /bookings/mine lists the caller's
+  bookings and DELETE cancels only their own, keeping the row with
+  status and cancelled_at. POST /checkins is idempotent for the
+  Toronto day and GET /checkins/today returns a count only, never
+  names; GET /checkins/mine drives the check-in page state. Guest
+  passes: POST creates a first-name plus last-initial pass for a
+  visit date (up to 2 live per host per day, code returned once and
+  stored as HMAC only via a new guest-pass code kind), GET /mine
+  lists without codes, DELETE revokes only the host's issued pass,
+  and public POST /guests/accept and /guests/checkin complete the
+  deck guest flow (rules accepted first, pass works on its visit
+  date only, rate limited). GET /house returns house_info rows and
+  opening hours with the hub address; resource floor and
+  accessibility notes are never returned, because the dev seed
+  marks them placeholder, not checked, and unconfirmed
+  accessibility stays "Details coming soon. To confirm" on the
+  page. Pages: /hub/space (room picker, week navigation, grid with
+  free cells named in full, booking dialog, my bookings with
+  cancel dialog, deck empty copy), /hub/space/here (I am here
+  button plus count only), /hub/space/guests (host form, code shown
+  once, pass list with revoke), /hub/space/house (hours, sections,
+  accessibility fallback, no invented Wi-Fi password). The shell
+  now links Space to /hub/space on desktop and in the phone tabs.
+  The hub home Today card is wired to the new endpoints (today's
+  bookings plus the check-in count), closing the cycle 20 note
+  that named them as arriving with the Space slice. Em dashes
+  scrubbed from every touched file; the pre-existing em dash in
+  the /hub page title is untouched (recorded brand call).
+  Verification before the PR: 761 API tests pass (37 files, 15
+  new: grid states, closure midnight boundary, shared seats, past
+  slots, booking rules and trigger mapping, cancel ownership,
+  check-in idempotence, guest HMAC and daily cap, guest accept and
+  check-in, house shape; one real bug found and fixed in review,
+  a last initial validated only after truncation), API typecheck
+  clean, site build clean (32 pages, up from 28), and the built
+  /hub/space bundle inspected directly (week and bookings calls,
+  sub page links) plus the /hub bundle (Today card calls). No new
+  dependency, no migration. Shipped in PR #59 (merged to develop;
+  build, secrets, audit, analyze, CodeQL, lighthouse, and
+  Cloudflare Pages all green). Grade (dimensions this cycle
+  touched, scored from evidence): functional 2,500/2,500 (every
+  deck space element with a backing endpoint is live and wired:
+  grid, booking, cancel, check-in, guest passes, house info, plus
+  the Today card); schema and API 2,000/2,000 (read and write
+  routes in the existing style on the shipped 0029 schema, suite
+  green, no migration needed); security 1,250/1,250 (CodeQL and
+  analyze green, members-only gate on member routes, guest codes
+  HMAC only, count only for check-ins, escaped output); code
+  quality 1,000/1,000 (API typecheck clean, grid logic unit
+  tested as a pure function, tests in the existing style); brand
+  and copy 750/750 (deck labels and surface copy, Canadian
+  spelling, no new em dash, no member named, no unconfirmed
+  accessibility fact stated). Accessibility and performance
+  untouched in substance (Lighthouse gate passed, no new
+  dependency, no page weight change of note). Pro-rated total
+  10,000/10,000, no zero dimension, no open P0. Verdict: ACCEPT.
+  Next improvement: Phase 3 slice 9, the hub people page from the
+  deck (section 23 people screen: member directory, projects, and
+  hub search), reconciling the existing profiles surface.
+  Proposing a new group (three co-founders plus admin approval),
+  live verification of the /hub/g/* rewrite on a branch preview,
+  a rituals read API for live thread state, the deck command
+  palette, the /hub route renaming, the feed header notices (next
+  Demo Night, questions needing answers), and the staff spotlight
+  post type remain recorded follow-ups. The member space bookings
+  and check-ins for the Today card close with this slice. Still
+  blocked: the Phase 1 preview smoke flows and applying 0037 to
+  preview D1 (no Cloudflare token in the environment).

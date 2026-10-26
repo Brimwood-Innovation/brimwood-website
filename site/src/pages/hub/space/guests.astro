@@ -1,0 +1,161 @@
+---
+/* Member hub guest passes (Phase 3 slice 8, deck section 22
+ * space screen, /hub/space/guests). A member hosts a guest with
+ * a first name and last initial only, up to 2 guests a day, and
+ * stays with their guest. The pass code is shown once after
+ * creation: share it with the guest, who accepts the house rules
+ * and checks in with it on the visit date. The pass works on its
+ * visit date only. Signed-out visitors see the sign-in prompt.
+ */
+import Base from "../../../layouts/Base.astro";
+import HubShell from "../../../components/HubShell.astro";
+---
+
+<Base
+  title="Guest passes - Brimwood Innovation"
+  description="Invite a guest to the Brimwood hub with a guest pass."
+  path="/hub/space/guests"
+>
+  <HubShell current="space">
+  <section class="block" id="guests-loading">
+    <div class="kicker">Members</div>
+    <p class="sec-lede">Checking your session…</p>
+  </section>
+
+  <section class="block" id="guests-login" style="display:none;text-align:center;padding:48px 0;">
+    <div class="kicker">Members</div>
+    <h1 class="sec" style="font-size:clamp(28px,4vw,40px);margin-bottom:18px;">Sign in to invite a guest.</h1>
+    <p class="sec-lede" style="margin-inline:auto;"><a href="/members">Sign in</a> to continue.</p>
+  </section>
+
+  <section class="block" id="guests-app" style="display:none;max-width:640px;">
+    <div class="kicker">Members</div>
+    <h1 class="sec" style="font-size:clamp(28px,4vw,40px);margin-bottom:8px;">Guest passes.</h1>
+    <p class="sec-lede" style="margin-bottom:22px;">Visitors come only with a pass from a member host. You can bring up to 2 guests a day. You stay with your guest.</p>
+    <p id="guests-error" class="thread-sub" style="display:none;color:var(--brimwood-red, #b42318);"></p>
+
+    <form id="guests-form" style="display:grid;gap:14px;margin-bottom:28px;">
+      <div>
+        <label class="thread-sub" style="display:block;margin-bottom:4px;" for="guest-first">Guest first name</label>
+        <input id="guest-first" type="text" maxlength="40" required style="width:100%;padding:10px;border:1px solid rgba(18,26,22,0.2);border-radius:8px;" />
+      </div>
+      <div>
+        <label class="thread-sub" style="display:block;margin-bottom:4px;" for="guest-initial">Last initial</label>
+        <input id="guest-initial" type="text" maxlength="1" pattern="[A-Za-z]" required style="width:100%;padding:10px;border:1px solid rgba(18,26,22,0.2);border-radius:8px;" />
+      </div>
+      <div>
+        <label class="thread-sub" style="display:block;margin-bottom:4px;" for="guest-date">Visit date</label>
+        <input id="guest-date" type="date" required style="width:100%;padding:10px;border:1px solid rgba(18,26,22,0.2);border-radius:8px;" />
+      </div>
+      <div><button type="submit" class="btn btn-primary btn-sm">Send pass</button></div>
+    </form>
+
+    <div id="guests-code" class="card" style="display:none;padding:18px 20px;margin-bottom:28px;">
+      <h2 style="font-size:20px;margin-bottom:4px;">Pass created</h2>
+      <p class="thread-sub" style="margin:0 0 8px;">Share this code with your guest. It is shown once.</p>
+      <p style="font-size:22px;letter-spacing:0.08em;margin:0 0 8px;"><strong id="guests-code-value"></strong></p>
+      <p class="thread-sub" style="margin:0;">The pass works on its visit date only. Your guest accepts the house rules with this code, then checks in with it at the hub.</p>
+    </div>
+
+    <h2 class="sec" style="font-size:22px;margin-bottom:12px;">My guest passes</h2>
+    <div id="guests-list" style="display:grid;gap:14px;"></div>
+    <div id="guests-empty" style="display:none;">
+      <p class="sec-lede">No guest passes yet.</p>
+    </div>
+  </section>
+
+  <script>
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
+    const withCreds = { credentials: "include" };
+    const esc = (s) => String(s ?? "").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const $ = (id) => document.getElementById(id);
+    const show = (id) => ($(id).style.display = "");
+    const hide = (id) => ($(id).style.display = "none");
+
+    function statusBadge(p) {
+      if (p.status === "issued") return `<span class="badge">Issued</span>`;
+      if (p.status === "checked_in") return `<span class="badge">Checked in</span>`;
+      if (p.status === "revoked") return `<span class="badge">Revoked</span>`;
+      return `<span class="badge">${esc(p.status)}</span>`;
+    }
+
+    function passCard(p) {
+      const action = p.status === "issued" ? `<button type="button" class="btn btn-ghost btn-sm" data-revoke="${esc(p.id)}">Revoke</button>` : "";
+      const accepted = p.house_rules_accepted_at ? `<p class="thread-sub" style="margin:0 0 8px;">House rules accepted</p>` : "";
+      const arrived = p.checked_in_at ? `<p class="thread-sub" style="margin:0 0 8px;">Checked in</p>` : "";
+      return `<article class="card" style="padding:18px 20px;">
+        <h3 style="font-size:20px;margin-bottom:4px;">${esc(p.guest_first_name)} ${esc(p.guest_last_initial)}.</h3>
+        <p class="thread-sub" style="margin:0 0 8px;">Visit: ${esc(p.visit_date)}</p>
+        ${accepted}${arrived}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">${statusBadge(p)}${action}</div>
+      </article>`;
+    }
+
+    async function loadPasses() {
+      try {
+        const r = await fetch(API_BASE + "/api/space/guests/mine", { ...withCreds });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok) throw 0;
+        const list = d.passes || [];
+        if (!list.length) { hide("guests-list"); show("guests-empty"); return; }
+        hide("guests-empty"); show("guests-list");
+        $("guests-list").innerHTML = list.map(passCard).join("");
+        document.querySelectorAll("[data-revoke]").forEach((b) => b.addEventListener("click", () => revokePass(b.dataset.revoke)));
+      } catch {
+        const e = $("guests-error");
+        e.textContent = "Could not load your guest passes. Try again in a moment.";
+        show("guests-error");
+      }
+    }
+
+    async function revokePass(id) {
+      const r = await fetch(API_BASE + `/api/space/guests/${encodeURIComponent(id)}`, { method: "DELETE", ...withCreds });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) {
+        const e = $("guests-error");
+        e.textContent = d.error || "Could not revoke that pass.";
+        show("guests-error");
+        return;
+      }
+      hide("guests-error");
+      await loadPasses();
+    }
+
+    $("guests-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const r = await fetch(API_BASE + "/api/space/guests", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          guest_first_name: $("guest-first").value.trim(),
+          guest_last_initial: $("guest-initial").value.trim(),
+          visit_date: $("guest-date").value,
+        }), ...withCreds,
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) {
+        const err = $("guests-error");
+        err.textContent = d.error || "That guest pass could not be created.";
+        show("guests-error");
+        return;
+      }
+      hide("guests-error");
+      $("guests-code-value").textContent = d.pass.code;
+      show("guests-code");
+      $("guests-form").reset();
+      await loadPasses();
+    });
+
+    (async () => {
+      try {
+        const me = await fetch(API_BASE + "/api/auth/me", { headers: { accept: "application/json" }, ...withCreds });
+        const d = await me.json().catch(() => ({}));
+        if (!me.ok || !d.ok) throw 0;
+        hide("guests-loading"); hide("guests-login"); show("guests-app");
+        await loadPasses();
+      } catch {
+        hide("guests-loading"); hide("guests-app"); show("guests-login");
+      }
+    })();
+  </script>
+  </HubShell>
+</Base>
