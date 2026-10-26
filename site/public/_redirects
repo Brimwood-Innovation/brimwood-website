@@ -1,0 +1,4 @@
+# Deck route /hub/g/SLUG is served by the static group page (no adapter
+# on this static-first site): the rewrite keeps the URL while the page
+# loads its group client-side from /api/groups.
+/hub/g/* /hub/group?slug=:splat 200

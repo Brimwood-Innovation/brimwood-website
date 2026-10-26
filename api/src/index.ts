@@ -19,6 +19,7 @@ import forms from "./routes/forms";
 import notifications from "./routes/notifications";
 import profiles from "./routes/profiles";
 import chat from "./routes/chat";
+import groups from "./routes/groups";
 import feed from "./routes/feed";
 import studio from "./routes/studio";
 import invites from "./routes/invites";
@@ -134,6 +135,7 @@ app.route("/api", notifications);
 app.route("/api/studio", studio);
 app.route("/api", profiles);
 app.route("/api/chat", chat);
+app.route("/api/groups", groups);
 app.route("/api", feed);
 app.route("/api/invites", invites);
 
