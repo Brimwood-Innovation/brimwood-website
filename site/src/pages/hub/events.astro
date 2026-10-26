@@ -1,0 +1,194 @@
+---
+/* Member hub events (Phase 3 slice 7, deck section 20 events screen).
+ * RSVPs live here; event pages stay at /events/SLUG, per the deck
+ * route map. Upcoming events come from GET /api/events with the
+ * caller's own RSVP attached (my_rsvp); past events come from
+ * GET /api/events?when=past with their published-recap flag.
+ * A member RSVPs with one tap (POST /api/events/:slug/my-rsvp,
+ * party of one) and cancels the same way; the public name, email,
+ * and Turnstile form stays on the event page for guests.
+ * Signed-out visitors see the sign-in prompt, not the lists.
+ */
+import Base from "../../layouts/Base.astro";
+import HubShell from "../../components/HubShell.astro";
+---
+
+<Base
+  title="Events - Brimwood Innovation"
+  description="Your events at Brimwood Innovation. RSVPs, demo nights, and past events."
+  path="/hub/events"
+>
+  <HubShell current="events">
+  <section class="block" id="events-loading">
+    <div class="kicker">Members</div>
+    <p class="sec-lede">Checking your session…</p>
+  </section>
+
+  <section class="block" id="events-login" style="display:none;text-align:center;padding:48px 0;">
+    <div class="kicker">Members</div>
+    <h1 class="sec" style="font-size:clamp(28px,4vw,40px);margin-bottom:18px;">Sign in to see your events.</h1>
+    <p class="sec-lede" style="margin-inline:auto;"><a href="/members">Sign in</a> to continue.</p>
+  </section>
+
+  <section class="block" id="events-app" style="display:none;max-width:860px;">
+    <div class="kicker">Members</div>
+    <h1 class="sec" style="font-size:clamp(28px,4vw,40px);margin-bottom:8px;">Events.</h1>
+    <p class="sec-lede" style="margin-bottom:22px;">Your RSVPs, demo nights, and past events. Event pages stay at /events.</p>
+    <p id="events-error" class="thread-sub" style="display:none;color:var(--brimwood-red, #b42318);"></p>
+
+    <h2 class="sec" style="font-size:22px;margin-bottom:12px;">Upcoming</h2>
+    <div id="events-upcoming" style="display:grid;gap:14px;margin-bottom:28px;"></div>
+    <div id="events-upcoming-empty" style="display:none;">
+      <p class="sec-lede">No events this month. The next demo night is on the calendar.</p>
+    </div>
+
+    <h2 class="sec" style="font-size:22px;margin-bottom:12px;">Past events</h2>
+    <div id="events-past" style="display:grid;gap:14px;"></div>
+    <div id="events-past-empty" style="display:none;">
+      <p class="sec-lede">No past events yet.</p>
+    </div>
+  </section>
+
+  <script>
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
+    const withCreds = { credentials: "include" };
+    const esc = (s) => String(s ?? "").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const $ = (id) => document.getElementById(id);
+    const show = (id) => ($(id).style.display = "");
+    const hide = (id) => ($(id).style.display = "none");
+
+    let upcoming = [];
+    let past = [];
+
+    function kindLabel(e) {
+      const n = e.number ? " " + e.number : "";
+      if (e.kind === "demo_night") return "Demo Night" + n;
+      if (e.kind === "public_demo") return "Public demo" + n;
+      if (e.kind === "ama") return "Ask me anything";
+      if (e.kind === "build_session") return "Build session";
+      if (e.kind === "workshop") return "Workshop";
+      return "";
+    }
+
+    function fmtWhen(iso) {
+      return new Date(iso).toLocaleString("en-CA", {
+        timeZone: "America/Toronto",
+        weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+      });
+    }
+
+    function seatsLine(e) {
+      const going = e.rsvp_count || 0;
+      return e.capacity ? going + " going · " + e.capacity + " seats" : going + " going";
+    }
+
+    function cardHtml(e, isPast) {
+      const label = kindLabel(e);
+      const full = e.capacity && (e.rsvp_count || 0) >= e.capacity;
+      const slots = !isPast && e.demo_slots_open > 0
+        ? `<p class="thread-sub" style="margin:0 0 8px;">${esc(e.demo_slots_open)} demo slot${e.demo_slots_open === 1 ? "" : "s"} open</p>`
+        : "";
+      const recap = isPast
+        ? `<p class="thread-sub" style="margin:0 0 8px;">${e.has_recap ? "Recap published" : "No recap yet"}</p>`
+        : "";
+      let action = "";
+      if (!isPast) {
+        if (e.my_rsvp) {
+          action = `<span class="badge">Going</span><button type="button" class="btn btn-ghost btn-sm" data-cancel="${esc(e.slug)}">Cancel RSVP</button>`;
+        } else if (full) {
+          action = `<span class="badge">Full</span>`;
+        } else {
+          action = `<button type="button" class="btn btn-primary btn-sm" data-rsvp="${esc(e.slug)}">RSVP</button>`;
+        }
+      }
+      return `<article class="card" style="padding:18px 20px;">
+        ${label ? `<div class="n">${esc(label)}</div>` : ""}
+        <h3 style="font-size:20px;margin-bottom:4px;"><a href="/events/${esc(e.slug)}">${esc(e.title)}</a></h3>
+        <p class="thread-sub" style="margin:0 0 8px;">${esc(fmtWhen(e.starts_at))}${e.location ? " · " + esc(e.location) : ""}</p>
+        <p class="thread-sub" style="margin:0 0 8px;">${esc(seatsLine(e))}</p>
+        ${slots}${recap}
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <a class="btn btn-secondary btn-sm" href="/events/${esc(e.slug)}">View event</a>${action}
+        </div>
+      </article>`;
+    }
+
+    function renderSection(list, listId, emptyId, isPast) {
+      const box = $(listId);
+      if (!list.length) { hide(listId); show(emptyId); return; }
+      hide(emptyId); show(listId);
+      box.innerHTML = list.map((e) => cardHtml(e, isPast)).join("");
+      box.querySelectorAll("[data-rsvp]").forEach((b) => b.addEventListener("click", () => rsvp(b.dataset.rsvp)));
+      box.querySelectorAll("[data-cancel]").forEach((b) => b.addEventListener("click", () => cancelRsvp(b.dataset.cancel)));
+    }
+
+    function renderAll() {
+      renderSection(upcoming, "events-upcoming", "events-upcoming-empty", false);
+      renderSection(past, "events-past", "events-past-empty", true);
+    }
+
+    function showError(msg) {
+      const e = $("events-error");
+      e.textContent = msg;
+      show("events-error");
+    }
+
+    async function loadEvents() {
+      try {
+        const [up, pa] = await Promise.all([
+          fetch(API_BASE + "/api/events", { ...withCreds }),
+          fetch(API_BASE + "/api/events?when=past", { ...withCreds }),
+        ]);
+        const du = await up.json().catch(() => ({}));
+        const dp = await pa.json().catch(() => ({}));
+        if (!up.ok || !du.ok || !pa.ok || !dp.ok) throw 0;
+        upcoming = du.events || [];
+        past = dp.events || [];
+        renderAll();
+      } catch {
+        showError("Could not load the events. Try again in a moment.");
+      }
+    }
+
+    async function rsvp(slug) {
+      const r = await fetch(API_BASE + `/api/events/${encodeURIComponent(slug)}/my-rsvp`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ guests: 1 }), ...withCreds,
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) {
+        // Deck surface copy: a failed RSVP holds no seat.
+        showError(d.error || "Your RSVP did not save. Your seat is not held.");
+        return;
+      }
+      hide("events-error");
+      await loadEvents();
+    }
+
+    async function cancelRsvp(slug) {
+      const r = await fetch(API_BASE + `/api/events/${encodeURIComponent(slug)}/my-rsvp`, {
+        method: "DELETE", ...withCreds,
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) {
+        showError(d.error || "Could not cancel that RSVP.");
+        return;
+      }
+      hide("events-error");
+      await loadEvents();
+    }
+
+    (async () => {
+      try {
+        const me = await fetch(API_BASE + "/api/auth/me", { headers: { accept: "application/json" }, ...withCreds });
+        const d = await me.json().catch(() => ({}));
+        if (!me.ok || !d.ok) throw 0;
+        hide("events-loading"); hide("events-login"); show("events-app");
+        await loadEvents();
+      } catch {
+        hide("events-loading"); hide("events-app"); show("events-login");
+      }
+    })();
+  </script>
+  </HubShell>
+</Base>

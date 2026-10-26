@@ -46,20 +46,52 @@ function slugify(s: string): string {
 
 /* ================= Public ================= */
 
-/** Upcoming published events, soonest first. */
+/* Hub events read extension (Phase 3 slice 7): the list and detail
+ * responses carry the 0028 columns the public reads used to drop
+ * (kind, number), the open demo slot count, whether a published recap
+ * exists, and, for a signed-in caller, their own RSVP. The public
+ * list keeps its published-only filter; ?when=past lists past
+ * published events, newest first, for the hub past-events section. */
+const EVENT_READ_COLUMNS = `e.id, e.slug, e.title, e.starts_at, e.ends_at,
+  e.location, e.capacity, e.kind, e.number,
+  (SELECT COALESCE(SUM(r.guests), 0) FROM event_rsvps r
+    WHERE r.event_id = e.id AND r.status = 'confirmed') AS rsvp_count,
+  (SELECT COUNT(*) FROM demo_slots d
+    WHERE d.event_id = e.id AND d.status = 'open') AS demo_slots_open,
+  EXISTS (SELECT 1 FROM event_recaps rc
+    WHERE rc.event_id = e.id AND rc.published_at IS NOT NULL) AS has_recap`;
+
+async function attachMyRsvp(DB: any, memberId: string | null, events: any[]) {
+  if (!memberId) return events.map((e) => ({ ...e, my_rsvp: null }));
+  const rows = await DB.prepare(
+    `SELECT event_id, guests, status FROM event_rsvps
+     WHERE user_id = ? AND status = 'confirmed'`
+  )
+    .bind(memberId)
+    .all()
+    .catch(() => ({ results: [] }));
+  const byEvent = new Map<string, any>((rows.results || []).map((r: any) => [r.event_id, r]));
+  return events.map((e) => {
+    const mine = byEvent.get(e.id);
+    return { ...e, my_rsvp: mine ? { status: mine.status, guests: mine.guests } : null };
+  });
+}
+
+/** Published events: upcoming soonest first, or past newest first. */
 app.get("/events", async (c) => {
   const { DB } = c.env;
+  const past = c.req.query("when") === "past";
+  const now = new Date().toISOString();
   const rows = await DB.prepare(
-    `SELECT e.id, e.slug, e.title, e.starts_at, e.ends_at, e.location, e.capacity,
-            (SELECT COALESCE(SUM(r.guests), 0) FROM event_rsvps r
-              WHERE r.event_id = e.id AND r.status = 'confirmed') AS rsvp_count
+    `SELECT ${EVENT_READ_COLUMNS}
      FROM events e
-     WHERE e.status = 'published' AND e.starts_at >= ?
-     ORDER BY e.starts_at ASC LIMIT 50`
+     WHERE e.status = 'published' AND e.starts_at ${past ? "<" : ">="} ?
+     ORDER BY e.starts_at ${past ? "DESC" : "ASC"} LIMIT 50`
   )
-    .bind(new Date().toISOString())
+    .bind(now)
     .all();
-  return c.json({ ok: true, events: rows.results });
+  const memberId = await getUserId(c).catch(() => null);
+  return c.json({ ok: true, events: await attachMyRsvp(DB, memberId, rows.results) });
 });
 
 /** Event detail + RSVP count. */
@@ -67,21 +99,17 @@ app.get("/events/:slug", async (c) => {
   const { DB } = c.env;
   const slug = cleanStr(c.req.param("slug"), 80);
   const ev = await DB.prepare(
-    `SELECT id, slug, title, description_md, starts_at, ends_at, location, capacity, status
-     FROM events WHERE slug = ?`
+    `SELECT ${EVENT_READ_COLUMNS}
+     FROM events e WHERE e.slug = ?`
   )
     .bind(slug)
     .first<any>();
   if (!ev || ev.status !== "published") {
     return c.json({ ok: false, error: "Not found" }, 404);
   }
-  const count = await DB.prepare(
-    `SELECT COALESCE(SUM(guests), 0) AS n FROM event_rsvps
-     WHERE event_id = ? AND status = 'confirmed'`
-  )
-    .bind(ev.id)
-    .first<{ n: number }>();
-  return c.json({ ok: true, event: { ...ev, rsvp_count: count?.n || 0 } });
+  const memberId = await getUserId(c).catch(() => null);
+  const [withMine] = await attachMyRsvp(DB, memberId, [ev]);
+  return c.json({ ok: true, event: withMine });
 });
 
 /** RSVP to an event. One RSVP per email; re-submitting updates it. */
@@ -265,6 +293,136 @@ app.post("/events/:slug/rsvp", async (c) => {
       .catch(() => {});
   }
 
+  return c.json({ ok: true });
+});
+
+/* ================= Member RSVP (Phase 3 slice 7) =================
+ *
+ * The hub events page needs a signed-in RSVP without the public
+ * form's name, email, and Turnstile fields: the session already
+ * proves the member, and the member's name and email come from
+ * their users row. POST confirms (or updates) the member's own
+ * RSVP; DELETE cancels it. Capacity uses the same confirmed-guest
+ * sum and the same post-write oversell guard as the public path,
+ * so the two writers can never disagree about a full event. */
+
+async function memberEvent(c: any) {
+  const memberId = await getUserId(c).catch(() => null);
+  if (!memberId) return { error: c.json({ ok: false, error: "Sign in required." }, 401) };
+  const slug = cleanStr(c.req.param("slug"), 80);
+  const ev = await c.env.DB.prepare(
+    `SELECT id, title, starts_at, capacity FROM events
+     WHERE slug = ? AND status = 'published'`
+  )
+    .bind(slug)
+    .first();
+  if (!ev) return { error: c.json({ ok: false, error: "Event not found." }, 404) };
+  return { memberId, ev };
+}
+
+app.post("/events/:slug/my-rsvp", async (c) => {
+  const { DB } = c.env;
+  const found = await memberEvent(c);
+  if (found.error) return found.error;
+  const { memberId, ev } = found as { memberId: string; ev: any };
+
+  if (!(await checkRateLimitD1(DB, "my-rsvp:" + memberId, 10, 3600))) {
+    return c.json({ ok: false, error: "Too many requests. Please try again later." }, 429);
+  }
+  if (ev.starts_at < new Date().toISOString()) {
+    return c.json({ ok: false, error: "This event has already happened." }, 400);
+  }
+  let data: unknown;
+  try {
+    data = await c.req.json();
+  } catch {
+    data = {};
+  }
+  const guests = isRecord(data) && data.guests !== undefined
+    ? Math.min(Math.max(parseInt(String(data.guests), 10) || 1, 1), 10)
+    : 1;
+
+  const prior = await DB.prepare(
+    "SELECT id, guests, status FROM event_rsvps WHERE event_id = ? AND user_id = ?"
+  )
+    .bind(ev.id, memberId)
+    .first<{ id: string; guests: number; status: string }>()
+    .catch(() => null);
+
+  const current = await DB.prepare(
+    `SELECT COALESCE(SUM(guests), 0) AS n FROM event_rsvps
+     WHERE event_id = ? AND status = 'confirmed' AND id != ?`
+  )
+    .bind(ev.id, prior?.id ?? "")
+    .first<{ n: number }>();
+  if (ev.capacity && (current?.n || 0) + guests > ev.capacity) {
+    return c.json({ ok: false, error: "Sorry - this event is at capacity." }, 400);
+  }
+
+  if (!prior) {
+    const user = await DB.prepare("SELECT name, email FROM users WHERE id = ?")
+      .bind(memberId)
+      .first<{ name: string; email: string }>()
+      .catch(() => null);
+    if (!user || !user.email) {
+      return c.json({ ok: false, error: "Sign in required." }, 401);
+    }
+    await DB.prepare(
+      `INSERT INTO event_rsvps (id, event_id, user_id, name, email, guests, status)
+       VALUES (?, ?, ?, ?, ?, ?, 'confirmed')`
+    )
+      .bind(crypto.randomUUID(), ev.id, memberId, user.name, user.email, guests)
+      .run();
+  } else {
+    await DB.prepare(
+      `UPDATE event_rsvps SET guests = ?, status = 'confirmed' WHERE id = ?`
+    )
+      .bind(guests, prior.id)
+      .run();
+  }
+
+  // Post-write oversell guard, mirroring the public path.
+  if (ev.capacity) {
+    const total = await DB.prepare(
+      `SELECT COALESCE(SUM(guests), 0) AS n FROM event_rsvps
+       WHERE event_id = ? AND status = 'confirmed'`
+    )
+      .bind(ev.id)
+      .first<{ n: number }>()
+      .catch(() => null);
+    if (total && total.n > ev.capacity) {
+      if (prior) {
+        await DB.prepare("UPDATE event_rsvps SET guests = ?, status = ? WHERE id = ?")
+          .bind(prior.guests, prior.status, prior.id)
+          .run()
+          .catch(() => {});
+      } else {
+        await DB.prepare("DELETE FROM event_rsvps WHERE event_id = ? AND user_id = ?")
+          .bind(ev.id, memberId)
+          .run()
+          .catch(() => {});
+      }
+      return c.json({ ok: false, error: "Sorry - this event is at capacity." }, 400);
+    }
+  }
+
+  return c.json({ ok: true, my_rsvp: { status: "confirmed", guests } });
+});
+
+app.delete("/events/:slug/my-rsvp", async (c) => {
+  const { DB } = c.env;
+  const found = await memberEvent(c);
+  if (found.error) return found.error;
+  const { memberId, ev } = found as { memberId: string; ev: any };
+  const res = await DB.prepare(
+    `UPDATE event_rsvps SET status = 'cancelled'
+     WHERE event_id = ? AND user_id = ? AND status = 'confirmed'`
+  )
+    .bind(ev.id, memberId)
+    .run();
+  if (!res.meta.changes) {
+    return c.json({ ok: false, error: "You have no RSVP for this event." }, 404);
+  }
   return c.json({ ok: true });
 });
 
