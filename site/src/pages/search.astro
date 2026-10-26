@@ -14,7 +14,7 @@ import Base from "../layouts/Base.astro";
     <div class="kicker">Search</div>
     <h1 class="sec" style="font-size:clamp(34px,5.4vw,56px);margin-bottom:18px;">Find it.</h1>
     <p class="sec-lede">
-      Search across our blog posts, academy lessons, and pages.
+      Search across our blog posts, academy lessons, pages, and the member directory.
     </p>
   </section>
 
@@ -47,6 +47,10 @@ import Base from "../layouts/Base.astro";
       <div class="kicker">Academy lessons</div>
       <div id="lessonsList"></div>
     </div>
+    <div id="resultsPeople" style="display:none;margin-top:32px;">
+      <div class="kicker">People</div>
+      <div id="peopleList"></div>
+    </div>
     <div id="resultsPages" style="display:none;margin-top:32px;">
       <div class="kicker">Pages</div>
       <div id="pagesList"></div>
@@ -65,6 +69,8 @@ import Base from "../layouts/Base.astro";
     const postsList = document.getElementById('postsList');
     const lessonsList = document.getElementById('lessonsList');
     const pagesList = document.getElementById('pagesList');
+    const peopleWrap = document.getElementById('resultsPeople');
+    const peopleList = document.getElementById('peopleList');
     const btn = document.getElementById('searchBtn');
 
     const esc = (s) => String(s || '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -101,6 +107,7 @@ import Base from "../layouts/Base.astro";
       postsWrap.style.display = 'none';
       lessonsWrap.style.display = 'none';
       pagesWrap.style.display = 'none';
+      peopleWrap.style.display = 'none';
       if (q.length < 2) {
         hint.style.display = 'block';
         status.style.display = 'none';
@@ -111,21 +118,34 @@ import Base from "../layouts/Base.astro";
       status.textContent = 'Searching\u2026';
       btn.disabled = true;
       try {
-        const [apiRes, idx] = await Promise.all([
+        const [apiRes, idx, peopleData] = await Promise.all([
           fetch(API_BASE + '/api/search?q=' + encodeURIComponent(q), {
             headers: { 'accept': 'application/json' },
           }),
           loadPagesIndex(),
+          // People section: signed-in members only. A 401 (or any
+          // failure) hides the section instead of breaking the search.
+          fetch(API_BASE + '/api/people?q=' + encodeURIComponent(q), {
+            credentials: 'include',
+            headers: { 'accept': 'application/json' },
+          }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
         ]);
         const data = await apiRes.json().catch(() => ({}));
         if (!apiRes.ok || !data.ok) throw new Error(data.error || 'search failed');
         const results = data.results || [];
         const posts = results.filter((r) => r.type === 'post');
         const lessons = results.filter((r) => r.type === 'lesson');
+        const people = (peopleData && peopleData.ok && Array.isArray(peopleData.people))
+          ? peopleData.people.map((p) => ({
+              title: p.display_name,
+              url: p.profile_url,
+              excerpt: [p.building_now, (p.skills || []).map((s) => s.label).join(', ')].filter(Boolean).join(' · '),
+            }))
+          : [];
         // CMS pages: substring match on title + excerpt (all are public).
         const needle = q.toLowerCase();
         const pageHits = idx.filter((p) => p._hay.includes(needle));
-        const total = results.length + pageHits.length;
+        const total = results.length + pageHits.length + people.length;
         if (total === 0) {
           status.textContent = 'No results for \u201c' + q + '\u201d. Try different words.';
         } else {
@@ -138,6 +158,10 @@ import Base from "../layouts/Base.astro";
         if (lessons.length) {
           lessonsList.innerHTML = lessons.map(card).join('');
           lessonsWrap.style.display = 'block';
+        }
+        if (people.length) {
+          peopleList.innerHTML = people.map(card).join('');
+          peopleWrap.style.display = 'block';
         }
         if (pageHits.length) {
           pagesList.innerHTML = pageHits.map(card).join('');
