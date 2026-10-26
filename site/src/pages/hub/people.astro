@@ -1,0 +1,211 @@
+---
+/* Member hub people (Phase 3 slice 9, deck section 23 people screen).
+ * The directory lists only members who choose to be listed, sorted by
+ * name, with no ranking and no member count on a card. Each card shows
+ * the member's project (Building), what they can help with, what they
+ * are looking for, and skill badges; Message opens the 1:1 DM through
+ * the shared messageMember helper (the same button profile pages use).
+ * Skill chips filter by the curated skill list; the search box matches
+ * names, projects, help, and skills through /api/people. A field a
+ * member set to only-me never reaches the card, because the API omits
+ * it server-side. Signed-out visitors see the sign-in prompt.
+ */
+import Base from "../../layouts/Base.astro";
+import HubShell from "../../components/HubShell.astro";
+---
+
+<Base
+  title="People - Brimwood Innovation"
+  description="Members who choose to be listed. Sorted by name. No ranking."
+  path="/hub/people"
+>
+  <HubShell current="people">
+  <section class="block" id="people-loading">
+    <div class="kicker">Members</div>
+    <p class="sec-lede">Checking your session…</p>
+  </section>
+
+  <section class="block" id="people-login" style="display:none;text-align:center;padding:48px 0;">
+    <div class="kicker">Members</div>
+    <h1 class="sec" style="font-size:clamp(28px,4vw,40px);margin-bottom:18px;">Sign in to see the people.</h1>
+    <p class="sec-lede" style="margin-inline:auto;"><a href="/members">Sign in</a> to continue.</p>
+  </section>
+
+  <section class="block" id="people-app" style="display:none;max-width:860px;">
+    <div class="kicker">Members</div>
+    <h1 class="sec" style="font-size:clamp(28px,4vw,40px);margin-bottom:8px;">People.</h1>
+    <p class="sec-lede" style="margin-bottom:22px;">Members who choose to be listed. Sorted by name. No ranking.</p>
+    <form id="people-search-form" role="search" style="margin-bottom:16px;">
+      <label for="people-q">Search people</label>
+      <div style="display:flex;gap:12px;">
+        <input
+          id="people-q"
+          name="q"
+          type="search"
+          placeholder="Try a name, a project, or a skill…"
+          autocomplete="off"
+          maxlength="100"
+          style="flex:1;"
+        />
+        <button class="btn btn-secondary btn-sm" type="submit">Search</button>
+      </div>
+    </form>
+    <div id="people-skills" role="group" aria-label="Filter by skill" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;"></div>
+    <p id="people-count" class="thread-sub" role="status" style="margin:0 0 16px;"></p>
+    <p id="people-error" class="thread-sub" style="display:none;color:var(--brimwood-red, #b42318);"></p>
+    <div id="people-list" style="display:grid;gap:14px;"></div>
+    <div id="people-empty" style="display:none;">
+      <p class="sec-lede" id="people-empty-text"></p>
+    </div>
+  </section>
+
+  <script>
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
+    const withCreds = { credentials: "include" };
+    const esc = (s) => String(s ?? "").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const $ = (id) => document.getElementById(id);
+    const show = (id) => ($(id).style.display = "");
+    const hide = (id) => ($(id).style.display = "none");
+
+    let skill = "";
+    let q = "";
+    let tags = [];
+    let debounce = null;
+
+    function initials(name) {
+      const parts = String(name || "Member").trim().split(/\s+/).filter(Boolean);
+      if (!parts.length) return "M";
+      return (parts[0][0] + (parts[1]?.[0] || "")).toUpperCase();
+    }
+
+    function avatar(p) {
+      if (p.avatar_url) return `<img src="${esc(p.avatar_url)}" alt="${esc(p.display_name)}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;flex:none;" />`;
+      return `<span role="img" aria-label="${esc(p.display_name)}" style="width:64px;height:64px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex:none;background:#0C9463;color:#F6F8F7;font-weight:700;font-size:24px;">${esc(initials(p.display_name))}</span>`;
+    }
+
+    function fieldLine(label, value) {
+      if (!value) return "";
+      return `<p style="margin:6px 0;"><b>${label}:</b> ${esc(value)}</p>`;
+    }
+
+    function renderSkills() {
+      const wrap = $("people-skills");
+      const chips = [{ slug: "", label: "All" }, ...tags];
+      wrap.innerHTML = chips.map((t) => `<button type="button" class="btn ${skill === t.slug ? "btn-primary" : "btn-ghost"} btn-sm" data-skill="${esc(t.slug)}" aria-pressed="${skill === t.slug}">${esc(t.label)}</button>`).join("");
+      wrap.querySelectorAll("[data-skill]").forEach((b) => b.addEventListener("click", () => {
+        skill = b.dataset.skill || "";
+        renderSkills();
+        loadPeople();
+      }));
+    }
+
+    function renderList(people) {
+      const list = $("people-list");
+      const empty = $("people-empty");
+      const count = $("people-count");
+      count.textContent = `${people.length} ${people.length === 1 ? "member" : "members"} shown. Members can leave the directory in Settings.`;
+      if (!people.length) {
+        hide("people-list");
+        show("people-empty");
+        $("people-empty-text").textContent = skill
+          ? "No members with this skill. Try another skill."
+          : q
+            ? "No members match that search. Try different words."
+            : "No members are listed yet. Members who choose to be listed appear here.";
+        return;
+      }
+      hide("people-empty");
+      show("people-list");
+      list.innerHTML = people.map((p) => `
+        <article class="card" style="padding:18px 20px;">
+          <div style="display:flex;gap:14px;align-items:flex-start;">
+            ${avatar(p)}
+            <div style="min-width:0;">
+              <h2 style="font-size:20px;margin-bottom:4px;"><a href="${esc(p.profile_url)}">${esc(p.display_name)}</a>${p.badge ? ` <span class="badge">${esc(p.badge)}</span>` : ""}</h2>
+              ${p.username ? `<p class="thread-sub" style="margin:0;">@${esc(p.username)}</p>` : ""}
+            </div>
+          </div>
+          <div style="margin-top:12px;">
+            ${fieldLine("Building", p.building_now)}
+            ${fieldLine("Can help with", p.can_help_with)}
+            ${fieldLine("Looking for", p.looking_for)}
+          </div>
+          ${(p.skills || []).length ? `<p style="margin:12px 0 0;display:flex;gap:8px;flex-wrap:wrap;">${p.skills.map((s) => `<span class="badge">${esc(s.label)}</span>`).join("")}</p>` : ""}
+          <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
+            <a class="btn btn-secondary btn-sm" href="${esc(p.profile_url)}">View profile</a>
+            <button type="button" class="btn btn-primary btn-sm" data-message="${esc(p.id)}" aria-label="Message ${esc(p.display_name)}">Message</button>
+          </div>
+        </article>`).join("");
+      list.querySelectorAll("[data-message]").forEach((b) => b.addEventListener("click", () => {
+        if (window.Brimwood && window.Brimwood.messageMember) {
+          window.Brimwood.messageMember(b.dataset.message);
+        } else {
+          location.href = "/messages";
+        }
+      }));
+    }
+
+    async function loadPeople() {
+      const params = new URLSearchParams();
+      if (skill) params.set("skill", skill);
+      if (q) params.set("q", q);
+      const suffix = params.toString();
+      try {
+        const r = await fetch(API_BASE + "/api/people" + (suffix ? "?" + suffix : ""), { ...withCreds });
+        const d = await r.json();
+        if (!r.ok || !d.ok) throw 0;
+        hide("people-error");
+        renderList(d.people || []);
+      } catch (e) {
+        const err = $("people-error");
+        err.textContent = "The directory is unavailable right now. Please try again shortly.";
+        show("people-error");
+      }
+    }
+
+    async function init() {
+      try {
+        const r = await fetch(API_BASE + "/api/people", { ...withCreds });
+        if (r.status === 401) {
+          hide("people-loading");
+          show("people-login");
+          return;
+        }
+        const d = await r.json();
+        if (!r.ok || !d.ok) throw 0;
+        hide("people-loading");
+        show("people-app");
+        renderList(d.people || []);
+        try {
+          const tr = await fetch(API_BASE + "/api/skill-tags", { headers: { accept: "application/json" } });
+          const td = await tr.json();
+          if (tr.ok && td.ok && Array.isArray(td.tags)) tags = td.tags;
+        } catch (e) { /* chips stay at All when the tag list fails */ }
+        renderSkills();
+      } catch (e) {
+        hide("people-loading");
+        show("people-app");
+        const err = $("people-error");
+        err.textContent = "The directory is unavailable right now. Please try again shortly.";
+        show("people-error");
+        renderSkills();
+      }
+    }
+
+    $("people-search-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      q = $("people-q").value.trim();
+      loadPeople();
+    });
+    $("people-q").addEventListener("input", () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        q = $("people-q").value.trim();
+        loadPeople();
+      }, 300);
+    });
+
+    init();
+  </script>
+  </HubShell>
+</Base>
