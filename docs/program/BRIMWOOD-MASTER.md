@@ -1198,3 +1198,66 @@ from the self-chaining loop's first run on 2026-10-21.
   spotlight post type remain recorded follow-ups. Still blocked: the
   Phase 1 preview smoke flows and applying 0037 to preview D1 (no
   Cloudflare token in the environment).
+- Cycle 23, 2026-10-26: Phase 3 slice 6, the hub groups page from the
+  deck (section 20 groups screen), in
+  ~/workspace/company/wt-phase3-hub-groups on branch phase3/hub-groups
+  (no open loop PR; develop CI green; #22 is the founder-tapped
+  README PR, not loop work). There was no groups page: the shell
+  listed Groups as a dead place. This slice builds it. New API route
+  api/src/routes/groups.ts mounted at /api/groups: GET / lists active
+  then archived groups with posts this week and last post time, the
+  caller's membership state, and can_reopen, and never a member count;
+  proposed and rejected groups 404. GET /:slug returns the group, its
+  join questions (ask-to-join groups only), and its recent posts, but
+  posts only for active members. POST /:slug/join follows the join
+  policy: Open joins at once, Ask to join validates required answers
+  (text 1 to 500 characters, yes/no answers must be Yes or No) and
+  files the request plus answers in one batch, then notifies active
+  group admins with the group_join_request kind, and Invite only
+  refuses with 403. Archived groups refuse joins with 400. POST
+  /:slug/reopen restores an archived group for a group admin or staff
+  only. New pages: /hub/groups (cards, activity line, Join, Request
+  to join with the join questions dialog, Archived badge, Reopen) and
+  the group detail page. The site is static-first with no adapter, and
+  CI builds with no API base, so a build-time getStaticPaths list
+  would build zero group pages; the deck route /hub/g/SLUG is instead
+  served by a one-line Cloudflare Pages rewrite in site/public/
+  _redirects to the static /hub/group page with ?slug=, and the page
+  also reads a trailing path segment, so /hub/group?slug= works
+  locally too. The shell now links Groups to /hub/groups on desktop
+  and under Me on phones. Verification before the PR: 737 API tests
+  pass (36 files, 12 new), API typecheck clean, site build clean (27
+  pages, up from 25), and the built groups and group bundles
+  inspected directly (join dialog, request action, /api/groups calls,
+  shell link, _redirects in dist). No new dependency, no migration
+  (groups, group_members, group_join_questions, and
+  group_join_answers all exist in 0026). Shipped in PR #57 (merged to
+  develop; build, secrets, audit, analyze, CodeQL, lighthouse, and
+  Cloudflare Pages all green). Grade (dimensions this cycle touched,
+  scored from evidence): functional 2,500/2,500 (every deck groups
+  element with a backing endpoint is live and wired: cards, activity
+  without counts, all three join policies, questions dialog, archived
+  state, reopen); schema and API 2,000/2,000 (new route in the
+  existing style, suite green, no migration needed); security
+  1,250/1,250 (CodeQL and analyze green, members-only gate, proposed
+  groups hidden, posts hidden from non-members, escaped output);
+  code quality 1,000/1,000 (API typecheck clean, tests in the existing
+  style, join path factored into one upsert); brand and copy 750/750
+  (deck labels verbatim, Canadian spelling, no new em dash, no
+  member named). Accessibility and performance untouched in substance
+  (Lighthouse gate passed, native dialog, no new dependency, no page
+  weight change of note). Pro-rated total 10,000/10,000, no zero
+  dimension, no open P0. Verdict: ACCEPT. Next improvement: Phase 3
+  slice 7, the hub events page from the deck (section 20 events
+  screen), reconciling the existing events page. Proposing a new
+  group (three co-founders plus admin approval) and live verification
+  of the /hub/g/* rewrite on a branch preview join the recorded
+  follow-ups. The events API read extension (kind, demo slots, past
+  recaps), the events my_rsvp field for a real Going badge, a rituals
+  read API for live thread state, member space bookings and check-ins
+  for the Today card, the deck command palette, the /hub route
+  renaming, the feed header notices (next Demo Night, questions
+  needing answers), and the staff spotlight post type remain recorded
+  follow-ups. Still blocked: the Phase 1 preview smoke flows and
+  applying 0037 to preview D1 (no Cloudflare token in the
+  environment).

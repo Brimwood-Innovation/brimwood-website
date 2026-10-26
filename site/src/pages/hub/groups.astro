@@ -1,0 +1,223 @@
+---
+/* Member hub groups (Phase 3 slice 6, deck section 20 groups screen).
+ * Each card shows recent activity, never a member count. Join follows
+ * the group join policy: Open joins at once, Ask to join opens the
+ * join questions dialog and waits for a group admin, Invite only
+ * cannot be joined here. Archived groups keep their posts; a group
+ * admin or staff can reopen one.
+ * All data loads client-side from /api/groups; signed-out visitors see
+ * the sign-in prompt.
+ */
+import Base from "../../layouts/Base.astro";
+import HubShell from "../../components/HubShell.astro";
+---
+
+<Base
+  title="Groups - Brimwood Innovation"
+  description="Member groups at Brimwood Innovation. Recent activity, not headcounts."
+  path="/hub/groups"
+>
+  <HubShell current="groups">
+  <section class="block" id="groups-loading">
+    <div class="kicker">Members</div>
+    <p class="sec-lede">Checking your session…</p>
+  </section>
+
+  <section class="block" id="groups-login" style="display:none;text-align:center;padding:48px 0;">
+    <div class="kicker">Members</div>
+    <h1 class="sec" style="font-size:clamp(28px,4vw,40px);margin-bottom:18px;">Sign in to see the groups.</h1>
+    <p class="sec-lede" style="margin-inline:auto;"><a href="/members">Sign in</a> to continue.</p>
+  </section>
+
+  <section class="block" id="groups-app" style="display:none;max-width:860px;">
+    <div class="kicker">Members</div>
+    <h1 class="sec" style="font-size:clamp(28px,4vw,40px);margin-bottom:8px;">Groups.</h1>
+    <p class="sec-lede" style="margin-bottom:22px;">Each card shows recent activity, not a member count.</p>
+    <p id="groups-error" class="thread-sub" style="display:none;color:var(--brimwood-red, #b42318);"></p>
+    <div id="groups-list" style="display:grid;gap:14px;"></div>
+    <div id="groups-empty" style="display:none;">
+      <p class="sec-lede">No groups yet. Check back after the next Demo Night.</p>
+    </div>
+  </section>
+
+  <dialog id="join-dialog" aria-labelledby="join-dialog-title" style="max-width:520px;width:calc(100% - 32px);border:1px solid rgba(18,26,22,0.14);border-radius:12px;padding:22px;">
+    <h2 id="join-dialog-title" style="font-size:22px;margin-bottom:6px;">Join a group</h2>
+    <p id="join-dialog-sub" class="thread-sub" style="margin-bottom:16px;">The group admin reads your answers. You join when they approve.</p>
+    <form id="join-form" method="dialog">
+      <div id="join-questions" style="display:grid;gap:14px;"></div>
+      <p id="join-error" class="thread-sub" style="display:none;color:var(--brimwood-red, #b42318);margin-top:10px;"></p>
+      <div style="display:flex;gap:8px;margin-top:18px;">
+        <button type="submit" class="btn btn-primary btn-sm">Send request</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="join-cancel">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
+    const withCreds = { credentials: "include" };
+    const esc = (s) => String(s ?? "").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const $ = (id) => document.getElementById(id);
+    const show = (id) => ($(id).style.display = "");
+    const hide = (id) => ($(id).style.display = "none");
+
+    let groups = [];
+    let joinSlug = null;
+
+    function relTime(iso) {
+      const t = new Date(iso).getTime();
+      const diff = Date.now() - t;
+      if (diff < 60e3) return "now";
+      if (diff < 3600e3) return Math.floor(diff / 60e3) + "m ago";
+      if (diff < 864e5) return Math.floor(diff / 3600e3) + "h ago";
+      return new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+    }
+
+    function activityLine(g) {
+      if (g.status === "archived") return "Archived after 30 quiet days. All posts are kept.";
+      const week = g.posts_this_week === 1 ? "1 post this week" : g.posts_this_week + " posts this week";
+      if (g.last_post_at) return week + " · last post " + relTime(g.last_post_at);
+      return g.posts_this_week > 0 ? week : "No posts yet";
+    }
+
+    function actionFor(g) {
+      if (g.my_state === "active") return `<a class="btn btn-secondary btn-sm" href="/hub/g/${esc(g.slug)}">View group</a>`;
+      if (g.my_state === "requested") return `<button type="button" class="btn btn-ghost btn-sm" disabled>Request sent</button>`;
+      if (g.status === "archived") {
+        const reopen = g.can_reopen ? `<button type="button" class="btn btn-ghost btn-sm" data-reopen="${esc(g.slug)}">Reopen</button>` : "";
+        return `<a class="btn btn-secondary btn-sm" href="/hub/g/${esc(g.slug)}">View group</a>${reopen}`;
+      }
+      if (g.join_policy === "open") return `<button type="button" class="btn btn-primary btn-sm" data-join="${esc(g.slug)}">Join</button>`;
+      if (g.join_policy === "request") return `<button type="button" class="btn btn-primary btn-sm" data-request="${esc(g.slug)}">Request to join</button>`;
+      return `<span class="thread-sub">Invite only</span>`;
+    }
+
+    function renderList() {
+      const list = $("groups-list");
+      if (!groups.length) { hide("groups-list"); show("groups-empty"); return; }
+      hide("groups-empty"); show("groups-list");
+      list.innerHTML = groups.map((g) => `
+        <article class="card" style="padding:18px 20px;">
+          <div style="display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;">
+            <div>
+              <h2 style="font-size:20px;margin-bottom:4px;"><a href="/hub/g/${esc(g.slug)}">${esc(g.name)}</a></h2>
+              <p class="thread-sub" style="margin:0 0 8px;">${esc(g.purpose)}</p>
+              <p class="thread-sub" style="margin:0;">${esc(activityLine(g))}</p>
+            </div>
+            ${g.status === "archived" ? `<span class="badge">Archived</span>` : ""}
+          </div>
+          <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">${actionFor(g)}</div>
+        </article>`).join("");
+      list.querySelectorAll("[data-join]").forEach((b) => b.addEventListener("click", () => joinOpen(b.dataset.join)));
+      list.querySelectorAll("[data-request]").forEach((b) => b.addEventListener("click", () => openJoinDialog(b.dataset.request)));
+      list.querySelectorAll("[data-reopen]").forEach((b) => b.addEventListener("click", () => reopenGroup(b.dataset.reopen)));
+    }
+
+    async function loadGroups() {
+      try {
+        const r = await fetch(API_BASE + "/api/groups", { ...withCreds });
+        const d = await r.json();
+        if (!r.ok || !d.ok) throw 0;
+        groups = d.groups || [];
+        renderList();
+      } catch {
+        const e = $("groups-error");
+        e.textContent = "Could not load the groups. Try again in a moment.";
+        show("groups-error");
+      }
+    }
+
+    async function joinOpen(slug) {
+      const r = await fetch(API_BASE + `/api/groups/${encodeURIComponent(slug)}/join`, { method: "POST", ...withCreds });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) {
+        const e = $("groups-error");
+        e.textContent = d.error || "Could not join that group.";
+        show("groups-error");
+        return;
+      }
+      await loadGroups();
+    }
+
+    async function openJoinDialog(slug) {
+      joinSlug = slug;
+      const g = groups.find((x) => x.slug === slug);
+      $("join-dialog-title").textContent = "Join " + (g ? g.name : "this group");
+      try {
+        const r = await fetch(API_BASE + `/api/groups/${encodeURIComponent(slug)}`, { ...withCreds });
+        const d = await r.json();
+        if (!r.ok || !d.ok) throw 0;
+        const box = $("join-questions");
+        box.innerHTML = (d.questions || []).map((q) => {
+          if (q.kind === "yes_no") {
+            return `<fieldset style="border:0;padding:0;margin:0;"><legend style="font-weight:600;margin-bottom:6px;">${esc(q.prompt)}</legend>
+              <label style="margin-right:14px;"><input type="radio" name="q-${esc(q.id)}" value="Yes" ${q.required ? "required" : ""} /> Yes</label>
+              <label><input type="radio" name="q-${esc(q.id)}" value="No" /> No</label></fieldset>`;
+          }
+          return `<label style="display:block;font-weight:600;">${esc(q.prompt)}
+            <textarea name="q-${esc(q.id)}" rows="2" maxlength="500" style="display:block;width:100%;margin-top:6px;font:inherit;font-weight:400;padding:8px 10px;border:1px solid rgba(18,26,22,0.14);border-radius:8px;" ${q.required ? "required" : ""}></textarea></label>`;
+        }).join("");
+        hide("join-error");
+        $("join-dialog").showModal();
+      } catch {
+        const e = $("groups-error");
+        e.textContent = "Could not open the join questions. Try again in a moment.";
+        show("groups-error");
+      }
+    }
+
+    async function reopenGroup(slug) {
+      const r = await fetch(API_BASE + `/api/groups/${encodeURIComponent(slug)}/reopen`, { method: "POST", ...withCreds });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) {
+        const e = $("groups-error");
+        e.textContent = d.error || "Could not reopen that group.";
+        show("groups-error");
+        return;
+      }
+      await loadGroups();
+    }
+
+    $("join-cancel").addEventListener("click", () => $("join-dialog").close());
+    $("join-form").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      if (!joinSlug) return;
+      const r = await fetch(API_BASE + `/api/groups/${encodeURIComponent(joinSlug)}`, { ...withCreds });
+      const d = await r.json().catch(() => ({}));
+      const answers = (d.questions || []).map((q) => {
+        const field = document.querySelector(`[name="q-${CSS.escape(q.id)}"]`);
+        let value = "";
+        if (q.kind === "yes_no") {
+          const picked = document.querySelector(`input[name="q-${CSS.escape(q.id)}"]:checked`);
+          value = picked ? picked.value : "";
+        } else if (field) value = field.value;
+        return { question_id: q.id, answer: value };
+      });
+      const res = await fetch(API_BASE + `/api/groups/${encodeURIComponent(joinSlug)}/join`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ answers }), ...withCreds,
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok || !out.ok) {
+        const e = $("join-error");
+        e.textContent = out.error || "Could not send that request.";
+        show("join-error");
+        return;
+      }
+      $("join-dialog").close();
+      await loadGroups();
+    });
+
+    (async () => {
+      try {
+        const me = await fetch(API_BASE + "/api/auth/me", { headers: { accept: "application/json" }, ...withCreds });
+        const d = await me.json().catch(() => ({}));
+        if (!me.ok || !d.ok) throw 0;
+        hide("groups-loading"); hide("groups-login"); show("groups-app");
+        await loadGroups();
+      } catch {
+        hide("groups-loading"); hide("groups-app"); show("groups-login");
+      }
+    })();
+  </script>
+  </HubShell>
+</Base>
