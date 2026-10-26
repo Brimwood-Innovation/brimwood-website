@@ -1261,3 +1261,65 @@ from the self-chaining loop's first run on 2026-10-21.
   follow-ups. Still blocked: the Phase 1 preview smoke flows and
   applying 0037 to preview D1 (no Cloudflare token in the
   environment).
+- Cycle 24, 2026-10-26: Phase 3 slice 7, the hub events page from the
+  deck (section 20 events screen), in
+  ~/workspace/company/wt-phase3-hub-events on branch phase3/hub-events
+  (no open loop PR; develop CI green; #22 is the founder-tapped
+  README PR, not loop work). There was no hub events page: the shell
+  listed Events as a link to the public index. This slice builds it.
+  API: GET /api/events and GET /api/events/:slug now carry the 0028
+  columns the public reads used to drop (kind, number), the open demo
+  slot count, and whether a published recap exists; ?when=past lists
+  past published events, newest first, for the past-events section.
+  Both reads attach my_rsvp for a signed-in caller (null for guests).
+  New member RSVP endpoints: POST /api/events/:slug/my-rsvp confirms
+  (or updates) the member's own RSVP with their users-row name and
+  email, no Turnstile and no public form fields, with the same
+  capacity sum and post-write oversell guard as the public path;
+  DELETE /api/events/:slug/my-rsvp cancels it. The public RSVP path
+  is untouched. New page /hub/events in the HubShell (members-only
+  gate, same pattern as groups): Upcoming cards with the kind label
+  (Demo Night 42), when line in America/Toronto, seats line, open
+  demo slots, a Going badge with Cancel for the caller's own RSVP,
+  an RSVP button, or Full; past cards with a Recap published note or
+  No recap yet; every card links to its /events/SLUG page, per the
+  deck route map. The shell now links Events to /hub/events on
+  desktop and under Me on phones; the public /events index stays.
+  Em dashes scrubbed from the touched files. Verification before
+  the PR: 746 API tests pass (36 files, 9 new: past list shape and
+  order, my_rsvp attach on list and detail, member RSVP 401, 404,
+  past-event 400, insert with member name and email, guest clamp and
+  full-event refusal, update in place, cancel and no-RSVP 404), API
+  typecheck clean, site build clean (28 pages, up from 27), and the
+  built /hub/events bundle inspected directly (my-rsvp calls, shell
+  link). No new dependency, no migration (kind, number, demo_slots,
+  event_recaps, and event_rsvps.user_id all exist in 0028). Shipped
+  in PR #58 (merged to develop; build, secrets, audit, analyze,
+  CodeQL, lighthouse, and Cloudflare Pages all green). Grade
+  (dimensions this cycle touched, scored from evidence): functional
+  2,500/2,500 (every deck events element with a backing endpoint is
+  live and wired: upcoming list, Going badge, RSVP and cancel, demo
+  slots, past list, recap flag); schema and API 2,000/2,000 (read
+  extension in the existing style, member endpoints mirror the
+  public capacity rules, suite green, no migration needed); security
+  1,250/1,250 (CodeQL and analyze green, members-only gate, RSVP
+  writes gated on the session user, escaped output); code quality
+  1,000/1,000 (API typecheck clean, tests in the existing style,
+  member lookup factored into one helper); brand and copy 750/750
+  (deck labels and surface copy, Canadian spelling, no new em dash,
+  no member named). Accessibility and performance untouched in
+  substance (Lighthouse gate passed, no new dependency, no page
+  weight change of note). Pro-rated total 10,000/10,000, no zero
+  dimension, no open P0. Verdict: ACCEPT. Next improvement: Phase 3
+  slice 8, the hub space page from the deck (section 20 space
+  screen), reconciling the existing space surface. Proposing a new
+  group (three co-founders plus admin approval), live verification
+  of the /hub/g/* rewrite on a branch preview, a rituals read API
+  for live thread state, member space bookings and check-ins for the
+  Today card, the deck command palette, the /hub route renaming, the
+  feed header notices (next Demo Night, questions needing answers),
+  and the staff spotlight post type remain recorded follow-ups. The
+  events API read extension and the events my_rsvp field close with
+  this slice. Still blocked: the Phase 1 preview smoke flows and
+  applying 0037 to preview D1 (no Cloudflare token in the
+  environment).

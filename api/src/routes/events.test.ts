@@ -648,3 +648,134 @@ describe("event room holds (Phase 1 item 20)", () => {
     expect(env.DB.calls.some((c) => /space_bookings/i.test(c.sql))).toBe(false);
   });
 });
+
+describe("hub events (Phase 3 slice 7)", () => {
+  const MEMBER = { id: "member-1", name: "Ada", email: "ada@example.com", role: "member", status: "active" };
+
+  function hubEnv(opts: {
+    event?: any; prior?: any; sum?: number; list?: any[]; mine?: any[]; cancelChanges?: number;
+  } = {}) {
+    const env = mockEnv();
+    env.DB.handler = (sql) => {
+      if (/slug\s*=\s*\?/i.test(sql)) return { row: "event" in opts ? opts.event : EV };
+      if (/select\s+event_id,\s*guests,\s*status/i.test(sql)) return { results: opts.mine ?? [] };
+      // Cancel UPDATE first: it also contains the event_id/user_id WHERE
+      // clause, so the prior-row branch below must not claim it.
+      if (/update\s+event_rsvps\s+set\s+status\s*=\s*'cancelled'/i.test(sql)) return { changes: opts.cancelChanges ?? 1 };
+      if (/where\s+event_id\s*=\s*\?\s+and\s+user_id\s*=\s*\?/i.test(sql)) return { row: opts.prior ?? null };
+      if (/sum\(guests\)/i.test(sql)) return { row: { n: opts.sum ?? 0 } };
+      if (/from\s+users/i.test(sql)) return { row: MEMBER };
+      if (/from\s+events/i.test(sql)) return { results: opts.list ?? [] };
+      return undefined;
+    };
+    return env;
+  }
+
+  it("GET /events?when=past lists past published events, newest first", async () => {
+    const env = mockEnv();
+    let seen = "";
+    env.DB.handler = (sql) => {
+      seen = sql;
+      return { results: [] };
+    };
+    const res = await app.request("/events?when=past", {}, env as any);
+    expect(res.status).toBe(200);
+    expect(seen).toMatch(/status\s*=\s*'published'/);
+    expect(seen).toMatch(/starts_at\s*</);
+    expect(seen).toMatch(/ORDER BY e\.starts_at DESC/);
+  });
+
+  it("GET /events attaches the caller's RSVP and leaves guests at null", async () => {
+    const row = { ...EV, kind: "demo_night", number: 42, demo_slots_open: 3, has_recap: 0 };
+    const env = hubEnv({ list: [row], mine: [{ event_id: "ev-1", guests: 2, status: "confirmed" }] });
+    const h = memberSession(env, "member-1");
+    const res = await app.request("/events", { headers: h }, env as any);
+    const d: any = await res.json();
+    expect(res.status).toBe(200);
+    expect(d.events[0].kind).toBe("demo_night");
+    expect(d.events[0].number).toBe(42);
+    expect(d.events[0].demo_slots_open).toBe(3);
+    expect(d.events[0].my_rsvp).toEqual({ status: "confirmed", guests: 2 });
+  });
+
+  it("GET /events/:slug carries kind, demo slots, recap flag, and my RSVP", async () => {
+    const row = { ...EV, status: "published", kind: "demo_night", number: 42, demo_slots_open: 2, has_recap: 1 };
+    const env = hubEnv({ event: row, mine: [{ event_id: "ev-1", guests: 1, status: "confirmed" }] });
+    const h = memberSession(env, "member-1");
+    const res = await app.request("/events/x", { headers: h }, env as any);
+    const d: any = await res.json();
+    expect(res.status).toBe(200);
+    expect(d.event.kind).toBe("demo_night");
+    expect(d.event.has_recap).toBe(1);
+    expect(d.event.my_rsvp).toEqual({ status: "confirmed", guests: 1 });
+  });
+
+  it("POST my-rsvp requires a session", async () => {
+    const env = hubEnv();
+    const res = await postJSON(app, "/events/x/my-rsvp", { guests: 1 }, env);
+    expect(res.status).toBe(401);
+    expect(env.DB.inserts.get("event_rsvps")).toBeUndefined();
+  });
+
+  it("POST my-rsvp 404s on an unknown event and 400s on a past event", async () => {
+    const env = hubEnv({ event: null });
+    const h = memberSession(env, "member-1");
+    expect((await postJSON(app, "/events/nope/my-rsvp", {}, env, h)).status).toBe(404);
+    const past = hubEnv({ event: { ...EV, starts_at: "2020-01-01T18:00:00.000Z" } });
+    const h2 = memberSession(past, "member-1");
+    expect((await postJSON(app, "/events/x/my-rsvp", {}, past, h2)).status).toBe(400);
+    expect(past.DB.inserts.get("event_rsvps")).toBeUndefined();
+  });
+
+  it("POST my-rsvp inserts the member's row with their name and email", async () => {
+    const env = hubEnv();
+    const h = memberSession(env, "member-1");
+    const res = await postJSON(app, "/events/x/my-rsvp", { guests: 2 }, env, h);
+    expect(res.status).toBe(200);
+    const rows = env.DB.inserts.get("event_rsvps")!;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].user_id).toBe("member-1");
+    expect(rows[0].name).toBe("Ada");
+    expect(rows[0].email).toBe("ada@example.com");
+    expect(rows[0].guests).toBe(2);
+    expect(rows[0].status).toBe("confirmed");
+  });
+
+  it("POST my-rsvp clamps guests and refuses a full event", async () => {
+    const env = hubEnv();
+    const h = memberSession(env, "member-1");
+    const res = await postJSON(app, "/events/x/my-rsvp", { guests: 99 }, env, h);
+    expect(res.status).toBe(200);
+    expect(env.DB.inserts.get("event_rsvps")![0].guests).toBe(10);
+    const full = hubEnv({ sum: 10 });
+    const h2 = memberSession(full, "member-1");
+    const res2 = await postJSON(app, "/events/x/my-rsvp", { guests: 1 }, full, h2);
+    expect(res2.status).toBe(400);
+    expect(full.DB.inserts.get("event_rsvps")).toBeUndefined();
+  });
+
+  it("POST my-rsvp updates the member's own row in place", async () => {
+    const env = hubEnv({ prior: { id: "r1", guests: 1, status: "confirmed" } });
+    const h = memberSession(env, "member-1");
+    const res = await postJSON(app, "/events/x/my-rsvp", { guests: 3 }, env, h);
+    expect(res.status).toBe(200);
+    expect(env.DB.inserts.get("event_rsvps")).toBeUndefined();
+    const updates = env.DB.calls.filter((c) => /update\s+event_rsvps/i.test(c.sql));
+    expect(updates).toHaveLength(1);
+    expect(updates[0].params).toContain("r1");
+  });
+
+  it("DELETE my-rsvp cancels, and 404s with no RSVP", async () => {
+    const env = hubEnv();
+    const h = memberSession(env, "member-1");
+    const res = await app.request("/events/x/my-rsvp", { method: "DELETE", headers: h }, env as any);
+    expect(res.status).toBe(200);
+    const none = hubEnv({ cancelChanges: 0 });
+    const h2 = memberSession(none, "member-1");
+    const res2 = await app.request("/events/x/my-rsvp", { method: "DELETE", headers: h2 }, none as any);
+    expect(res2.status).toBe(404);
+    const anon = hubEnv();
+    const res3 = await app.request("/events/x/my-rsvp", { method: "DELETE" }, anon as any);
+    expect(res3.status).toBe(401);
+  });
+});
