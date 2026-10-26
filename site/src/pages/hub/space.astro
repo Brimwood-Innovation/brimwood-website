@@ -1,0 +1,307 @@
+---
+/* Member hub space (Phase 3 slice 8, deck section 22 space screen).
+ * Book a room in 2-hour slots, one room at a time: the weekly grid
+ * comes from GET /api/space/week, every cell says its state in
+ * words, and a free cell is a button named in full, for example
+ * "Book Forge Room, Wed, Oct 14, 10 a.m. to 12 p.m.". A member can
+ * hold 1 slot per room per day. My bookings come from
+ * GET /api/space/bookings/mine; cancel keeps the row and sets
+ * status and cancelled_at, so the slot opens for other members at
+ * once. Check-in, guest passes and house info live on their own
+ * pages under /hub/space. Signed-out visitors see the sign-in
+ * prompt, not the grid.
+ */
+import Base from "../../layouts/Base.astro";
+import HubShell from "../../components/HubShell.astro";
+---
+
+<Base
+  title="Space - Brimwood Innovation"
+  description="Book a room at the Brimwood hub. 2-hour slots, your bookings, and house info."
+  path="/hub/space"
+>
+  <HubShell current="space">
+  <section class="block" id="space-loading">
+    <div class="kicker">Members</div>
+    <p class="sec-lede">Checking your session…</p>
+  </section>
+
+  <section class="block" id="space-login" style="display:none;text-align:center;padding:48px 0;">
+    <div class="kicker">Members</div>
+    <h1 class="sec" style="font-size:clamp(28px,4vw,40px);margin-bottom:18px;">Sign in to book a room.</h1>
+    <p class="sec-lede" style="margin-inline:auto;"><a href="/members">Sign in</a> to continue.</p>
+  </section>
+
+  <section class="block" id="space-app" style="display:none;max-width:960px;">
+    <div class="kicker">Members</div>
+    <h1 class="sec" style="font-size:clamp(28px,4vw,40px);margin-bottom:8px;">Space.</h1>
+    <p class="sec-lede" style="margin-bottom:8px;">Book a room in 2-hour slots. You can hold 1 slot per room per day.</p>
+    <p class="thread-sub" style="margin-bottom:22px;">
+      <a href="/hub/space/here">Check in</a> · <a href="/hub/space/guests">Guest passes</a> · <a href="/hub/space/house">House info</a>
+    </p>
+    <p id="space-error" class="thread-sub" style="display:none;color:var(--brimwood-red, #b42318);"></p>
+    <p id="space-ok" class="thread-sub" style="display:none;"></p>
+
+    <div id="space-rooms" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;"></div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;">
+      <button type="button" class="btn btn-ghost btn-sm" id="space-prev">Previous week</button>
+      <span id="space-week-label" class="thread-sub" style="margin:0;"></span>
+      <button type="button" class="btn btn-ghost btn-sm" id="space-next">Next week</button>
+    </div>
+    <div class="table-wrap" style="overflow-x:auto;">
+      <table id="space-grid" style="border-collapse:collapse;width:100%;">
+        <thead id="space-grid-head"></thead>
+        <tbody id="space-grid-body"></tbody>
+      </table>
+    </div>
+    <p id="space-grid-empty" class="sec-lede" style="display:none;">No rooms are bookable right now. Check back after the next Demo Night.</p>
+
+    <h2 class="sec" style="font-size:22px;margin:28px 0 12px;">My bookings</h2>
+    <div id="space-bookings" style="display:grid;gap:14px;"></div>
+    <div id="space-bookings-empty" style="display:none;">
+      <p class="sec-lede">No bookings yet. Rooms open in 2-hour slots. Book one for your next work session.</p>
+    </div>
+  </section>
+
+  <dialog id="book-dialog" aria-labelledby="book-dialog-title" style="max-width:520px;width:calc(100% - 32px);border:1px solid rgba(18,26,22,0.14);border-radius:12px;padding:22px;">
+    <h2 id="book-dialog-title" style="font-size:22px;margin-bottom:6px;">Book a room</h2>
+    <p id="book-dialog-sub" class="thread-sub" style="margin-bottom:16px;"></p>
+    <form id="book-form" method="dialog">
+      <label class="thread-sub" style="display:block;margin-bottom:4px;" for="book-party">Party size</label>
+      <input id="book-party" type="number" min="1" value="1" required style="width:100%;padding:10px;border:1px solid rgba(18,26,22,0.2);border-radius:8px;margin-bottom:14px;" />
+      <label class="thread-sub" style="display:block;margin-bottom:4px;" for="book-purpose">What is it for? (optional)</label>
+      <input id="book-purpose" type="text" maxlength="140" placeholder="Build session" style="width:100%;padding:10px;border:1px solid rgba(18,26,22,0.2);border-radius:8px;margin-bottom:14px;" />
+      <p id="book-error" class="thread-sub" style="display:none;color:var(--brimwood-red, #b42318);margin-bottom:10px;"></p>
+      <div style="display:flex;gap:8px;">
+        <button type="submit" class="btn btn-primary btn-sm">Book this slot</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="book-cancel">Keep looking</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="cancel-dialog" aria-labelledby="cancel-dialog-title" style="max-width:520px;width:calc(100% - 32px);border:1px solid rgba(18,26,22,0.14);border-radius:12px;padding:22px;">
+    <h2 id="cancel-dialog-title" style="font-size:22px;margin-bottom:6px;">Cancel this booking?</h2>
+    <p id="cancel-dialog-sub" class="thread-sub" style="margin-bottom:16px;"></p>
+    <p class="thread-sub" style="margin-bottom:18px;">The slot opens for other members at once.</p>
+    <div style="display:flex;gap:8px;">
+      <button type="button" class="btn btn-ghost btn-sm" id="cancel-keep">Keep it</button>
+      <button type="button" class="btn btn-primary btn-sm" id="cancel-confirm">Cancel booking</button>
+    </div>
+  </dialog>
+
+  <script>
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
+    const withCreds = { credentials: "include" };
+    const esc = (s) => String(s ?? "").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const $ = (id) => document.getElementById(id);
+    const show = (id) => ($(id).style.display = "");
+    const hide = (id) => ($(id).style.display = "none");
+    const SLOT_HOURS = [10, 12, 14, 16, 18, 20];
+
+    let resources = [];
+    let resourceSlug = "";
+    let weekStart = "";
+    let weekData = null;
+    let bookTarget = null;
+    let cancelTarget = null;
+
+    function torontoToday() {
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit", weekday: "short",
+      }).formatToParts(new Date());
+      const get = (t) => parts.find((p) => p.type === t)?.value;
+      const y = Number(get("year")); const m = Number(get("month")); const d = Number(get("day"));
+      const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(get("weekday"));
+      const back = (weekday + 6) % 7;
+      const monday = new Date(Date.UTC(y, m - 1, d - back));
+      return monday.toISOString().slice(0, 10);
+    }
+
+    function addDays(dateStr, n) {
+      const [y, m, d] = dateStr.split("-").map(Number);
+      return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+    }
+
+    function fmtHour(h) {
+      if (h === 12) return "12 p.m.";
+      if (h < 12) return h + " a.m.";
+      return (h - 12) + " p.m.";
+    }
+
+    function fmtWhen(iso) {
+      return new Date(iso).toLocaleString("en-CA", {
+        timeZone: "America/Toronto",
+        weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+      });
+    }
+
+    function showError(msg) {
+      const e = $("space-error");
+      e.textContent = msg;
+      show("space-error");
+    }
+
+    function renderRooms() {
+      const box = $("space-rooms");
+      box.innerHTML = resources.map((r) => `
+        <button type="button" class="btn ${r.slug === resourceSlug ? "btn-primary" : "btn-ghost"} btn-sm" data-room="${esc(r.slug)}">${esc(r.name)} · ${esc(r.capacity)} seats</button>
+      `).join("");
+      box.querySelectorAll("[data-room]").forEach((b) => b.addEventListener("click", () => {
+        resourceSlug = b.dataset.room;
+        renderRooms();
+        loadWeek();
+      }));
+    }
+
+    function cellHtml(day, slot, resource) {
+      const fullName = `Book ${resource.name}, ${day.label}, ${slot.start_label} to ${slot.end_label}`;
+      if (slot.state === "free") {
+        return `<button type="button" class="btn btn-primary btn-sm" data-book="${esc(day.date)}|${slot.start_hour}" aria-label="${esc(fullName)}">${esc(fullName)}</button>`;
+      }
+      if (slot.state === "yours") {
+        return `<span>Yours</span> <button type="button" class="btn btn-ghost btn-sm" data-cancel="${esc(slot.booking_id)}">Cancel</button>`;
+      }
+      if (slot.state === "booked") return `<span>Booked</span>`;
+      if (slot.state === "past") return `<span>Past</span>`;
+      return `<span>Closed</span>`;
+    }
+
+    function renderGrid() {
+      if (!weekData) return;
+      const resource = weekData.resource;
+      const days = weekData.days;
+      $("space-week-label").textContent = "Week of " + days[0].label;
+      $("space-grid-head").innerHTML = `<tr><th style="text-align:left;padding:8px;border-bottom:1px solid rgba(18,26,22,0.14);">Time</th>${days.map((d) => `<th style="text-align:left;padding:8px;border-bottom:1px solid rgba(18,26,22,0.14);">${esc(d.label)}${d.open_label ? `<br /><span class="thread-sub">${esc(d.open_label)}</span>` : ""}${d.closure_reason ? `<br /><span class="thread-sub">${esc(d.closure_reason)}</span>` : ""}</th>`).join("")}</tr>`;
+      $("space-grid-body").innerHTML = SLOT_HOURS.map((h) => `<tr><th style="text-align:left;padding:8px;border-bottom:1px solid rgba(18,26,22,0.08);white-space:nowrap;">${esc(fmtHour(h))} to ${esc(fmtHour(h + 2))}</th>${days.map((d) => {
+        const slot = d.slots.find((s) => s.start_hour === h);
+        return `<td style="padding:8px;border-bottom:1px solid rgba(18,26,22,0.08);">${cellHtml(d, slot, resource)}</td>`;
+      }).join("")}</tr>`).join("");
+      document.querySelectorAll("[data-book]").forEach((b) => b.addEventListener("click", () => openBook(b.dataset.book)));
+      document.querySelectorAll("[data-cancel]").forEach((b) => b.addEventListener("click", () => openCancel(b.dataset.cancel)));
+    }
+
+    function bookingCard(b) {
+      const active = (b.status === "confirmed" || b.status === "checked_in") && new Date(b.starts_at).getTime() > Date.now();
+      const badge = b.status === "cancelled" ? `<span class="badge">Cancelled</span>`
+        : b.status === "checked_in" ? `<span class="badge">Checked in</span>`
+        : `<span class="badge">Confirmed</span>`;
+      const action = active ? `<button type="button" class="btn btn-ghost btn-sm" data-cancel="${esc(b.id)}">Cancel booking</button>` : "";
+      return `<article class="card" style="padding:18px 20px;">
+        <h3 style="font-size:20px;margin-bottom:4px;">${esc(b.resource_name)}</h3>
+        <p class="thread-sub" style="margin:0 0 8px;">${esc(fmtWhen(b.starts_at))} to ${esc(fmtWhen(b.ends_at))} · Party of ${esc(b.party_size)}${b.purpose ? " · " + esc(b.purpose) : ""}</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">${badge}${action}</div>
+      </article>`;
+    }
+
+    async function loadBookings() {
+      try {
+        const r = await fetch(API_BASE + "/api/space/bookings/mine", { ...withCreds });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok) throw 0;
+        const list = d.bookings || [];
+        if (!list.length) { hide("space-bookings"); show("space-bookings-empty"); return; }
+        hide("space-bookings-empty"); show("space-bookings");
+        $("space-bookings").innerHTML = list.map(bookingCard).join("");
+        document.querySelectorAll("#space-bookings [data-cancel]").forEach((b) => b.addEventListener("click", () => openCancel(b.dataset.cancel)));
+      } catch {
+        showError("Could not load your bookings. Try again in a moment.");
+      }
+    }
+
+    async function loadWeek() {
+      try {
+        const r = await fetch(API_BASE + `/api/space/week?resource=${encodeURIComponent(resourceSlug)}&week=${encodeURIComponent(weekStart)}`, { ...withCreds });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok) throw 0;
+        resources = d.resources || [];
+        weekData = d.week;
+        if (!weekData) { hide("space-grid"); show("space-grid-empty"); return; }
+        hide("space-grid-empty"); show("space-grid");
+        renderRooms();
+        renderGrid();
+      } catch {
+        showError("Could not load the booking grid. Try again in a moment.");
+      }
+    }
+
+    function openBook(key) {
+      const [date, hour] = key.split("|");
+      const day = weekData.days.find((d) => d.date === date);
+      const slot = day.slots.find((s) => s.start_hour === Number(hour));
+      bookTarget = { date, start_hour: Number(hour), resource: weekData.resource };
+      $("book-dialog-sub").textContent = `Book ${weekData.resource.name}, ${day.label}, ${slot.start_label} to ${slot.end_label}.`;
+      $("book-party").max = String(weekData.resource.capacity);
+      $("book-party").value = "1";
+      $("book-purpose").value = "";
+      hide("book-error");
+      $("book-dialog").showModal();
+    }
+
+    function openCancel(id) {
+      cancelTarget = id;
+      $("cancel-dialog-sub").textContent = "This booking will be cancelled and the slot will open for other members.";
+      $("cancel-dialog").showModal();
+    }
+
+    $("book-cancel").addEventListener("click", () => $("book-dialog").close());
+    $("cancel-keep").addEventListener("click", () => $("cancel-dialog").close());
+    $("space-prev").addEventListener("click", () => { weekStart = addDays(weekStart, -7); loadWeek(); });
+    $("space-next").addEventListener("click", () => { weekStart = addDays(weekStart, 7); loadWeek(); });
+
+    $("book-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const r = await fetch(API_BASE + "/api/space/bookings", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          resource_slug: bookTarget.resource.slug, date: bookTarget.date,
+          start_hour: bookTarget.start_hour, party_size: Number($("book-party").value),
+          purpose: $("book-purpose").value.trim() || undefined,
+        }), ...withCreds,
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) {
+        const err = $("book-error");
+        err.textContent = d.error || "That slot could not be booked.";
+        show("book-error");
+        return;
+      }
+      $("book-dialog").close();
+      hide("space-error");
+      const ok = $("space-ok");
+      ok.textContent = "Room booked. Check in at the door when you arrive.";
+      show("space-ok");
+      await loadWeek();
+      await loadBookings();
+    });
+
+    $("cancel-confirm").addEventListener("click", async () => {
+      const r = await fetch(API_BASE + `/api/space/bookings/${encodeURIComponent(cancelTarget)}`, { method: "DELETE", ...withCreds });
+      const d = await r.json().catch(() => ({}));
+      $("cancel-dialog").close();
+      if (!r.ok || !d.ok) { showError(d.error || "Could not cancel that booking."); return; }
+      hide("space-error");
+      await loadWeek();
+      await loadBookings();
+    });
+
+    (async () => {
+      try {
+        const me = await fetch(API_BASE + "/api/auth/me", { headers: { accept: "application/json" }, ...withCreds });
+        const d = await me.json().catch(() => ({}));
+        if (!me.ok || !d.ok) throw 0;
+        hide("space-loading"); hide("space-login"); show("space-app");
+        weekStart = torontoToday();
+        const first = await fetch(API_BASE + "/api/space/resources", { ...withCreds });
+        const fd = await first.json().catch(() => ({}));
+        resources = fd.resources || [];
+        resourceSlug = resources.length ? resources[0].slug : "";
+        renderRooms();
+        await loadWeek();
+        await loadBookings();
+      } catch {
+        hide("space-loading"); hide("space-app"); show("space-login");
+      }
+    })();
+  </script>
+  </HubShell>
+</Base>

@@ -1,0 +1,116 @@
+---
+/* Member hub house info (Phase 3 slice 8, deck section 22
+ * space screen, /hub/space/house). Hours, address, rules and
+ * venue accessibility on one page, from GET /api/space/house.
+ * Accessibility facts the founder has not confirmed stay
+ * "Details coming soon. To confirm" and are never filled in from
+ * the dev seed, whose floor and access notes are marked
+ * placeholder, not checked. No Wi-Fi password is shown: the page
+ * renders a Wi-Fi section only when house info carries one.
+ * Signed-out visitors see the sign-in prompt.
+ */
+import Base from "../../../layouts/Base.astro";
+import HubShell from "../../../components/HubShell.astro";
+---
+
+<Base
+  title="House info - Brimwood Innovation"
+  description="House info for the Brimwood hub. Hours, address, rules, and accessibility."
+  path="/hub/space/house"
+>
+  <HubShell current="space">
+  <section class="block" id="house-loading">
+    <div class="kicker">Members</div>
+    <p class="sec-lede">Checking your session…</p>
+  </section>
+
+  <section class="block" id="house-login" style="display:none;text-align:center;padding:48px 0;">
+    <div class="kicker">Members</div>
+    <h1 class="sec" style="font-size:clamp(28px,4vw,40px);margin-bottom:18px;">Sign in to see house info.</h1>
+    <p class="sec-lede" style="margin-inline:auto;"><a href="/members">Sign in</a> to continue.</p>
+  </section>
+
+  <section class="block" id="house-app" style="display:none;max-width:640px;">
+    <div class="kicker">Members</div>
+    <h1 class="sec" style="font-size:clamp(28px,4vw,40px);margin-bottom:8px;">House info.</h1>
+    <p class="sec-lede" style="margin-bottom:22px;" id="house-address"></p>
+    <p id="house-error" class="thread-sub" style="display:none;color:var(--brimwood-red, #b42318);"></p>
+
+    <h2 class="sec" style="font-size:22px;margin-bottom:12px;">Opening hours</h2>
+    <div id="house-hours" style="display:grid;gap:6px;margin-bottom:28px;"></div>
+
+    <div id="house-sections" style="display:grid;gap:24px;"></div>
+
+    <div id="house-access-fallback" style="display:none;margin-top:24px;">
+      <h2 class="sec" style="font-size:22px;margin-bottom:12px;">Accessibility</h2>
+      <p class="sec-lede">Details coming soon. To confirm.</p>
+      <ul class="thread-sub">
+        <li>Floor: Details coming soon. To confirm.</li>
+        <li>Entrance: Details coming soon. To confirm.</li>
+        <li>Stairs and step-free access: Details coming soon. To confirm.</li>
+        <li>Washroom: Details coming soon. To confirm.</li>
+      </ul>
+    </div>
+
+    <p class="sec-lede" style="margin-top:28px;">Need help to get in? Message the host team before your visit and we will plan it with you.</p>
+    <p class="thread-sub"><a href="/hub/space">Back to booking</a></p>
+  </section>
+
+  <script>
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
+    const withCreds = { credentials: "include" };
+    const esc = (s) => String(s ?? "").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const $ = (id) => document.getElementById(id);
+    const show = (id) => ($(id).style.display = "");
+    const hide = (id) => ($(id).style.display = "none");
+    const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+    function fmtHour(hhmm) {
+      const [h, m] = hhmm.split(":").map(Number);
+      const base = h === 12 ? "12 p.m." : h < 12 ? h + " a.m." : (h - 12) + " p.m.";
+      if (m === 0) return base;
+      return base.replace(/ [ap]\.m\.$/, "") + ":" + String(m).padStart(2, "0") + " " + (h < 12 ? "a.m." : "p.m.");
+    }
+
+    async function loadHouse() {
+      try {
+        const r = await fetch(API_BASE + "/api/space/house", { ...withCreds });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok) throw 0;
+        const house = d.house;
+        $("house-address").textContent = house.address;
+        const byDay = new Map((house.opening_hours || []).map((h) => [h.weekday, h]));
+        $("house-hours").innerHTML = [1, 2, 3, 4, 5, 6, 0].map((w) => {
+          const h = byDay.get(w);
+          const line = h ? `${esc(fmtHour(h.opens_at))} to ${esc(fmtHour(h.closes_at))}` : "Closed";
+          return `<p class="thread-sub" style="margin:0;"><strong>${DAY_NAMES[w]}</strong>: ${line}</p>`;
+        }).join("");
+        const sections = house.sections || [];
+        $("house-sections").innerHTML = sections.map((s) => `
+          <section>
+            <h2 class="sec" style="font-size:22px;margin-bottom:8px;">${esc(s.title)}</h2>
+            <p class="sec-lede" style="white-space:pre-line;">${esc(s.body_md)}</p>
+          </section>`).join("");
+        const hasAccess = sections.some((s) => s.section === "accessibility");
+        if (!hasAccess) show("house-access-fallback");
+      } catch {
+        const e = $("house-error");
+        e.textContent = "Could not load house info. Try again in a moment.";
+        show("house-error");
+      }
+    }
+
+    (async () => {
+      try {
+        const me = await fetch(API_BASE + "/api/auth/me", { headers: { accept: "application/json" }, ...withCreds });
+        const d = await me.json().catch(() => ({}));
+        if (!me.ok || !d.ok) throw 0;
+        hide("house-loading"); hide("house-login"); show("house-app");
+        await loadHouse();
+      } catch {
+        hide("house-loading"); hide("house-app"); show("house-login");
+      }
+    })();
+  </script>
+  </HubShell>
+</Base>

@@ -1,0 +1,108 @@
+---
+/* Member hub daily check-in (Phase 3 slice 8, deck section 22
+ * space screen, /hub/space/here). One tap on "I am here" when a
+ * member arrives; one row per member per local day. Members see a
+ * count only, never names or a list. A member who does not check
+ * in is not counted, so the count is opt-in by action. The door
+ * lock and wallet pass come later; no QR card is invented here.
+ * Signed-out visitors see the sign-in prompt.
+ */
+import Base from "../../../layouts/Base.astro";
+import HubShell from "../../../components/HubShell.astro";
+---
+
+<Base
+  title="Check in - Brimwood Innovation"
+  description="Check in at the Brimwood hub when you arrive."
+  path="/hub/space/here"
+>
+  <HubShell current="space">
+  <section class="block" id="here-loading">
+    <div class="kicker">Members</div>
+    <p class="sec-lede">Checking your session…</p>
+  </section>
+
+  <section class="block" id="here-login" style="display:none;text-align:center;padding:48px 0;">
+    <div class="kicker">Members</div>
+    <h1 class="sec" style="font-size:clamp(28px,4vw,40px);margin-bottom:18px;">Sign in to check in.</h1>
+    <p class="sec-lede" style="margin-inline:auto;"><a href="/members">Sign in</a> to continue.</p>
+  </section>
+
+  <section class="block" id="here-app" style="display:none;max-width:640px;text-align:center;padding:32px 0;">
+    <div class="kicker">Members</div>
+    <h1 class="sec" style="font-size:clamp(28px,4vw,40px);margin-bottom:8px;">Check in.</h1>
+    <p class="sec-lede" style="margin-bottom:22px;">Tap when you arrive at the hub. Today's count only. No names are shown.</p>
+    <p id="here-error" class="thread-sub" style="display:none;color:var(--brimwood-red, #b42318);"></p>
+    <p id="here-done" class="sec-lede" style="display:none;">You are checked in. Welcome to the hub.</p>
+    <button type="button" class="btn btn-primary" id="here-button" style="display:none;">I am here</button>
+    <p id="here-count" class="thread-sub" style="margin-top:22px;"></p>
+    <p class="thread-sub"><a href="/hub/space">Back to booking</a></p>
+  </section>
+
+  <script>
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
+    const withCreds = { credentials: "include" };
+    const $ = (id) => document.getElementById(id);
+    const show = (id) => ($(id).style.display = "");
+    const hide = (id) => ($(id).style.display = "none");
+
+    let checkedIn = false;
+
+    function renderCount(count) {
+      const others = checkedIn ? Math.max(0, count - 1) : count;
+      const line = checkedIn
+        ? (others === 0 ? "You are the first member checked in today." : `You and ${others} other member${others === 1 ? "" : "s"} checked in today.`)
+        : (count === 0 ? "No members checked in yet today." : `${count} member${count === 1 ? "" : "s"} checked in today.`);
+      $("here-count").textContent = line;
+    }
+
+    async function loadState() {
+      try {
+        const [mine, today] = await Promise.all([
+          fetch(API_BASE + "/api/space/checkins/mine", { ...withCreds }),
+          fetch(API_BASE + "/api/space/checkins/today", { ...withCreds }),
+        ]);
+        const dm = await mine.json().catch(() => ({}));
+        const dt = await today.json().catch(() => ({}));
+        if (!mine.ok || !dm.ok || !today.ok || !dt.ok) throw 0;
+        checkedIn = dm.checked_in === true;
+        if (checkedIn) { hide("here-button"); show("here-done"); }
+        else { hide("here-done"); show("here-button"); }
+        renderCount(dt.count || 0);
+      } catch {
+        const e = $("here-error");
+        e.textContent = "Could not load check-in. Try again in a moment.";
+        show("here-error");
+      }
+    }
+
+    $("here-button").addEventListener("click", async () => {
+      const r = await fetch(API_BASE + "/api/space/checkins", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({}), ...withCreds,
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) {
+        const e = $("here-error");
+        e.textContent = d.error || "Check-in did not save.";
+        show("here-error");
+        return;
+      }
+      hide("here-error");
+      await loadState();
+    });
+
+    (async () => {
+      try {
+        const me = await fetch(API_BASE + "/api/auth/me", { headers: { accept: "application/json" }, ...withCreds });
+        const d = await me.json().catch(() => ({}));
+        if (!me.ok || !d.ok) throw 0;
+        hide("here-loading"); hide("here-login"); show("here-app");
+        await loadState();
+      } catch {
+        hide("here-loading"); hide("here-app"); show("here-login");
+      }
+    })();
+  </script>
+  </HubShell>
+</Base>
