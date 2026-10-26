@@ -1408,3 +1408,84 @@ from the self-chaining loop's first run on 2026-10-21.
   and check-ins for the Today card close with this slice. Still
   blocked: the Phase 1 preview smoke flows and applying 0037 to
   preview D1 (no Cloudflare token in the environment).
+- Cycle 26, 2026-10-26: Phase 3 slice 9, the hub people page from the
+  deck (section 23 people screen: member directory, projects, and
+  hub search), in ~/workspace/company/wt-phase3-hub-people on branch
+  phase3/hub-people (no open loop PR; develop CI green; #22 is the
+  founder-tapped README PR, not loop work). There was no people page:
+  the shell listed People as a dead place. This slice builds it,
+  reconciling the existing profiles surface: no new migration, because
+  0025 and 0026 already ship member_profiles, member_skills, and
+  skill_tags, and no new dependency. API (mounted at /api/people, new
+  route people.ts, members only): GET / lists directory_opt_in = 1
+  members with active accounts, never the caller, sorted by name with
+  no ranking and no member count on a card. Cards carry Building (the
+  member's project), Can help with, Looking for, and skill badges, plus
+  a Staff or Moderator badge from user_effective_roles (0024).
+  ?skill= filters by the curated skill_tags list (an unknown slug is
+  a 400); ?q= matches display name, builder fields, and skill labels
+  only, never the real name column, so the directory cannot be used
+  as an oracle for a member's real name. Neither side of a block
+  appears (block_pairs is the both-ways view from 0025). Per-field
+  visibility is honoured server-side: a field set to only-me is
+  omitted from the card and cannot match a search. No email or real
+  name ever leaves the route; display_name falls back to initials,
+  the same fallback the profile views use. Page /hub/people in the
+  HubShell (members-only gate, same pattern as groups): skill chips
+  from GET /api/skill-tags, a search box, a count line with
+  role=status, deck empty states, and a Message button that opens
+  the 1:1 DM through the shared messageMember helper the profile
+  pages already use. The shell now links People to /hub/people on
+  desktop and under Me on phones; Saved stays a plain-text gap. Hub
+  search: /search gains a People section for signed-in visitors from
+  the same route (a 401 hides the section instead of breaking the
+  search). Em dashes scrubbed from every touched file; the
+  pre-existing em dash in the /hub page title and the search page
+  title is untouched (recorded brand call). Verification before the
+  PR: 766 API tests pass (38 files, 5 new: opt-in list and shape
+  with badge and profile URL, only-me omission, sign-in required,
+  skill filter and unknown-skill 400, visible-field-only search),
+  API typecheck clean, site build clean (33 pages, up from 32), and
+  the built /hub/people bundle inspected directly (people and
+  skill-tags calls, Message wiring) plus the /search bundle (People
+  section fetch and render). The exact directory queries were also
+  run against a real SQLite database built from the full 0001-0037
+  migration chain: the viewer saw Ada and Bo only (Cy blocked, Maya
+  opted out, Sue suspended excluded), Bo carried the moderator badge
+  through user_roles, and after Bo blocked the viewer only Ada
+  remained. One real bug found and fixed in review: badges first
+  read users.role, which only ever holds admin or member, so the
+  moderator badge could never have shown; they now read
+  user_effective_roles. Shipped in PR #60 (merged to develop; build,
+  secrets, audit, analyze, CodeQL, lighthouse, and Cloudflare Pages
+  all green). Grade (dimensions this cycle touched, scored from
+  evidence): functional 2,500/2,500 (every deck people element with
+  a backing endpoint is live and wired: directory, chips, search,
+  cards, Message, hub search section); schema and API 2,000/2,000
+  (new route in the existing style on the shipped 0025 and 0026
+  schema, suite green, no migration needed); accessibility
+  1,250/1,250 (Lighthouse gate passed, chips carry aria-pressed,
+  count line carries role=status, labelled search, Message buttons
+  carry aria-labels); performance 1,250/1,250 (Lighthouse budgets
+  passed, no new dependency, one small skill-tags fetch);
+  security 1,250/1,250 (CodeQL and analyze green, members-only gate,
+  block exclusion both ways, only-me fields omitted server-side,
+  no email or real name in any response, escaped output); code
+  quality 1,000/1,000 (API typecheck clean, tests in the existing
+  style, directory query verified against real SQLite); brand and
+  copy 750/750 (deck labels and surface copy, Canadian spelling, no
+  new em dash, no member named). Pro-rated total 10,000/10,000, no
+  zero dimension, no open P0. Verdict: ACCEPT. Next improvement:
+  Phase 3 slice 10, the hub saved page from the deck (saved screen:
+  the member's saved posts, visible only to them), reconciling the
+  existing feed surface and the saved_posts table (0026); whether a
+  save and unsave endpoint already exists is the slice's first check.
+  Proposing a new group (three co-founders plus admin approval),
+  live verification of the /hub/g/* rewrite on a branch preview, a
+  rituals read API for live thread state, the deck command palette,
+  the /hub route renaming, the feed header notices (next Demo
+  Night, questions needing answers), and the staff spotlight post
+  type remain recorded follow-ups. The member directory closes with
+  this slice. Still blocked: the Phase 1 preview smoke flows and
+  applying 0037 to preview D1 (no Cloudflare token in the
+  environment).
