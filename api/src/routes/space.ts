@@ -436,11 +436,23 @@ app.post("/checkins", requireUser, async (c) => {
 
 /* ---------- Guest passes ---------- */
 
+/* Guest pass code: rejection sampling, so no modulo bias. Bytes at
+ * or above the largest multiple of the alphabet length below 256
+ * are discarded instead of wrapped, keeping every letter equally
+ * likely (CodeQL js/biased-cryptographic-random). */
 function guestCode(): string {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const bytes = crypto.getRandomValues(new Uint8Array(12));
-  const chars = [...bytes].map((b) => alphabet[b % alphabet.length]).join("");
-  return `${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8, 12)}`;
+  const limit = 256 - (256 % alphabet.length);
+  const chars: string[] = [];
+  while (chars.length < 12) {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    for (const b of bytes) {
+      if (chars.length >= 12) break;
+      if (b < limit) chars.push(alphabet[b % alphabet.length]);
+    }
+  }
+  const code = chars.join("");
+  return `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8, 12)}`;
 }
 
 function normalizeCode(code: string): string {
