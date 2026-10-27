@@ -4,9 +4,15 @@
  * _redirects rewrite serves this page for /c/CODE while the browser
  * keeps the /c/CODE URL, and this page reads the code from the path
  * (or from ?code= when opened locally) and checks it against
- * /api/certificates/verify. The page is noindex: a certificate page is
- * indexed only after the member makes it public, which a static shell
- * cannot know at build time.
+ * /api/certificates/verify. The shell is noindex: a static shell cannot
+ * know at build time whether the code is public. Once verify answers
+ * valid with visibility public, the script upgrades the head in place
+ * (title, description, canonical, robots index, Open Graph, and
+ * credential JSON-LD) so a rendering crawler sees a per-code head for
+ * that public certificate. Every other answer leaves the shell
+ * noindex: link visibility is shared by link, not listed publicly, so
+ * it never upgrades the head. The sitemap listing of public codes is
+ * the remaining indexing step.
  *
  * States, exactly as the API answers them: valid (public or link) shows
  * the holder's current display name, the course, and the issue date;
@@ -56,6 +62,53 @@ import Base from "../../layouts/Base.astro";
         return new Date(iso).toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" });
       } catch { return ""; }
     };
+    /* Per-code head for a public certificate only. All values come from
+     * the verified API answer and are assigned as text or attributes,
+     * never as HTML, so a display name cannot inject markup into the
+     * head. Link, private, revoked, and not-found answers never reach
+     * this function, so their pages stay on the noindex shell. */
+    const setMeta = (attr, name, value) => {
+      let el = document.querySelector(`meta[${attr}="${name}"]`);
+      if (!el) {
+        el = document.createElement("meta");
+        el.setAttribute(attr, name);
+        document.head.appendChild(el);
+      }
+      el.setAttribute("content", value);
+    };
+    const setPublicHead = (d) => {
+      const issued = fmtDate(d.issued_at);
+      const url = `https://brimwoodinnovation.com/c/${d.code}`;
+      const title = `${d.display_name} - ${d.course_title} certificate - Brimwood Innovation`;
+      const description = issued
+        ? `${d.display_name} earned the ${d.course_title} certificate from Brimwood Innovation, issued ${issued}.`
+        : `${d.display_name} earned the ${d.course_title} certificate from Brimwood Innovation.`;
+      document.title = title;
+      setMeta("name", "description", description);
+      setMeta("name", "robots", "index, follow");
+      const canonical = document.querySelector('link[rel="canonical"]');
+      if (canonical) canonical.setAttribute("href", url);
+      setMeta("property", "og:title", title);
+      setMeta("property", "og:description", description);
+      setMeta("property", "og:url", url);
+      setMeta("name", "twitter:title", title);
+      setMeta("name", "twitter:description", description);
+      if (!document.getElementById("cert-jsonld")) {
+        const script = document.createElement("script");
+        script.id = "cert-jsonld";
+        script.type = "application/ld+json";
+        script.text = JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "EducationalOccupationalCredential",
+          name: `${d.course_title} certificate`,
+          credentialCategory: "Certificate",
+          recognizedBy: { "@type": "Organization", name: "Brimwood Innovation" },
+          url,
+          identifier: d.code,
+        });
+        document.head.appendChild(script);
+      }
+    };
 
     async function check(code) {
       $("cert-loading").style.display = "none";
@@ -74,6 +127,7 @@ import Base from "../../layouts/Base.astro";
         return;
       }
       if (d.state === "valid") {
+        if (d.visibility === "public") setPublicHead(d);
         const issued = fmtDate(d.issued_at);
         const url = `https://brimwoodinnovation.com/c/${esc(d.code)}`;
         const fields = `Name: ${d.course_title}. Organization: Brimwood Innovation. Issued: ${issued}. Credential ID: ${d.code}. URL: ${url}`;
