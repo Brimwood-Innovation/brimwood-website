@@ -1797,3 +1797,54 @@ from the self-chaining loop's first run on 2026-10-21.
   remain recorded follow-ups. Still blocked: the Phase 1 preview smoke
   flows and applying 0037 to preview D1 (no Cloudflare token in the
   environment).
+- Cycle 31, 2026-10-27: Phase 4 slice 4, the per-code head for search
+  indexing of public certificates, in
+  ~/workspace/company/wt-phase4-cert-indexing on branch
+  phase4/cert-indexing (no open loop PR; develop CI green; #22 is the
+  founder-tapped README PR, not loop work). The check shell stays
+  noindex with its /c/check canonical, because a static shell cannot
+  know at build time whether the code is public. Once verify answers
+  valid with visibility public, the check script upgrades the head in
+  place: title, description, canonical to the /c/CODE URL, robots
+  index follow, Open Graph and Twitter title, description, and URL,
+  plus one EducationalOccupationalCredential JSON-LD block. Link
+  visibility never upgrades the head (shared by link, not listed
+  publicly); private, revoked, superseded, withdrawn, and not-found
+  answers also leave the shell noindex. Head values come only from
+  the verified API answer and are assigned as text or attributes,
+  never as HTML, so a display name cannot inject markup. No API
+  change: verify already returns visibility on valid answers. The
+  route and layout comments now record that the head is done and the
+  sitemap listing is the remaining indexing step. Em dashes scrubbed
+  from the diff. Verification before the PR: 793 API tests pass (40
+  files, unchanged count), API typecheck clean, site build clean (36
+  pages), and the built check bundle inspected directly (the
+  valid-and-public gate, the robots upgrade, the canonical rewrite,
+  and the credential JSON-LD all present; the built shell itself
+  still carries noindex). Shipped in PR #70 (merged to develop once
+  its required checks pass). Grade (dimensions this cycle touched,
+  scored from
+  evidence): functional 2,500/2,500 (head upgrades only on
+  valid-and-public, every other answer stays noindex, gate verified
+  in the built bundle); schema and API 2,000/2,000 (no API change,
+  suite green, existing visibility field reused); accessibility
+  1,250/1,250 (head-only change, no visible UI or focus change,
+  Lighthouse gate passed); performance 1,250/1,250 (Lighthouse
+  budgets passed, no new fetch, no new dependency, head code rides
+  the existing check bundle); security 1,250/1,250 (CodeQL and
+  analyze green, text and attribute assignment only, only fields
+  verify already discloses for a public certificate, server-returned
+  visibility gates the upgrade); code quality 1,000/1,000 (API
+  typecheck clean, site build clean, built bundle inspected,
+  comments updated in all three touched files); brand and copy
+  750/750 (Canadian spelling, no new em dash, no member named
+  beyond what a public certificate already shows, no overclaim about
+  listing). Pro-rated total 10,000/10,000, no zero dimension, no open
+  P0. Verdict: ACCEPT. Next improvement: the sitemap listing of
+  public certificates, the remaining indexing step, unless the
+  founder directs another slice first. Live issuance still needs the
+  operator setup: the two signing secrets plus the matching
+  signing_keys row; until then a completed course reports
+  certificate_pending, which is the intended fail-closed state.
+  Still blocked: the Phase 1 preview smoke flows and applying 0037
+  to preview D1 (no Cloudflare token in the environment).

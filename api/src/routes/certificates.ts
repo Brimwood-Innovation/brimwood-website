@@ -48,9 +48,12 @@
  * api/src/lib/certificates.ts and is called from the progress route;
  * this route only issues manually. The member visibility switch on the
  * academy dashboard (Phase 4 slice 3) calls the PATCH visibility route
- * below. Still open: search indexing of public certificates (the check
- * page is noindex; a public certificate needs a per-code head before
- * indexing).
+ * below. The per-code head is done (Phase 4 slice 4): the check page
+ * shell stays noindex and its script upgrades the head to index only
+ * when verify answers valid with visibility public; link visibility
+ * never upgrades it. Still open: the sitemap listing of public codes,
+ * which is the remaining indexing step. Verify already returns the
+ * visibility on valid answers, so the head needs no API change.
  */
 import { Hono } from "hono";
 import { b64urlDecode, issueCertificate } from "../lib/certificates";

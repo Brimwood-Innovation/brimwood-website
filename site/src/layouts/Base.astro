@@ -33,9 +33,10 @@ interface Props {
    * head changes. */
   rssAlternate?: boolean;
   /* Phase 4: pages that must never be indexed opt in here. The
-   * certificate check page is noindex because a certificate page is
-   * indexed only after the member makes it public, which a static
-   * shell cannot know at build time. Admin pages use it too. */
+   * certificate check shell is noindex because a static shell cannot
+   * know at build time whether the code is public; its script upgrades
+   * the head to index only after verify answers valid with visibility
+   * public. Admin pages use it too. */
   noindex?: boolean;
 }
 const {
