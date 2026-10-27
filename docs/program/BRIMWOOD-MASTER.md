@@ -1565,3 +1565,91 @@ from the self-chaining loop's first run on 2026-10-21.
   type remain recorded follow-ups. Still blocked: the Phase 1 preview
   smoke flows and applying 0037 to preview D1 (no Cloudflare token
   in the environment).
+- Cycle 28, 2026-10-27: Phase 4 slice 1, D1 certificate issuance and
+  the certificate studio panel from the phase map, in
+  ~/workspace/company/wt-phase4-certificates on branch
+  phase4/certificates (no open loop PR; develop CI green; #22 is the
+  founder-tapped README PR, not loop work). No migration: the schema
+  already exists in 0031 (certificates, signing_keys,
+  certificate_events, certificate_lookups), and this slice is the first
+  code that writes and reads it. API (mounted at /api/certificates,
+  new route certificates.ts): POST /issue, admin only, manual issue
+  for a completed enrolment (issue_source 'manual', reason required);
+  codes are BRIM-YYYY-XXXXXX from the 31-symbol alphabet by rejection
+  sampling, the canonical string is exactly
+  v1|CODE|member_id|course_id|issued_at, and the Ed25519 signature
+  runs over it with the private key from the CERT_SIGNING_KEY and
+  CERT_SIGNING_KEY_ID Worker secrets (never in D1) against the public
+  key in signing_keys; without both secrets issue answers 500 not
+  configured, the same fail-closed pattern as the Studio token. A
+  valid certificate already existing for the enrolment is a 409, and
+  an incomplete enrolment is a 400, ahead of the 0031 trigger and
+  partial unique index that enforce the same rules. GET /verify,
+  public and rate-limited to 30 per hour per IP, answers the deck
+  /c/CODE states: valid public or link shows the current display
+  name, course title, and issue date only after the signature
+  verifies against the stored public key; valid private shows only
+  the private state; revoked, superseded, and withdrawn show the
+  no-longer-valid state with the change date; unknown and malformed
+  codes show not found. Lookups log to certificate_lookups with
+  HMACs only, never a raw code or raw IP. GET /mine lists only the
+  caller's certificates, GET / lists every certificate for admins,
+  POST /:id/revoke is terminal with a required reason, and PATCH
+  /:id/visibility lets only the owner move a valid certificate
+  between private, link, and public. Site: the /c/CODE check page
+  (c/check.astro, served by a _redirects rewrite in the same pattern
+  as /hub/g/*, noindex because a certificate page is indexed only
+  after the member makes it public), the Studio certificates panel
+  (studio/certificates.astro, linked from Studio home, issue form
+  plus list plus per-row revoke), and an opt-in noindex prop on Base
+  used by both new pages. Em dashes scrubbed from every new file;
+  pre-existing dashes in titles left untouched (recorded brand
+  call). Verification before the PR: 788 API tests pass (40 files,
+  13 new, including real Ed25519 sign and verify round trips), API
+  typecheck clean, site build clean (36 pages, up from 34), and the
+  built bundles inspected directly (check page verify fetch, panel
+  issue, list, and revoke calls, Studio home link, noindex meta).
+  The exact issue, verify, revoke, and trigger SQL was also run
+  against a real SQLite database built from the full 0001-0037
+  migration chain: the manual issue insert satisfies every 0031
+  CHECK and logs the issued event, a second valid certificate for
+  the same enrolment is rejected by the partial unique index, an
+  incomplete enrolment is rejected by the trigger, revoke logs the
+  event and the terminal and immutable triggers hold, and the
+  signature verifies against the stored public key. Shipped in PR
+  #64 (merged to develop; build, secrets, audit, analyze, CodeQL,
+  lighthouse, and Cloudflare Pages all green). Grade (dimensions
+  this cycle touched, scored from evidence): functional 2,500/2,500
+  (every slice element with a backing endpoint is live and wired:
+  issue, verify states, mine, admin list, revoke, visibility, check
+  page, studio panel); schema and API 2,000/2,000 (new route in the
+  existing style on the shipped 0031 schema, suite green, no
+  migration needed, SQL verified against real SQLite); accessibility
+  1,250/1,250 (Lighthouse gate passed, result and count regions
+  carry role=status, labelled inputs and selects, revoke buttons
+  carry aria-labels); performance 1,250/1,250 (Lighthouse budgets
+  passed, no new dependency, one fetch per page); security
+  1,250/1,250 (CodeQL and analyze green, admin gate re-read from
+  D1, owner-only visibility, HMAC-only lookup logs, no email,
+  lessons, or reflections in any verify answer, escaped output,
+  signature verified before any valid answer, public check rate
+  limited); code quality 1,000/1,000 (API typecheck clean, tests in
+  the existing style, SQL verified against real SQLite); brand and
+  copy 750/750 (deck labels and surface copy, Canadian spelling,
+  en-CA dates, no new em dash, no member named). Pro-rated total
+  10,000/10,000, no zero dimension, no open P0. Verdict: ACCEPT.
+  Next improvement: Phase 4 slice 2, reflection-gated academy
+  completion with automatic certificate issue (the auto-issue this
+  slice deferred, on the manual issuance now live). Live issuance
+  still needs the operator setup: the two signing secrets plus the
+  matching signing_keys row; until then issue answers 500 not
+  configured, which is the intended fail-closed state. Proposing a
+  new group (three co-founders plus admin approval), live
+  verification of the /hub/g/* rewrite on a branch preview, a
+  rituals read API for live thread state, the deck command palette,
+  the /hub route renaming, the feed header notices (next Demo
+  Night, questions needing answers), the staff spotlight post type,
+  the member visibility switch on the hub academy page, and search
+  indexing of public certificates remain recorded follow-ups. Still
+  blocked: the Phase 1 preview smoke flows and applying 0037 to
+  preview D1 (no Cloudflare token in the environment).
