@@ -1738,3 +1738,62 @@ from the self-chaining loop's first run on 2026-10-21.
   remain recorded follow-ups. Still blocked: the Phase 1 preview
   smoke flows and applying 0037 to preview D1 (no Cloudflare token
   in the environment).
+- Cycle 30, 2026-10-27: Phase 4 slice 3, the member certificate
+  visibility switch on the academy dashboard, in
+  ~/workspace/company/wt-phase4-cert-visibility on branch
+  phase4/cert-visibility (no open loop PR; develop CI green; #22 is
+  the founder-tapped README PR, not loop work). No API change and no
+  migration: the switch calls the existing owner-only, valid-only
+  PATCH /api/certificates/:id/visibility endpoint, and the dashboard
+  joins its /api/progress enrolments with the owner-only GET
+  /api/certificates/mine list, showing a switch only for valid
+  certificates. If the mine list fails, cards still render with the
+  certificate link and no switch. Saving disables the control, reports
+  success in a role=status note, and reverts the control with an error
+  note when the server rejects the save. The course card is now an
+  article with title and status links instead of a whole-card link, so
+  the select stays a real keyboard control; the switch carries a label
+  and a per-course aria-label, and the explainer states current
+  behaviour honestly (private hides the details; link and public show
+  them to anyone who opens the certificate page). The certificates
+  route header comment now records that the dashboard switch exists.
+  Em dashes scrubbed from the diff; the pre-existing dashboard title
+  dash left untouched (recorded brand call). Verification before the
+  PR: 793 API tests pass (40 files, unchanged count, the endpoint and
+  the mine list already covered by owner-only and valid-only tests),
+  API typecheck clean, site build clean (36 pages), and the built
+  dashboard page inspected directly (mine fetch, cert-vis select,
+  PATCH visibility call, and revert wiring all present in
+  dist/dashboard/index.html). Shipped in PR #68 (merged to develop;
+  build, secrets, audit, analyze, CodeQL, lighthouse, and Cloudflare
+  Pages all green). Grade (dimensions this cycle touched, scored from
+  evidence): functional 2,500/2,500 (every slice element is live and
+  wired: switch on completed courses only, valid-only gating, save,
+  revert on rejection, graceful mine failure); schema and API
+  2,000/2,000 (no API change, suite green, existing endpoint rules
+  unchanged); accessibility 1,250/1,250 (Lighthouse gate passed,
+  article card instead of a link wrapping a control, labelled select
+  with role=status feedback); performance 1,250/1,250 (Lighthouse
+  budgets passed, one extra same-origin list fetch per dashboard load,
+  no new dependency); security 1,250/1,250 (CodeQL and analyze green,
+  owner-only and valid-only rules enforced server side, attribute
+  escaping on all server values rendered into the card); code quality
+  1,000/1,000 (API typecheck clean, site build clean, built bundle
+  inspected, existing patterns reused); brand and copy 750/750
+  (deck labels and surface copy, Canadian spelling, no new em dash,
+  no member named, no overclaim about public listing). Pro-rated
+  total 10,000/10,000, no zero dimension, no open P0. Verdict:
+  ACCEPT. Next improvement: the remaining Phase 4 follow-up the grade
+  points to is search indexing of public certificates (a per-code head
+  before indexing), unless the founder directs another slice first.
+  Live issuance still needs the operator setup: the two signing
+  secrets plus the matching signing_keys row; until then a completed
+  course reports certificate_pending, which is the intended fail-closed
+  state. Proposing a new group (three co-founders plus admin
+  approval), live verification of the /hub/g/* rewrite on a branch
+  preview, a rituals read API for live thread state, the deck command
+  palette, the /hub route renaming, the feed header notices (next Demo
+  Night, questions needing answers), and the staff spotlight post type
+  remain recorded follow-ups. Still blocked: the Phase 1 preview smoke
+  flows and applying 0037 to preview D1 (no Cloudflare token in the
+  environment).
