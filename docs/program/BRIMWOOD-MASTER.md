@@ -1653,3 +1653,88 @@ from the self-chaining loop's first run on 2026-10-21.
   indexing of public certificates remain recorded follow-ups. Still
   blocked: the Phase 1 preview smoke flows and applying 0037 to
   preview D1 (no Cloudflare token in the environment).
+- Cycle 29, 2026-10-27: Phase 4 slice 2, reflection-gated academy
+  completion with automatic certificate issue, in
+  ~/workspace/company/wt-phase4-auto-cert on branch
+  phase4/auto-certificate (no open loop PR; develop CI green; #22 is the
+  founder-tapped README PR, not loop work). No migration: the schema
+  already exists in 0031, and this slice is the first code that writes
+  enrollments.completed_at, the column Phase 1 never wrote and manual
+  issue requires. Shared issuance first: api/src/lib/certificates.ts
+  now holds the one code path for both issuers (BRIM-YYYY-XXXXXX codes
+  by rejection sampling, the v1 canonical string, Ed25519 signing over
+  it with the Worker secret against the signing_keys public key, one
+  valid certificate per enrolment), and the manual route delegates to
+  it with its responses unchanged. API (POST /api/progress/:lessonId):
+  after the reflection and progress upsert, the route counts
+  still-published lessons against completed lessons that also have a
+  reflection row, so a pre-0031 reflection-less progress row cannot
+  complete a course (D6); when the count is full it stamps
+  completed_at, then auto-issues with issue_source 'auto' and hours
+  from the published lessons' duration_minutes total (at least 1 hour
+  when a course records no durations, capped at the 0031 limit of
+  500). Issuance never blocks learning: with signing unconfigured or
+  signing failed, the lesson still completes, the enrolment still
+  stamps, the response reports certificate_pending, the admin manual
+  issue remains available, and re-completing any lesson in the course
+  retries the automatic issue; an already-existing valid certificate
+  is returned instead of a duplicate. GET /api/progress now reads
+  completed from the stamp with a reflection-count fallback for
+  enrolments completed before the stamp existed, plus the valid
+  certificate_code. Site: the lesson reflection panel shows the
+  issued certificate link, or a pending note when signing is not
+  ready, and the dashboard links a completed course to its
+  certificate at /c/CODE. Em dashes scrubbed from every new line;
+  pre-existing dashes in page titles left untouched (recorded brand
+  call). Verification before the PR: 793 API tests pass (40 files, 5
+  new: auto-issue on reflected completion with a real Ed25519
+  sign/verify round trip, no completion without a reflection, pending
+  when signing is not configured, retry on re-completion, progress
+  certificate surface; 1 pre-existing test updated for the
+  reflection-gated completed flag), API typecheck clean, site build
+  clean (36 pages), and the built bundles inspected directly (lesson
+  cert wiring in dist/js/academy-lesson.js, dashboard certificate
+  link). The exact completion, stamp, auto-issue, and progress SQL
+  was also run against a real SQLite database built from the full
+  0001-0037 migration chain: totals 2/1 before the last reflection
+  and 2/2 after, the stamp landed, the auto insert logged an issued
+  event, the progress list returned the code, a second valid
+  certificate was rejected by the partial unique index, and an
+  incomplete enrolment was rejected by the 0031 trigger. Shipped in
+  PR #66 (merged to develop; build, secrets, audit, analyze, CodeQL,
+  lighthouse, and Cloudflare Pages all green). Grade (dimensions
+  this cycle touched, scored from evidence): functional 2,500/2,500
+  (every slice element is live and wired: reflection-gated
+  completion, stamp, auto-issue, pending and retry, existing-cert
+  return, progress certificate surface, lesson and dashboard
+  links); schema and API 2,000/2,000 (new shared lib on the shipped
+  0031 schema, suite green, no migration needed, SQL verified
+  against real SQLite); accessibility 1,250/1,250 (Lighthouse gate
+  passed, certificate line carries role=status, labelled reflection
+  field unchanged); performance 1,250/1,250 (Lighthouse budgets
+  passed, no new dependency, completion adds only the enrolment
+  and totals reads); security 1,250/1,250 (CodeQL and analyze green,
+  signing key stays a Worker secret, owner-only certificate surface,
+  no lesson or reflection content in any certificate answer,
+  escaped output, already-existing certificates never duplicated);
+  code quality 1,000/1,000 (API typecheck clean, manual and auto
+  issue share one path, tests in the existing style, SQL verified
+  against real SQLite); brand and copy 750/750 (deck labels and
+  surface copy, Canadian spelling, no new em dash, no member named).
+  Pro-rated total 10,000/10,000, no zero dimension, no open P0.
+  Verdict: ACCEPT. Next improvement: Phase 4 slice 3, the member
+  certificate visibility switch on the academy dashboard, using the
+  existing PATCH /api/certificates/:id/visibility endpoint, so a
+  member can move a certificate between private, link, and public
+  without Studio. Live issuance still needs the operator setup: the
+  two signing secrets plus the matching signing_keys row; until then
+  a completed course reports certificate_pending, which is the
+  intended fail-closed state. Proposing a new group (three co-founders
+  plus admin approval), live verification of the /hub/g/* rewrite on
+  a branch preview, a rituals read API for live thread state, the
+  deck command palette, the /hub route renaming, the feed header
+  notices (next Demo Night, questions needing answers), the staff
+  spotlight post type, and search indexing of public certificates
+  remain recorded follow-ups. Still blocked: the Phase 1 preview
+  smoke flows and applying 0037 to preview D1 (no Cloudflare token
+  in the environment).
