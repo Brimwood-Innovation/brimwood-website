@@ -1821,9 +1821,9 @@ from the self-chaining loop's first run on 2026-10-21.
   pages), and the built check bundle inspected directly (the
   valid-and-public gate, the robots upgrade, the canonical rewrite,
   and the credential JSON-LD all present; the built shell itself
-  still carries noindex). Shipped in PR #PENDING (merged to develop
-  once its required checks pass). Grade (dimensions this cycle
-  touched, scored from
+  still carries noindex). Shipped in PR #70 (merged to develop once
+  its required checks pass). Grade (dimensions this cycle touched,
+  scored from
   evidence): functional 2,500/2,500 (head upgrades only on
   valid-and-public, every other answer stays noindex, gate verified
   in the built bundle); schema and API 2,000/2,000 (no API change,
