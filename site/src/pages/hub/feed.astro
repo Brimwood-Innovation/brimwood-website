@@ -244,7 +244,8 @@ import StoriesTray from "../../components/StoriesTray.astro";
         <div style="display:flex;gap:10px;align-items:center;">
           <a href="${esc(p.author.profile_url || "/members")}" style="display:inline-flex;flex:none;text-decoration:none;" aria-label="${esc(p.author.display)}'s profile">${avatarHtml(p.author)}</a>
           <div><a href="${esc(p.author.profile_url || "/members")}" style="font-size:14px;font-weight:700;color:inherit;text-decoration:none;">${esc(p.author.display)}</a>${staffBadge}<br /><span class="meta">${relTime(p.created_at)} · ${audienceLabel}</span></div>
-          <button type="button" class="btn btn-ghost btn-sm" data-share="${p.id}" data-share-author="${esc(p.author.display)}" style="margin-left:auto;" aria-label="Share post">↗</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-save="${p.id}" style="margin-left:auto;" aria-label="Save post" aria-pressed="false">Save</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-share="${p.id}" data-share-author="${esc(p.author.display)}" aria-label="Share post">↗</button>
         </div>
         ${p.body ? `<p class="feed-body">${Brimwood.renderMentions(p.body)}</p>` : ""}
         ${mediaGridHtml(p.media)}
@@ -281,6 +282,7 @@ import StoriesTray from "../../components/StoriesTray.astro";
       if (!more) $("feed-list").innerHTML = "";
       $("feed-list").insertAdjacentHTML("beforeend", (d.posts || []).map(postHtml).join(""));
       renderReels(d.posts || []);
+      markSaved();
       cursor = d.next_cursor;
       $("btn-more").style.display = cursor ? "" : "none";
     }
@@ -408,9 +410,52 @@ import StoriesTray from "../../components/StoriesTray.astro";
       }
     }
 
-    /* --- Delegated events: voting, voters, reactions --- */
+    /* --- Saved state: one /api/saved read marks every Save button on
+     * the page, so a post saved earlier still reads Saved after a
+     * reload. The set is kept in memory and updated by the handler
+     * below, never re-guessed from the button label. --- */
+    let savedIds = null;
+    async function markSaved() {
+      try {
+        if (!savedIds) {
+          const d = await (await api("/api/saved?limit=200")).json();
+          if (!d.ok) return;
+          savedIds = new Set((d.saved || []).map((s) => s.post_id));
+        }
+        document.querySelectorAll("[data-save]").forEach((b) => {
+          const on = savedIds.has(b.dataset.save);
+          b.textContent = on ? "Saved" : "Save";
+          b.setAttribute("aria-pressed", String(on));
+        });
+      } catch { /* buttons stay as Save when the saved list fails */ }
+    }
+
+    /* --- Delegated events: voting, voters, reactions, saving --- */
 
     document.addEventListener("click", async (e) => {
+      const saveBtn = e.target.closest("[data-save]");
+      if (saveBtn) {
+        const pid = saveBtn.dataset.save;
+        const wasSaved = savedIds ? savedIds.has(pid) : saveBtn.getAttribute("aria-pressed") === "true";
+        saveBtn.disabled = true;
+        try {
+          const r = wasSaved
+            ? await api(`/api/saved/${encodeURIComponent(pid)}`, { method: "DELETE" })
+            : await api("/api/saved", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ post_id: pid }),
+              });
+          const d = await r.json();
+          if (!r.ok || !d.ok) throw 0;
+          if (!savedIds) savedIds = new Set();
+          if (wasSaved) savedIds.delete(pid); else savedIds.add(pid);
+          saveBtn.textContent = wasSaved ? "Save" : "Saved";
+          saveBtn.setAttribute("aria-pressed", String(!wasSaved));
+        } catch { /* label stays as it was; the next markSaved retries */ }
+        saveBtn.disabled = false;
+        return;
+      }
       const optBtn = e.target.closest(".poll-opt");
       if (optBtn) {
         optBtn.disabled = true;

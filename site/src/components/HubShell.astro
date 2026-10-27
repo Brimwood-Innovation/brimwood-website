@@ -6,15 +6,15 @@
  * The shell switches by its own width, so one markup pattern serves
  * desktop and phone, as the deck specifies.
  *
- * Honest gaps, not invented pages: places with no page yet (Saved)
- * and avatar items with no page yet (Settings,
- * Safety) render as plain text, never as links to a page that does
- * not exist. Their slices land later; until then the shell shows the
- * deck structure without promising a destination. Home gained its
- * page in Phase 3 slice 3 (/hub) and is a real link now, as are
- * Groups (slice 6), Events (slice 7, /hub/events), Space
+ * Honest gaps, not invented pages: avatar items with no page yet
+ * (Settings, Safety) render as plain text, never as links to a page
+ * that does not exist. Their slices land later; until then the shell
+ * shows the deck structure without promising a destination. Home
+ * gained its page in Phase 3 slice 3 (/hub) and is a real link now,
+ * as are Groups (slice 6), Events (slice 7, /hub/events), Space
  * (slice 8, /hub/space, with check-in, guest passes and house info
- * under it) and People (slice 9, /hub/people).
+ * under it), People (slice 9, /hub/people) and Saved
+ * (slice 10, /hub/saved).
  * Existing routes are kept exactly as they are: Messages stays at
  * /messages and the bell inbox at /notifications, even though the
  * deck routes them under /hub. Renaming routes is a separate slice,
@@ -48,7 +48,7 @@ const places: Place[] = [
   { key: "space", label: "Space", href: "/hub/space" },
   { key: "people", label: "People", href: "/hub/people" },
   { key: "academy", label: "Academy", href: "/academy" },
-  { key: "saved", label: "Saved", href: null },
+  { key: "saved", label: "Saved", href: "/hub/saved" },
 ];
 const tabs: Place[] = [
   { key: "home", label: "Home", href: "/hub" },
@@ -61,7 +61,7 @@ const mePlaces: Place[] = [
   { key: "events", label: "Events", href: "/hub/events" },
   { key: "people", label: "People", href: "/hub/people" },
   { key: "academy", label: "Academy", href: "/academy" },
-  { key: "saved", label: "Saved", href: null },
+  { key: "saved", label: "Saved", href: "/hub/saved" },
 ];
 const isCurrent = (key: string) => (current === key ? "page" : undefined);
 ---
