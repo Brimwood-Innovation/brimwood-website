@@ -174,9 +174,11 @@ describe("certificate issue", () => {
     expect(body.certificate.status).toBe("valid");
     const insert = calls.find((c) => /^INSERT INTO certificates/i.test(c.sql));
     expect(insert).toBeDefined();
-    expect(insert!.sql).toContain("'manual'");
     const params = insert!.params as unknown[];
-    expect(params).toHaveLength(12);
+    expect(params).toHaveLength(13);
+    // Shared issuance path (api/src/lib/certificates.ts): the source is a
+    // bound value, not a SQL literal, so it lands in the params.
+    expect(params[10]).toBe("manual");
     const canonical = params[7] as string;
     const signature = params[8] as string;
     expect(canonical).toBe(`v1|${body.certificate.code}|member-1|course-1|${body.certificate.issued_at}`);

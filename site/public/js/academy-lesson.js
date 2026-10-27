@@ -98,6 +98,15 @@
         });
         var d = await r.json().catch(function () { return {}; });
         if (!r.ok || !d.ok) throw new Error(d.error || "save failed");
+        if (d.certificate && o.certLine && o.certLink) {
+          o.certLink.setAttribute("href", d.certificate.verify_url);
+          o.certLink.textContent = "View certificate " + d.certificate.code;
+          o.certLine.hidden = false;
+        } else if (d.course_completed && d.certificate_pending && o.msg) {
+          // Completion stands; signing is not ready yet, so the
+          // certificate follows from the dashboard or a re-submit.
+          showMsg("Course complete. Your certificate will follow once signing is ready.", true);
+        }
         done = true;
         signedIn = true;
         showMsg("✓ Completed.", true);
@@ -127,6 +136,8 @@
       msg: document.getElementById(prefix + "reflectionMsg"),
       progressLine: document.getElementById(prefix + "progressLine"),
       progressText: document.getElementById(prefix + "progressText"),
+      certLine: document.getElementById(prefix + "certLine"),
+      certLink: document.getElementById(prefix + "certLink"),
     };
   }
 
@@ -144,6 +155,8 @@
       msg: els.msg,
       progressLine: els.progressLine,
       progressText: els.progressText,
+      certLine: els.certLine,
+      certLink: els.certLink,
       nextLink: document.getElementById("nextLessonLink"),
       nextNote: document.getElementById("nextGateNote"),
     });
@@ -183,6 +196,7 @@
             '<p id="gReflectionMsg" role="status" style="display:none;font-weight:600;margin-top:12px;"></p>' +
             '<button class="btn" id="gReflectionBtn" type="submit" style="margin-top:16px;">Submit reflection</button>' +
             '<p class="progress-line" id="gProgressLine" hidden>Your progress: <b id="gProgressText"></b></p>' +
+            '<p id="gCertLine" role="status" hidden>Course complete. Your certificate is ready: <a id="gCertLink" href="#">View certificate</a></p>' +
             "</form></div>";
           document.title = l.title + " — Academy — Brimwood Innovation";
           var gels = reflectionEls("g");
@@ -196,6 +210,8 @@
             msg: gels.msg,
             progressLine: gels.progressLine,
             progressText: gels.progressText,
+            certLine: gels.certLine,
+            certLink: gels.certLink,
             nextLink: null,
             nextNote: null,
           });
