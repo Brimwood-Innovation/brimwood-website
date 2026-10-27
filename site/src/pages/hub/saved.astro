@@ -1,0 +1,188 @@
+---
+/* Member hub saved (Phase 3 slice 10, deck section 07 Saved place).
+ * The member's own saved posts, newest saved first, from /api/saved.
+ * Collection chips filter the list; a post saved while its author
+ * deleted it, or after the member left its group, simply drops out,
+ * because the API lists only posts the member can still see. Each
+ * card carries Unsave and a collection menu: moving a post to another
+ * collection, or to a new one typed on the spot, is one POST to the
+ * same save endpoint. Saved posts are private: no other member's
+ * saves, counts, or collections ever reach this page. Signed-out
+ * visitors see the sign-in prompt.
+ */
+import Base from "../../layouts/Base.astro";
+import HubShell from "../../components/HubShell.astro";
+---
+
+<Base
+  title="Saved - Brimwood Innovation"
+  description="Posts you saved. Private to you, newest saved first."
+  path="/hub/saved"
+>
+  <HubShell current="saved">
+  <section class="block" id="saved-loading">
+    <div class="kicker">Saved</div>
+    <p class="sec-lede">Checking your session…</p>
+  </section>
+
+  <section class="block" id="saved-login" style="display:none;text-align:center;padding:48px 0;">
+    <div class="kicker">Saved</div>
+    <h1 class="sec" style="font-size:clamp(28px,4vw,40px);margin-bottom:18px;">Sign in to see your saved posts.</h1>
+    <p class="sec-lede" style="margin-inline:auto;"><a href="/members">Sign in</a> to continue.</p>
+  </section>
+
+  <section class="block" id="saved-app" style="display:none;max-width:860px;">
+    <div class="kicker">Saved</div>
+    <h1 class="sec" style="font-size:clamp(28px,4vw,40px);margin-bottom:8px;">Saved.</h1>
+    <p class="sec-lede" style="margin-bottom:22px;">Posts you saved, newest saved first. Only you can see this list.</p>
+    <div id="saved-collections" role="group" aria-label="Filter by collection" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;"></div>
+    <p id="saved-count" class="thread-sub" role="status" style="margin:0 0 16px;"></p>
+    <p id="saved-error" class="thread-sub" style="display:none;color:var(--brimwood-red, #b42318);"></p>
+    <div id="saved-list" style="display:grid;gap:14px;"></div>
+    <div id="saved-empty" style="display:none;">
+      <p class="sec-lede" id="saved-empty-text"></p>
+    </div>
+  </section>
+
+  <script>
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
+    const withCreds = { credentials: "include" };
+    const esc = (s) => String(s ?? "").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const $ = (id) => document.getElementById(id);
+    const show = (id) => ($(id).style.display = "");
+    const hide = (id) => ($(id).style.display = "none");
+
+    let collection = "";
+    let collections = [];
+    let saved = [];
+
+    function fmtDate(iso) {
+      try {
+        return new Date(iso).toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" });
+      } catch { return ""; }
+    }
+
+    function renderCollections() {
+      const wrap = $("saved-collections");
+      const chips = [{ collection: "", count: saved.length }, ...collections];
+      wrap.innerHTML = chips.map((t) => `<button type="button" class="btn ${collection === t.collection ? "btn-primary" : "btn-ghost"} btn-sm" data-collection="${esc(t.collection)}" aria-pressed="${collection === t.collection}">${esc(t.collection || "All")}${t.count ? ` (${t.count})` : ""}</button>`).join("");
+      wrap.querySelectorAll("[data-collection]").forEach((b) => b.addEventListener("click", () => {
+        collection = b.dataset.collection || "";
+        renderCollections();
+        renderList();
+      }));
+    }
+
+    function collectionSelect(item) {
+      const opts = collections.map((t) => `<option value="${esc(t.collection)}"${t.collection === item.collection ? " selected" : ""}>${esc(t.collection)}</option>`).join("");
+      return `<label style="display:flex;gap:8px;align-items:center;">Collection
+        <select data-move="${esc(item.post_id)}" aria-label="Move to collection" style="flex:1;">
+          ${opts}
+          <option value="__new__">New collection…</option>
+        </select></label>`;
+    }
+
+    function renderList() {
+      const list = $("saved-list");
+      const empty = $("saved-empty");
+      const count = $("saved-count");
+      const shown = collection ? saved.filter((s) => s.collection === collection) : saved;
+      count.textContent = `${shown.length} ${shown.length === 1 ? "post" : "posts"} saved${collection ? ` in ${collection}` : ""}.`;
+      if (!shown.length) {
+        hide("saved-list");
+        show("saved-empty");
+        $("saved-empty-text").textContent = collection
+          ? "Nothing saved in this collection yet. Save a post from the feed, then move it here."
+          : "Nothing saved yet. Use Save on a feed post and it appears here.";
+        return;
+      }
+      hide("saved-empty");
+      show("saved-list");
+      list.innerHTML = shown.map((s) => `
+        <article class="card" style="padding:18px 20px;">
+          <div style="display:flex;gap:10px;align-items:center;">
+            <a href="${esc(s.post.author.profile_url)}" style="font-weight:700;color:inherit;text-decoration:none;">${esc(s.post.author.display)}</a>${s.post.author.is_staff ? ` <span class="badge">Staff</span>` : ""}
+            <span class="thread-sub" style="margin-left:auto;">${esc(fmtDate(s.saved_at))}</span>
+          </div>
+          ${s.post.group ? `<p class="thread-sub" style="margin:8px 0 0;">${esc(s.post.group.name)}</p>` : ""}
+          <p style="margin:10px 0;white-space:pre-wrap;">${esc(s.post.body)}</p>
+          <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <a class="btn btn-secondary btn-sm" href="/hub/post/?id=${encodeURIComponent(s.post_id)}">View post</a>
+            <button type="button" class="btn btn-ghost btn-sm" data-unsave="${esc(s.post_id)}" aria-label="Remove from saved">Unsave</button>
+            <div style="flex:1;min-width:220px;">${collectionSelect(s)}</div>
+          </div>
+        </article>`).join("");
+      list.querySelectorAll("[data-unsave]").forEach((b) => b.addEventListener("click", async () => {
+        b.disabled = true;
+        try {
+          const r = await fetch(API_BASE + "/api/saved/" + encodeURIComponent(b.dataset.unsave), { ...withCreds, method: "DELETE" });
+          const d = await r.json();
+          if (!r.ok || !d.ok) throw 0;
+          saved = saved.filter((s) => s.post_id !== b.dataset.unsave);
+          loadSaved(false);
+        } catch {
+          b.disabled = false;
+        }
+      }));
+      list.querySelectorAll("[data-move]").forEach((sel) => sel.addEventListener("change", async () => {
+        let target = sel.value;
+        if (target === "__new__") {
+          target = (window.prompt("Name the new collection (up to 40 characters):") || "").trim().slice(0, 40);
+          if (!target) { sel.value = saved.find((s) => s.post_id === sel.dataset.move)?.collection || ""; return; }
+        }
+        sel.disabled = true;
+        try {
+          const r = await fetch(API_BASE + "/api/saved", {
+            ...withCreds,
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ post_id: sel.dataset.move, collection: target }),
+          });
+          const d = await r.json();
+          if (!r.ok || !d.ok) throw 0;
+          await loadSaved(false);
+        } catch {
+          sel.disabled = false;
+        }
+      }));
+    }
+
+    async function loadSaved(first) {
+      try {
+        const r = await fetch(API_BASE + "/api/saved", { ...withCreds });
+        if (r.status === 401 && first) {
+          hide("saved-loading");
+          show("saved-login");
+          return false;
+        }
+        const d = await r.json();
+        if (!r.ok || !d.ok) throw 0;
+        saved = d.saved || [];
+        collections = d.collections || [];
+        hide("saved-error");
+        renderCollections();
+        renderList();
+        return true;
+      } catch (e) {
+        const err = $("saved-error");
+        err.textContent = "Your saved posts are unavailable right now. Please try again shortly.";
+        show("saved-error");
+        return true;
+      }
+    }
+
+    async function init() {
+      hide("saved-login");
+      hide("saved-app");
+      show("saved-loading");
+      const ok = await loadSaved(true);
+      if (ok) {
+        hide("saved-loading");
+        show("saved-app");
+      }
+    }
+
+    init();
+  </script>
+  </HubShell>
+</Base>
