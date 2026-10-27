@@ -6,7 +6,9 @@
  * and a reflection panel: there is no Mark complete, submitting the
  * reflection completes the lesson (D6) and opens the next one. The
  * panel posts { reflection } to POST /api/progress/:lessonId, the
- * contract Phase 1 shipped; the old Mark as complete button sent no
+ * contract Phase 1 shipped; on the lesson that completes a course the
+ * response carries the automatically issued certificate (Phase 4 slice
+ * 2), shown in the certificate line below. The old Mark as complete button sent no
  * reflection and could not complete a lesson. The deck's notes and
  * transcript tabs and its reflection visibility choice are not
  * ported: the API returns one body field and reflections are private,
@@ -129,6 +131,7 @@ if (courseTitle) {
             <p id="reflectionMsg" role="status" style="display:none;font-weight:600;margin-top:12px;"></p>
             <button class="btn" id="reflectionBtn" type="submit" style="margin-top:16px;">Submit reflection</button>
             <p class="progress-line" id="progressLine" hidden>Your progress: <b id="progressText"></b></p>
+            <p id="certLine" role="status" hidden>Course complete. Your certificate is ready: <a id="certLink" href="#">View certificate</a></p>
           </form>
         </div>
 

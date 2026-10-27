@@ -44,13 +44,16 @@
  * HMACs only: no raw code and no raw IP ever lands in that table.
  * Email, lessons, reflections, and cohort peers never appear here.
  *
- * Not in this slice: automatic issue on lesson completion (that lands
- * with the reflection-gated academy slice), the member visibility switch
- * on the hub academy page (the endpoint is here; the switch UI is not),
- * and search indexing of public certificates (the check page is
- * noindex; a public certificate needs a per-code head before indexing).
+ * Automatic issue on reflection-gated course completion lives in
+ * api/src/lib/certificates.ts and is called from the progress route;
+ * this route only issues manually. Still not in this slice: the member
+ * visibility switch on the hub academy page (the endpoint is here;
+ * the switch UI is not), and search indexing of public certificates
+ * (the check page is noindex; a public certificate needs a per-code
+ * head before indexing).
  */
 import { Hono } from "hono";
+import { b64urlDecode, issueCertificate } from "../lib/certificates";
 import { getAdminUser, readSession } from "../lib/auth";
 import { hmacSha256Hex } from "../lib/hmac";
 import { checkRateLimitD1 } from "../lib/ratelimit-d1";
@@ -59,43 +62,12 @@ import type { Bindings } from "../index";
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-const ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 const CODE_RE = /^BRIM-[0-9]{4}-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6}$/;
 const VISIBILITIES = ["private", "link", "public"];
 const VERIFY_LIMIT = 30;
 const VERIFY_WINDOW_SECS = 3600;
 const MAX_REASON_LEN = 500;
 const MAX_LIST = 200;
-
-/* --- base64url helpers (no padding, as the 0031 CHECKs require) --- */
-
-function b64urlEncode(bytes: Uint8Array): string {
-  let bin = "";
-  for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function b64urlDecode(s: string): Uint8Array {
-  const norm = s.replace(/-/g, "+").replace(/_/g, "/");
-  const bin = atob(norm + "=".repeat((4 - (norm.length % 4)) % 4));
-  return Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
-}
-
-/** Six code chars by rejection sampling: values 248-255 are discarded so
- *  no alphabet symbol is favoured by the modulo. */
-function randomCodeSuffix(): string {
-  let out = "";
-  while (out.length < 6) {
-    const buf = new Uint8Array(16);
-    crypto.getRandomValues(buf);
-    for (const b of buf) {
-      if (out.length >= 6) break;
-      if (b >= 248) continue;
-      out += ALPHABET[b % 31];
-    }
-  }
-  return out;
-}
 
 interface CertRow {
   id: string;
@@ -296,111 +268,32 @@ app.post("/issue", async (c) => {
   if (!enrollmentId || !reason || typeof hours !== "number" || !Number.isFinite(hours) || hours <= 0 || hours > 500) {
     return c.json({ ok: false, error: "Send an enrolment, hours between 0 and 500, and a reason." }, 400);
   }
-  const keyId = c.env.CERT_SIGNING_KEY_ID as string | undefined;
-  const keyMaterial = c.env.CERT_SIGNING_KEY as string | undefined;
-  if (!keyId || !keyMaterial) {
-    return c.json({ ok: false, error: "Certificate signing is not configured" }, 500);
-  }
-  const keyRow: any = await c.env.DB.prepare(
-    "SELECT key_id, public_key FROM signing_keys WHERE key_id = ? AND retired_at IS NULL",
-  )
-    .bind(keyId)
-    .first();
-  if (!keyRow) {
-    return c.json({ ok: false, error: "Certificate signing is not configured" }, 500);
-  }
-
-  const enrolment: any = await c.env.DB.prepare(
-    `SELECT e.id, e.user_id, e.course_id, e.completed_at, co.title AS course_title
-     FROM enrollments e JOIN courses co ON co.id = e.course_id WHERE e.id = ?`,
-  )
-    .bind(enrollmentId)
-    .first();
-  if (!enrolment) {
-    return c.json({ ok: false, error: "Enrolment not found." }, 404);
-  }
-  if (!enrolment.completed_at) {
-    return c.json({ ok: false, error: "Enrolment is not complete." }, 400);
-  }
-  const existing: any = await c.env.DB.prepare(
-    "SELECT id, code FROM certificates WHERE enrollment_id = ? AND status = 'valid'",
-  )
-    .bind(enrollmentId)
-    .first();
-  if (existing) {
-    return c.json(
-      { ok: false, error: "A valid certificate already exists for this enrolment.", code: existing.code },
-      409,
-    );
-  }
-
-  let signingKey: CryptoKey;
-  try {
-    signingKey = await crypto.subtle.importKey(
-      "pkcs8",
-      b64urlDecode(keyMaterial) as BufferSource,
-      { name: "Ed25519" },
-      false,
-      ["sign"],
-    );
-  } catch {
-    return c.json({ ok: false, error: "Certificate signing is not configured" }, 500);
-  }
-
-  const issuedAt = new Date().toISOString();
-  const year = issuedAt.slice(0, 4);
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const code = `BRIM-${year}-${randomCodeSuffix()}`;
-    const canonical = `v1|${code}|${enrolment.user_id}|${enrolment.course_id}|${issuedAt}`;
-    let signature: string;
-    try {
-      const sig = await crypto.subtle.sign(
-        "Ed25519",
-        signingKey,
-        new TextEncoder().encode(canonical) as BufferSource,
+  const result = await issueCertificate(c.env as any, {
+    enrollmentId,
+    hours,
+    issueSource: "manual",
+    issuedBy: admin.id,
+    issueReason: reason,
+  });
+  if (!result.ok) {
+    if (result.reason === "not_configured") {
+      return c.json({ ok: false, error: "Certificate signing is not configured" }, 500);
+    }
+    if (result.reason === "not_found") {
+      return c.json({ ok: false, error: "Enrolment not found." }, 404);
+    }
+    if (result.reason === "not_completed") {
+      return c.json({ ok: false, error: "Enrolment is not complete." }, 400);
+    }
+    if (result.reason === "already_exists") {
+      return c.json(
+        { ok: false, error: "A valid certificate already exists for this enrolment.", code: result.code },
+        409,
       );
-      signature = b64urlEncode(new Uint8Array(sig));
-    } catch {
-      return c.json({ ok: false, error: "Certificate signing failed" }, 500);
     }
-    try {
-      const id = crypto.randomUUID();
-      await c.env.DB.prepare(
-        `INSERT INTO certificates
-         (id, code, member_id, course_id, enrollment_id, issued_at, hours,
-          canonical, signature, signing_key_id, issue_source, issued_by, issue_reason)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', ?, ?)`,
-      )
-        .bind(id, code, enrolment.user_id, enrolment.course_id, enrollmentId, issuedAt, hours,
-          canonical, signature, keyId, admin.id, reason)
-        .run();
-      return c.json({
-        ok: true,
-        certificate: {
-          id,
-          code,
-          member_id: enrolment.user_id,
-          course_id: enrolment.course_id,
-          course_title: enrolment.course_title,
-          enrollment_id: enrollmentId,
-          issued_at: issuedAt,
-          hours,
-          visibility: "private",
-          status: "valid",
-          status_changed_at: null,
-          verify_url: `/c/${code}`,
-        },
-      });
-    } catch (e: any) {
-      const msg = String(e?.message || e || "");
-      if (/UNIQUE constraint failed: certificates\.code/.test(msg)) continue;
-      if (/certificate needs a completed enrolment/.test(msg)) {
-        return c.json({ ok: false, error: "Enrolment is not complete." }, 400);
-      }
-      throw e;
-    }
+    return c.json({ ok: false, error: "Could not issue a certificate code" }, 500);
   }
-  return c.json({ ok: false, error: "Could not issue a certificate code" }, 500);
+  return c.json({ ok: true, certificate: result.certificate });
 });
 
 /* --- Revoke (admin only, terminal) --- */
