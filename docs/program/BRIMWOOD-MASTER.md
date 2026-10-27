@@ -1489,3 +1489,79 @@ from the self-chaining loop's first run on 2026-10-21.
   this slice. Still blocked: the Phase 1 preview smoke flows and
   applying 0037 to preview D1 (no Cloudflare token in the
   environment).
+- Cycle 27, 2026-10-27: Phase 3 slice 10, the hub saved page from the
+  deck (section 07 Saved place: the member's saved posts, visible
+  only to them), in ~/workspace/company/wt-phase3-hub-saved on branch
+  phase3/hub-saved (no open loop PR; develop CI green; #22 is the
+  founder-tapped README PR, not loop work). First check, as cycle 26
+  required: no save or unsave endpoint existed; saved_posts from
+  0026 was written by nothing. This slice builds it, with no new
+  migration and no new dependency. API (mounted at /api/saved, new
+  route saved.ts, members only): GET / lists the caller's own saves
+  newest first with collection chips derived from the visible rows;
+  POST / saves a post into a named collection (default Saved, 1 to
+  40 chars) as an upsert, so re-saving moves the post and refreshes
+  saved_at; DELETE /:postId unsaves idempotently. Visibility is the
+  feed rule exactly: published and not deleted, audience the viewer
+  may see (members, their own only_me posts, groups they actively
+  belong to), neither side of a block (block_pairs, both ways); an
+  invisible post is a 404 on save, the same answer the feed detail
+  gives, and silently drops out of the list. No other member's saves,
+  counts, or collections are readable: every query is keyed on the
+  caller. Page /hub/saved in the HubShell (members-only gate, same
+  pattern as people): collection chips with counts, a count line
+  with role=status, deck empty states, a View post link, Unsave, and
+  a collection menu that moves a post or creates a new collection on
+  the spot. The shell now links Saved to /hub/saved on desktop and
+  under Me on phones, so all nine deck places are real links and
+  Phase 3 closes with this slice. The hub feed gains the entry point:
+  a Save button on every post card, marked Saved from one /api/saved
+  read and kept in memory as the member saves and unsaves. Em dashes
+  scrubbed from every touched file; the pre-existing em dash in the
+  /hub page title, the search page title, and api/src/index.ts is
+  untouched (recorded brand call). Verification before the PR: 775
+  API tests pass (39 files, 9 new: list order and chips with the
+  visibility SQL asserted, collection filter, sign-in required,
+  save into a named collection with the upsert SQL asserted, Saved
+  default, invisible post 404 with nothing saved, missing id 400,
+  overlong collection truncated to 40, idempotent unsave, sign-in
+  required for both writes), API typecheck clean, site build clean
+  (34 pages, up from 33), and the built bundles inspected directly
+  (saved page and feed Save wiring in the _astro bundles). The exact
+  list, move, and unsave SQL was also run against a real SQLite
+  database built from the full 0001-0037 migration chain: the viewer
+  saw Ada and Bo only (Cy blocked, the deleted post, and the
+  someone-else only_me post all excluded; the suspended author's
+  post stayed visible, matching the feed rule, which does not filter
+  author status either), the move upsert changed the collection,
+  and the unsave deleted the row. Shipped in PR #62 (merged to
+  develop; build, secrets, audit, analyze, CodeQL, lighthouse, and
+  Cloudflare Pages all green). Grade (dimensions this cycle touched,
+  scored from evidence): functional 2,500/2,500 (every deck Saved
+  element with a backing endpoint is live and wired: list, chips,
+  filter, View post, Unsave, move and new collection, feed Save
+  entry point, shell links); schema and API 2,000/2,000 (new route
+  in the existing style on the shipped 0026 schema, suite green, no
+  migration needed); accessibility 1,250/1,250 (Lighthouse gate
+  passed, chips carry aria-pressed, count line carries role=status,
+  Save buttons carry aria-pressed and aria-labels, labelled
+  collection selects); performance 1,250/1,250 (Lighthouse budgets
+  passed, no new dependency, one small saved-list fetch shared by
+  the feed and the saved page); security 1,250/1,250 (CodeQL and
+  analyze green, members-only gate, block exclusion both ways,
+  invisible posts never leak, no email or real name in any
+  response, escaped output); code quality 1,000/1,000 (API typecheck
+  clean, tests in the existing style, list SQL verified against
+  real SQLite); brand and copy 750/750 (deck labels and surface
+  copy, Canadian spelling, no new em dash, no member named).
+  Pro-rated total 10,000/10,000, no zero dimension, no open P0.
+  Verdict: ACCEPT. Next improvement: Phase 4 slice 1, D1 certificate
+  issuance and the certificate studio panel from the phase map.
+  Proposing a new group (three co-founders plus admin approval),
+  live verification of the /hub/g/* rewrite on a branch preview, a
+  rituals read API for live thread state, the deck command palette,
+  the /hub route renaming, the feed header notices (next Demo
+  Night, questions needing answers), and the staff spotlight post
+  type remain recorded follow-ups. Still blocked: the Phase 1 preview
+  smoke flows and applying 0037 to preview D1 (no Cloudflare token
+  in the environment).
