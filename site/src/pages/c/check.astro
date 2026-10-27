@@ -1,0 +1,109 @@
+---
+/* Certificate check (Phase 4 slice 1, SPEC D3, deck /c/CODE).
+ * Static-first site, so the code is never known at build time: the
+ * _redirects rewrite serves this page for /c/CODE while the browser
+ * keeps the /c/CODE URL, and this page reads the code from the path
+ * (or from ?code= when opened locally) and checks it against
+ * /api/certificates/verify. The page is noindex: a certificate page is
+ * indexed only after the member makes it public, which a static shell
+ * cannot know at build time.
+ *
+ * States, exactly as the API answers them: valid (public or link) shows
+ * the holder's current display name, the course, and the issue date;
+ * private shows only that the holder has not shared it; revoked,
+ * superseded, and withdrawn show that the certificate is no longer
+ * valid and when that changed; anything else shows that no certificate
+ * matches the code. Email, lessons, reflections, and cohort peers
+ * never appear here. All rendered values are escaped.
+ */
+import Base from "../../layouts/Base.astro";
+---
+
+<Base
+  title="Check a certificate - Brimwood Innovation"
+  description="Check a Brimwood Innovation certificate by its code."
+  path="/c/check"
+  noindex
+>
+  <section class="block" id="cert-loading">
+    <div class="kicker">Certificate check</div>
+    <p class="sec-lede">Checking the certificate…</p>
+  </section>
+
+  <section class="block" id="cert-result" style="display:none;max-width:720px;">
+    <div class="kicker">Certificate check</div>
+    <div id="cert-card" role="status"></div>
+    <form id="cert-again" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:24px;">
+      <label style="flex:1;min-width:220px;">Check another certificate
+        <input id="cert-input" type="text" inputmode="text" autocomplete="off" placeholder="BRIM-2026-XXXXXX" aria-label="Check another certificate" style="width:100%;" />
+      </label>
+      <button type="submit" class="btn btn-primary" style="align-self:end;">Check</button>
+    </form>
+  </section>
+
+  <script>
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
+    const esc = (s) => String(s ?? "").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const $ = (id) => document.getElementById(id);
+    const codeFromUrl = () => {
+      const q = new URLSearchParams(window.location.search).get("code");
+      if (q) return q.trim().toUpperCase();
+      const seg = window.location.pathname.split("/").filter(Boolean).pop() || "";
+      return seg.toUpperCase();
+    };
+    const fmtDate = (iso) => {
+      try {
+        return new Date(iso).toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" });
+      } catch { return ""; }
+    };
+
+    async function check(code) {
+      $("cert-loading").style.display = "none";
+      $("cert-result").style.display = "";
+      const card = $("cert-card");
+      if (!code) {
+        card.innerHTML = `<h1 class="sec" style="font-size:clamp(28px,4vw,40px);">No code given.</h1><p class="sec-lede">Enter a certificate code below to check it.</p>`;
+        return;
+      }
+      let d;
+      try {
+        const r = await fetch(`${API_BASE}/api/certificates/verify?code=${encodeURIComponent(code)}`, { headers: { accept: "application/json" } });
+        d = await r.json();
+      } catch {
+        card.innerHTML = `<h1 class="sec" style="font-size:clamp(28px,4vw,40px);">Check failed.</h1><p class="sec-lede">Please try again in a moment.</p>`;
+        return;
+      }
+      if (d.state === "valid") {
+        const issued = fmtDate(d.issued_at);
+        const url = `https://brimwoodinnovation.com/c/${esc(d.code)}`;
+        const fields = `Name: ${d.course_title}. Organization: Brimwood Innovation. Issued: ${issued}. Credential ID: ${d.code}. URL: ${url}`;
+        card.innerHTML = `<p><span class="badge badge-success">Valid certificate</span></p>
+          <h1 class="sec" style="font-size:clamp(28px,4vw,40px);">${esc(d.display_name)}</h1>
+          <p class="sec-lede">${esc(d.course_title)} · issued ${esc(issued)}</p>
+          <p class="thread-sub">Certificate code <span class="mono">${esc(d.code)}</span>. Signed by Brimwood (Ed25519). Does not expire.</p>
+          <p><button type="button" class="btn btn-secondary" id="cert-copy">Copy LinkedIn fields</button></p>`;
+        $("cert-copy").addEventListener("click", async () => {
+          try { await navigator.clipboard.writeText(fields); $("cert-copy").textContent = "Copied"; } catch {}
+        });
+      } else if (d.state === "private") {
+        card.innerHTML = `<p><span class="badge badge-neutral">Private</span></p>
+          <h1 class="sec" style="font-size:clamp(28px,4vw,40px);">This certificate is not public.</h1>
+          <p class="sec-lede">The holder has not shared it. If someone sent you this link, ask them to share it from their account.</p>`;
+      } else if (d.state === "revoked" || d.state === "superseded" || d.state === "withdrawn") {
+        card.innerHTML = `<p><span class="badge badge-danger">No longer valid</span></p>
+          <h1 class="sec" style="font-size:clamp(28px,4vw,40px);">This certificate is no longer valid.</h1>
+          <p class="sec-lede">Brimwood ${d.state === "revoked" ? "revoked" : d.state} it${d.status_changed_at ? ` on ${esc(fmtDate(d.status_changed_at))}` : ""}. The code stays on record and will never be reused.</p>`;
+      } else {
+        card.innerHTML = `<h1 class="sec" style="font-size:clamp(28px,4vw,40px);">No certificate matches that code.</h1>
+          <p class="sec-lede">Check the code and try again. Codes look like BRIM-2026-XXXXXX.</p>`;
+      }
+    }
+
+    $("cert-again").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const code = $("cert-input").value.trim().toUpperCase();
+      if (code) window.location.href = `/c/${encodeURIComponent(code)}`;
+    });
+    check(codeFromUrl());
+  </script>
+</Base>

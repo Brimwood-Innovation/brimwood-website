@@ -27,6 +27,7 @@ import feed from "./routes/feed";
 import studio from "./routes/studio";
 import invites from "./routes/invites";
 import passkeys from "./routes/passkeys";
+import certificates from "./routes/certificates";
 import { handleScheduled } from "./cron";
 import { csrfGuard } from "./lib/csrf";
 
@@ -42,6 +43,8 @@ export type Bindings = {
   TURNSTILE_SECRET_KEY?: string;
   SYNC_SECRET?: string;
   GITHUB_CONTENT_TOKEN?: string;
+  CERT_SIGNING_KEY?: string;
+  CERT_SIGNING_KEY_ID?: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -144,6 +147,7 @@ app.route("/api/saved", saved);
 app.route("/api/space", space);
 app.route("/api", feed);
 app.route("/api/invites", invites);
+app.route("/api/certificates", certificates);
 
 app.notFound((c) => c.json({ ok: false, error: "Not found" }, 404));
 app.onError((err, c) => {

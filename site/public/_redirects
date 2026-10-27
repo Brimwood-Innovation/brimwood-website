@@ -2,3 +2,4 @@
 # on this static-first site): the rewrite keeps the URL while the page
 # loads its group client-side from /api/groups.
 /hub/g/* /hub/group?slug=:splat 200
+/c/* /c/check?code=:splat 200
