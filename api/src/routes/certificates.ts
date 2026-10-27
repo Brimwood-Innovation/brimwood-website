@@ -46,11 +46,11 @@
  *
  * Automatic issue on reflection-gated course completion lives in
  * api/src/lib/certificates.ts and is called from the progress route;
- * this route only issues manually. Still not in this slice: the member
- * visibility switch on the hub academy page (the endpoint is here;
- * the switch UI is not), and search indexing of public certificates
- * (the check page is noindex; a public certificate needs a per-code
- * head before indexing).
+ * this route only issues manually. The member visibility switch on the
+ * academy dashboard (Phase 4 slice 3) calls the PATCH visibility route
+ * below. Still open: search indexing of public certificates (the check
+ * page is noindex; a public certificate needs a per-code head before
+ * indexing).
  */
 import { Hono } from "hono";
 import { b64urlDecode, issueCertificate } from "../lib/certificates";

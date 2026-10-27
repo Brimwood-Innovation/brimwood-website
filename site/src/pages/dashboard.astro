@@ -1,5 +1,9 @@
 ---
-/* Member dashboard: enrolled courses, progress bars, continue learning. Brand-kit styled. */
+/* Member dashboard: enrolled courses, progress bars, continue learning.
+ * Certificates: a completed course shows its certificate link plus a
+ * visibility switch (private, link, public) wired to the existing
+ * PATCH /api/certificates/:id/visibility endpoint. The card is an article,
+ * not a link, so the select stays a real control for keyboard users. */
 import Base from "../layouts/Base.astro";
 import HubShell from "../components/HubShell.astro";
 ---
@@ -29,6 +33,26 @@ import HubShell from "../components/HubShell.astro";
     const show = (id) => (document.getElementById(id).style.display = "block");
     const hide = (id) => (document.getElementById(id).style.display = "none");
     const esc = (s) => String(s || "").replace(/</g, "&lt;");
+    const escAttr = (s) => String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+    const VIS_OPTIONS = [["private", "Private"], ["link", "Link"], ["public", "Public"]];
+
+    /* Certificate block for one enrolment: the link on its own when the
+     * member list is unavailable, plus the visibility switch when the
+     * matching valid certificate is known. Only valid certificates get
+     * a switch, matching the endpoint's valid-only rule. */
+    const certBlock = (e, idx, certByCode) => {
+      if (!e.certificate_code) return "";
+      const link = `<p><a href="/c/${escAttr(e.certificate_code)}">Certificate ${esc(e.certificate_code)} →</a></p>`;
+      const cert = certByCode[e.certificate_code];
+      if (!cert) return link;
+      const sid = `cert-vis-${idx}`;
+      const opts = VIS_OPTIONS.map(([v, l]) => `<option value="${v}"${v === cert.visibility ? " selected" : ""}>${l}</option>`).join("");
+      return link +
+        `<div style="margin-top:12px;"><label for="${sid}">Certificate visibility</label>` +
+        `<select id="${sid}" data-cert-id="${escAttr(cert.id)}" data-prev="${escAttr(cert.visibility)}" aria-label="Certificate visibility for ${escAttr(e.title)}">${opts}</select>` +
+        `<p class="admin-muted" id="${sid}-msg" role="status" style="font-size:13px;"></p>` +
+        `<p class="admin-muted" style="font-size:13px;">Private hides the details; link and public show them to anyone who opens the certificate page.</p></div>`;
+    };
 
     (async () => {
       try {
@@ -43,6 +67,24 @@ import HubShell from "../components/HubShell.astro";
         const list = d.enrolments || [];
         show("dash-home");
 
+        /* The member certificate list is best effort: if it fails, the
+         * cards still render with the certificate link and no switch. */
+        let certByCode = {};
+        try {
+          const cr = await fetch(API_BASE + "/api/certificates/mine", {
+            headers: { accept: "application/json" },
+            credentials: "include",
+          });
+          const cd = await cr.json();
+          if (cr.ok && cd.ok) {
+            for (const cert of cd.certificates || []) {
+              if (cert.status === "valid") certByCode[cert.code] = cert;
+            }
+          }
+        } catch {
+          certByCode = {};
+        }
+
         if (list.length === 0) {
           document.getElementById("dashSub").textContent = "You're not enrolled in anything yet. Pick a course to get started.";
           return;
@@ -54,19 +96,48 @@ import HubShell from "../components/HubShell.astro";
           `Enrolled in ${total} course${total === 1 ? "" : "s"}${done ? ` · ${done} completed` : ""}.`;
 
         document.getElementById("courseList").innerHTML = list
-          .map((e) => {
+          .map((e, idx) => {
             const pct = e.total_lessons ? Math.round((e.done_lessons / e.total_lessons) * 100) : 0;
             return (
-              `<a href="/academy/${e.slug}" class="card" style="text-decoration:none;display:block;">` +
+              `<article class="card">` +
               `<div class="n">${e.done_lessons}/${e.total_lessons} lessons</div>` +
-              `<h3>${esc(e.title)}</h3>` +
+              `<h3><a href="/academy/${escAttr(e.slug)}" style="text-decoration:none;">${esc(e.title)}</a></h3>` +
               `<div style="height:8px;background:var(--mint);border-radius:4px;overflow:hidden;margin:12px 0;">` +
               `<div style="height:100%;width:${pct}%;background:var(--emerald);border-radius:4px;"></div></div>` +
-              `<p>${e.completed ? "Completed ✓" : pct === 0 ? "Start →" : "Continue →"}</p>` +
-              (e.certificate_code ? `<p><a href="/c/${esc(e.certificate_code)}">Certificate ${esc(e.certificate_code)} →</a></p>` : "") + `</a>`
+              `<p><a href="/academy/${escAttr(e.slug)}" style="text-decoration:none;">${e.completed ? "Completed ✓" : pct === 0 ? "Start →" : "Continue →"}</a></p>` +
+              certBlock(e, idx, certByCode) + `</article>`
             );
           })
           .join("");
+
+        /* Wire every switch: save through the endpoint, revert on failure
+         * so the control never shows a visibility the server rejected. */
+        document.querySelectorAll("#courseList select[data-cert-id]").forEach((sel) => {
+          sel.addEventListener("change", async () => {
+            const next = sel.value;
+            const prev = sel.dataset.prev;
+            const msg = document.getElementById(sel.id + "-msg");
+            sel.disabled = true;
+            if (msg) msg.textContent = "Saving…";
+            try {
+              const r = await fetch(API_BASE + "/api/certificates/" + encodeURIComponent(sel.dataset.certId) + "/visibility", {
+                method: "PATCH",
+                headers: { "content-type": "application/json", accept: "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ visibility: next }),
+              });
+              const dd = await r.json().catch(() => ({}));
+              if (!r.ok || !dd.ok) throw 0;
+              sel.dataset.prev = next;
+              if (msg) msg.textContent = "Visibility saved.";
+            } catch {
+              sel.value = prev;
+              if (msg) msg.textContent = "Could not save. Try again.";
+            } finally {
+              sel.disabled = false;
+            }
+          });
+        });
       } catch {
         hide("dash-loading");
         show("dash-login");
