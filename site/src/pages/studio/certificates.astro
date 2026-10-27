@@ -1,0 +1,145 @@
+---
+/* Certificate studio panel (Phase 4 slice 1, SPEC D3).
+ * Admin-only, like the rest of Studio. Lists every certificate newest
+ * first from /api/certificates, issues a manual certificate for a
+ * completed enrolment, and revokes a valid certificate with a reason.
+ * Revoke is terminal: the API refuses a second revoke and the database
+ * refuses any other change to a terminal certificate. Visibility is
+ * the member's own choice (private, link, or public) and is shown here
+ * but not changed here. All rendered values are escaped.
+ */
+import Base from "../../layouts/Base.astro";
+---
+
+<Base
+  title="Certificates - Brimwood Studio"
+  description="Issue, list, and revoke Brimwood Innovation member certificates."
+  path="/studio/certificates"
+  noindex
+>
+  <div id="cert-loading"><p class="sec-lede">Loading…</p></div>
+  <div id="cert-denied" style="display:none;text-align:center;padding:48px 0;">
+    <div class="kicker">Admin only</div>
+    <h2 class="sec">You need an admin account.</h2>
+    <p class="sec-lede" style="margin-inline:auto;"><a href="/members">Sign in</a> with an admin email.</p>
+  </div>
+
+  <div id="cert-app" style="display:none;">
+    <div class="kicker">Brimwood Studio</div>
+    <h1 class="sec" style="font-size:clamp(28px,4.5vw,44px);margin-bottom:8px;">Certificates</h1>
+    <p class="sec-lede" style="margin-bottom:24px;">
+      Issue a certificate for a completed enrolment, or revoke one that
+      should no longer count. Certificates are never deleted: a revoked
+      code stays on record and is never reused. <a href="/studio">Back to Studio</a>.
+    </p>
+
+    <div class="admin-card" style="margin-bottom:24px;">
+      <h3 style="margin-top:0;">Issue a certificate</h3>
+      <form id="cert-issue" style="display:grid;gap:12px;max-width:560px;">
+        <label>Enrolment id
+          <input id="cert-enrolment" type="text" required autocomplete="off" style="width:100%;" />
+        </label>
+        <label>Hours
+          <input id="cert-hours" type="number" min="0" max="500" step="any" required style="width:100%;" />
+        </label>
+        <label>Reason (recorded with the issue)
+          <input id="cert-reason" type="text" required maxlength="500" style="width:100%;" />
+        </label>
+        <p><button type="submit" class="btn btn-primary">Issue certificate</button></p>
+        <p id="cert-issue-result" class="thread-sub" role="status"></p>
+      </form>
+    </div>
+
+    <p id="cert-count" class="thread-sub" role="status"></p>
+    <p id="cert-error" class="thread-sub" style="display:none;color:var(--brimwood-red, #b42318);"></p>
+    <div id="cert-list" style="display:grid;gap:14px;"></div>
+    <p id="cert-empty" class="sec-lede" style="display:none;">No certificates yet. Issue the first one above.</p>
+  </div>
+
+  <script>
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
+    const esc = (s) => String(s ?? "").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const $ = (id) => document.getElementById(id);
+    const fmtDate = (iso) => {
+      try { return new Date(iso).toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" }); }
+      catch { return ""; }
+    };
+    const api = (p, opts = {}) => fetch(API_BASE + p, {
+      credentials: "include",
+      headers: { accept: "application/json", "content-type": "application/json", ...(opts.headers || {}) },
+      ...opts,
+    });
+
+    function render(list) {
+      $("cert-count").textContent = `${list.length} ${list.length === 1 ? "certificate" : "certificates"}.`;
+      $("cert-empty").style.display = list.length ? "none" : "";
+      $("cert-list").innerHTML = list.map((cert) => `
+        <div class="admin-card">
+          <p style="margin:0 0 4px;"><a class="mono" href="${esc(cert.verify_url)}">${esc(cert.code)}</a>
+            <span class="badge ${cert.status === "valid" ? "badge-success" : "badge-danger"}">${esc(cert.status)}</span>
+            <span class="badge badge-neutral">${esc(cert.visibility)}</span></p>
+          <p class="thread-sub" style="margin:0 0 8px;">${esc(cert.member_display || cert.member_id)} · ${esc(cert.course_title || cert.course_id)} · issued ${esc(fmtDate(cert.issued_at))} · ${esc(cert.hours)} hours</p>
+          ${cert.status === "valid" ? `<form data-revoke="${esc(cert.id)}" style="display:flex;gap:8px;flex-wrap:wrap;">
+            <label style="flex:1;min-width:200px;">Revoke reason
+              <input type="text" required maxlength="500" style="width:100%;" aria-label="Revoke reason" />
+            </label>
+            <button type="submit" class="btn btn-secondary" style="align-self:end;">Revoke</button>
+          </form>` : ""}
+        </div>`).join("");
+      document.querySelectorAll("[data-revoke]").forEach((form) => form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const reason = form.querySelector("input").value.trim();
+        const r = await api(`/api/certificates/${encodeURIComponent(form.dataset.revoke)}/revoke`, { method: "POST", body: JSON.stringify({ reason }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok) {
+          $("cert-error").textContent = d.error || "Revoke failed.";
+          $("cert-error").style.display = "";
+          return;
+        }
+        await load();
+      }));
+    }
+
+    async function load() {
+      $("cert-error").style.display = "none";
+      const r = await api("/api/certificates");
+      if (r.status === 401 || r.status === 403) {
+        $("cert-loading").style.display = "none";
+        $("cert-denied").style.display = "";
+        return;
+      }
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) {
+        $("cert-error").textContent = d.error || "Could not load certificates.";
+        $("cert-error").style.display = "";
+        return;
+      }
+      $("cert-loading").style.display = "none";
+      $("cert-app").style.display = "";
+      render(d.certificates || []);
+    }
+
+    $("cert-issue").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const out = $("cert-issue-result");
+      const r = await api("/api/certificates/issue", {
+        method: "POST",
+        body: JSON.stringify({
+          enrollment_id: $("cert-enrolment").value.trim(),
+          hours: Number($("cert-hours").value),
+          issue_reason: $("cert-reason").value.trim(),
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) {
+        out.textContent = d.error || "Issue failed.";
+        return;
+      }
+      out.textContent = `Issued ${d.certificate.code} for ${d.certificate.course_title || d.certificate.course_id}.`;
+      e.target.reset();
+      await load();
+    });
+
+    load();
+  </script>
+</Base>

@@ -32,6 +32,11 @@ interface Props {
    * discovery link for /rss.xml. Off everywhere else, so no other page's
    * head changes. */
   rssAlternate?: boolean;
+  /* Phase 4: pages that must never be indexed opt in here. The
+   * certificate check page is noindex because a certificate page is
+   * indexed only after the member makes it public, which a static
+   * shell cannot know at build time. Admin pages use it too. */
+  noindex?: boolean;
 }
 const {
   title,
@@ -44,6 +49,7 @@ const {
   jsonld,
   canonicalPath,
   rssAlternate = false,
+  noindex = false,
 } = Astro.props;
 const canonical = `https://brimwoodinnovation.com${canonicalPath || path}`;
 const ogImage = image || "https://brimwoodinnovation.com/img/brimwood-og.png";
@@ -69,6 +75,7 @@ const siteTitle = siteSettings.site_title || "Brimwood Innovation";
     {rssAlternate && (
       <link rel="alternate" type="application/rss+xml" title="Brimwood Innovation Journal" href="/rss.xml" />
     )}
+    {noindex && <meta name="robots" content="noindex" />}
 
     <meta property="og:type" content={ogType} />
     <meta property="og:site_name" content={siteTitle} />
