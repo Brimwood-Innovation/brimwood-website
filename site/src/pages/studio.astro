@@ -188,12 +188,28 @@ import Base from "../layouts/Base.astro";
           .replace(/>/g, "&gt;")
           .replace(/"/g, "&quot;")
           .replace(/'/g, "&#39;");
+      /* Link targets are allowlisted (Phase 5 slice 3 audit): a markdown
+       * link used to render any URL verbatim, so a javascript: or data:
+       * target in a Studio document executed on click in the preview.
+       * Only http(s), mailto, site-relative, and anchor targets render as links;
+       * anything else renders as plain text, never as a link. Control
+       * characters are stripped before the check so a tab or newline
+       * inside a scheme cannot smuggle a blocked scheme past it. */
+      const safeLink = (url) => {
+        const clean = String(url).replace(/[\u0000-\u0020]+/g, "");
+        return /^(https?:\/\/|mailto:|#|\/(?!\/))/i.test(clean) ? clean : null;
+      };
       const inline = (s) =>
         esc(s)
           .replace(/`([^`]+)`/g, "<code>$1</code>")
           .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
           .replace(/\*([^*]+)\*/g, "<em>$1</em>")
-          .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+          .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, text, url) => {
+            const href = safeLink(url);
+            return href
+              ? `<a href="${href}" target="_blank" rel="noopener">${text}</a>`
+              : text;
+          });
       const lines = String(src || "").split("\n");
       let html = "", inList = false, inCode = false;
       for (const line of lines) {
