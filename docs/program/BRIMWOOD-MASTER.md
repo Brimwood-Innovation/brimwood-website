@@ -2086,3 +2086,51 @@ from the self-chaining loop's first run on 2026-10-21.
   certificate_pending, which is the intended fail-closed state.
   Still blocked: the Phase 1 preview smoke flows and applying
   0037 to preview D1 (no Cloudflare token in the environment).
+- Cycle 36, 2026-10-28: Phase 5 slice 4, dedicated media and metrics
+  tests, in ~/workspace/company/wt-phase5-media-metrics-tests on
+  branch phase5/media-metrics-tests (no open loop PR; develop CI
+  green; 22 is the founder-tapped README PR, not loop work). Scope:
+  the two route modules the cycle 33 grading found without dedicated
+  test files. New api/src/routes/media.test.ts (21 tests): admin
+  gates for list, upload, and delete, including a demoted admin
+  re-read from D1; list with prefix filter, unsafe prefix rejection,
+  and pagination at the 60-item limit with cursor follow-up; upload
+  validation (server-generated key, extension from MIME not
+  filename, magic-byte mismatch, disallowed type, empty and missing
+  file, 10 MB limit, script-free SVG and MP4 accepted, scripted SVG
+  rejected) with audit_log assertions for upload and delete; public
+  serve (immutable cache headers, SVG forced to download,
+  content-type fallback by extension then octet-stream, 404 on
+  missing, traversal, and overlong keys); delete (removal, audit,
+  idempotent missing-key success, unsafe key 404). New
+  api/src/routes/metrics.test.ts (5 tests): 401 anonymous, 403
+  member and demoted admin; all four aggregates in one batch mapped
+  to the dashboard shape with the batch SQL order asserted; empty
+  tables return empty maps and an empty email log. One test-infra
+  note: the shared mock D1 batch returns run results with no SELECT
+  rows, so the metrics test wraps prepare to remember each
+  statement's SQL and serves canned aggregates from batch; the
+  shared helper is untouched and the route's batch call, grouping,
+  and mapping are still exercised. No route or production code
+  changed: this slice is tests only, so no behaviour changed.
+  Verification before the PR: 822 API tests pass (42 files, up from
+  796 in 40 files), API typecheck clean, site build clean (36
+  pages). Grade (dimensions this cycle touched, scored from
+  evidence): functional 2,500/2,500 (26 new tests green, full suite
+  green, no behaviour change); security 1,250/1,250 (admin gates,
+  demoted-admin re-read, traversal rejection, and SVG download
+  forcing now have passing regression assertions where before they
+  had none); code quality 1,000/1,000 (both previously untested
+  route modules now have dedicated files in the repo's test style;
+  the mock-batch workaround is documented in the test header).
+  Schema and API, accessibility, performance, and brand and copy
+  untouched (tests only, no route, UI, schema, or copy change).
+  Pro-rated total 10,000/10,000, no zero dimension, no open P0.
+  Verdict: ACCEPT. Next improvement: Phase 5 slice 5, the cycle 35
+  follow-up hardening backlog, starting with unifying the partial
+  client-side escapers into one canonical full escaper. Live
+  issuance still needs the operator setup: the two signing secrets
+  plus the matching signing_keys row; until then a completed course
+  reports certificate_pending, which is the intended fail-closed
+  state. Still blocked: the Phase 1 preview smoke flows and applying
+  0037 to preview D1 (no Cloudflare token in the environment).
