@@ -1927,3 +1927,44 @@ from the self-chaining loop's first run on 2026-10-21.
   intended fail-closed state. Still blocked: the Phase 1 preview
   smoke flows and applying 0037 to preview D1 (no Cloudflare token
   in the environment).
+- Cycle 33, 2026-10-28: Phase 5 opens with the hardening and full
+  grading run over the whole build, in
+  ~/workspace/company/wt-phase5-grading on branch phase5/grading-cycle33
+  (no open loop PR; develop CI green; 22 is the founder-tapped README
+  PR, not loop work). Full report:
+  docs/program/PHASE5-GRADING-CYCLE33.md. Evidence, all against develop
+  HEAD d2f26a4: 796 API tests pass (40 files), API typecheck clean,
+  site build clean (36 pages), all 37 migrations (0001 to 0037) apply
+  cleanly to a fresh local SQLite database (139 tables, 116 triggers),
+  gitleaks 8.18.4 run locally over 188 commits with no leaks, no TODO
+  or FIXME in source, no console.log in site/src, and no unsafe
+  external link in the spot checks. Honest limits recorded: local npm
+  audit is blocked by the sandbox registry policy, so the audit
+  evidence is the CI audit job (green on HEAD); Lighthouse was not
+  rerun locally, so the accessibility and performance evidence is the
+  CI lighthouse job (green on HEAD, homepage scope only). One
+  confirmed gap: the em dash character appears 709 times across
+  tracked files (387 in tasks working notes, 132 in api, 126 in site,
+  33 in docs, 24 in worker-introduction.js, plus a handful in
+  CONSTRAINTS, gitignore, and workflows), because earlier cycles
+  scrubbed only files they touched, so the standing constraint is not
+  met repo-wide and shipped site copy still contains it. Two smaller
+  gaps: the media and metrics route modules have no dedicated test
+  file, and a full client-side HTML injection audit was spot-checked
+  only (StoriesTray escapes display names; no confirmed issue).
+  Grade (dimensions this cycle touched, scored from evidence):
+  functional 2,500/2,500; schema and API 2,000/2,000; accessibility
+  1,250/1,250; performance 1,250/1,250; security 1,250/1,250; code
+  quality 950/1,000 (two route modules lack dedicated tests); brand
+  and copy 500/750 (em dash count in shipped copy). Pro-rated total
+  9,700/10,000, no zero dimension, no open P0. Verdict: ACCEPT.
+  Next improvement: Phase 5 slice 2, the repo-wide em dash scrub of
+  shipped code and copy, excluding the vendor Decap bundle and the
+  tasks working notes, with email fixtures changed together with
+  their templates. Then slice 3 (full client-side HTML audit) and
+  slice 4 (dedicated media and metrics tests). Live issuance still
+  needs the operator setup: the two signing secrets plus the matching
+  signing_keys row; until then a completed course reports
+  certificate_pending, which is the intended fail-closed state.
+  Still blocked: the Phase 1 preview smoke flows and applying 0037
+  to preview D1 (no Cloudflare token in the environment).
