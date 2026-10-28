@@ -114,7 +114,11 @@ const siteTitle = siteSettings.site_title || "Brimwood Innovation";
       crossorigin
     />
 
-    {/* set:html: expressions are not evaluated inside <script> bodies. */}
+    {/* set:html: expressions are not evaluated inside <script> bodies.
+        JSON-LD strings escape "<" as \u003c (Phase 5 slice 3 audit):
+        JSON.stringify alone does not escape "</script>", so a future
+        site-settings or CMS value containing it could break out of
+        this script block during server serialization. */}
     <script type="application/ld+json" set:html={JSON.stringify({
         "@context": "https://schema.org",
         "@type": "Organization",
@@ -128,9 +132,9 @@ const siteTitle = siteSettings.site_title || "Brimwood Innovation";
           addressRegion: "ON",
           addressCountry: "CA",
         },
-      })} />
+      }).replace(/</g, "\\u003c")} />
     {jsonld && (
-      <script type="application/ld+json" set:html={JSON.stringify(jsonld)} />
+      <script type="application/ld+json" set:html={JSON.stringify(jsonld).replace(/</g, "\\u003c")} />
     )}
     {turnstile && (
       <script is:inline>

@@ -32,7 +32,10 @@
   }
 
   function safeUrl(u) {
-    return typeof u === "string" && u.charAt(0) === "/" ? u : "/notifications";
+    /* Single leading slash only: a protocol-relative "//evil.com"
+     * would otherwise pass and flow to location.href as an open
+     * redirect (Phase 5 slice 3 audit). */
+    return typeof u === "string" && u.charAt(0) === "/" && u.charAt(1) !== "/" ? u : "/notifications";
   }
 
   function renderBadge(unread) {
