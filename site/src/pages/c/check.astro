@@ -11,8 +11,10 @@
  * credential JSON-LD) so a rendering crawler sees a per-code head for
  * that public certificate. Every other answer leaves the shell
  * noindex: link visibility is shared by link, not listed publicly, so
- * it never upgrades the head. The sitemap listing of public codes is
- * the remaining indexing step.
+ * it never upgrades the head. Public codes are also listed in the
+ * sitemap (Phase 4 slice 5): the build fetches valid, public codes
+ * from /api/certificates/public, so a certificate enters the sitemap
+ * on the first site build after it becomes public.
  *
  * States, exactly as the API answers them: valid (public or link) shows
  * the holder's current display name, the course, and the issue date;

@@ -6,6 +6,8 @@
  *
  * Routes, mounted at "/api/certificates":
  *   GET  /verify?code=BRIM-YYYY-XXXXXX  public, rate-limited, lookup-logged.
+ *   GET  /public                       public, rate-limited: code and
+ *                                      issued_at only, for the sitemap.
  *   GET  /mine                          member: only their own certificates.
  *   GET  /                             admin: every certificate, newest first.
  *   POST /issue                        admin: manual issue for a completed
@@ -51,9 +53,11 @@
  * below. The per-code head is done (Phase 4 slice 4): the check page
  * shell stays noindex and its script upgrades the head to index only
  * when verify answers valid with visibility public; link visibility
- * never upgrades it. Still open: the sitemap listing of public codes,
- * which is the remaining indexing step. Verify already returns the
- * visibility on valid answers, so the head needs no API change.
+ * never upgrades it. The sitemap listing is done (Phase 4 slice 5):
+ * GET /public below returns the codes of valid, public certificates
+ * only, and the site build lists them in sitemap.xml. Verify already
+ * returns the visibility on valid answers, so the head needs no API
+ * change.
  */
 import { Hono } from "hono";
 import { b64urlDecode, issueCertificate } from "../lib/certificates";
@@ -71,6 +75,12 @@ const VERIFY_LIMIT = 30;
 const VERIFY_WINDOW_SECS = 3600;
 const MAX_REASON_LEN = 500;
 const MAX_LIST = 200;
+/* The public list exists for one reader, the sitemap build, so its cap
+ * follows the sitemap protocol rather than the member list cap: a
+ * single sitemap file holds at most 50,000 URLs, and 5,000 public
+ * certificates is far past any near-term count while still bounding
+ * one response. */
+const MAX_PUBLIC_LIST = 5000;
 
 interface CertRow {
   id: string;
@@ -223,6 +233,36 @@ app.get("/verify", async (c) => {
     course_title: row.course_title,
     issued_at: row.issued_at,
     visibility: row.visibility,
+  });
+});
+
+/* --- Public list for the sitemap ---
+ *
+ * The one public list: codes of certificates that are valid AND
+ * visibility public, newest first, with issued_at for the sitemap
+ * lastmod. The filter lives in the SQL, so a private, link, revoked,
+ * superseded, or withdrawn certificate cannot appear even by accident
+ * of the mapping. Only the two fields a sitemap needs leave this
+ * route: no names, no course titles, no emails. A public code is
+ * already public by its owner's choice, so no sign-in is required;
+ * the rate limit matches verify (30 per hour per IP) so the list
+ * cannot be scraped faster than the check page itself allows. */
+app.get("/public", async (c) => {
+  if (!(await checkRateLimitD1(c.env.DB, `cert-public:${clientIp(c.req.raw)}`, VERIFY_LIMIT, VERIFY_WINDOW_SECS))) {
+    return c.json({ ok: false, error: "Too many requests" }, 429);
+  }
+  const rows = (
+    await c.env.DB.prepare(
+      `SELECT cert.code, cert.issued_at FROM certificates cert
+       WHERE cert.status = 'valid' AND cert.visibility = 'public'
+       ORDER BY cert.issued_at DESC LIMIT ?`,
+    )
+      .bind(MAX_PUBLIC_LIST)
+      .all()
+  ).results as unknown as { code: string; issued_at: string }[];
+  return c.json({
+    ok: true,
+    certificates: (rows || []).map((r) => ({ code: r.code, issued_at: r.issued_at })),
   });
 });
 

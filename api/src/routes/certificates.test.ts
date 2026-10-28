@@ -241,6 +241,51 @@ describe("certificate issue", () => {
   });
 });
 
+describe("certificate public list (sitemap)", () => {
+  it("lists public certificates without sign-in, with only code and issued_at", async () => {
+    (certEnv as any).rows = [
+      { ...CERT_ROW },
+      { ...CERT_ROW, id: "cert-2", code: "BRIM-2026-AAAAAA", issued_at: "2026-10-20T10:00:00.000Z" },
+    ];
+    const env = certEnv();
+    const res = await get(env, {}, "/public");
+    const body: any = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.certificates).toHaveLength(2);
+    expect(body.certificates[0]).toEqual({ code: "BRIM-2026-8F3K7Q", issued_at: "2026-10-27T10:00:00.000Z" });
+    expect(body.certificates[1]).toEqual({ code: "BRIM-2026-AAAAAA", issued_at: "2026-10-20T10:00:00.000Z" });
+    for (const entry of body.certificates) {
+      expect(Object.keys(entry).sort()).toEqual(["code", "issued_at"]);
+      expect(entry.member_display).toBeUndefined();
+      expect(entry.course_title).toBeUndefined();
+      expect(entry.email).toBeUndefined();
+    }
+  });
+
+  it("filters to valid and public in the SQL itself", async () => {
+    (certEnv as any).rows = [];
+    const env = certEnv();
+    const res = await get(env, {}, "/public");
+    expect(res.status).toBe(200);
+    const call = env.DB.calls.find(
+      (c) => /FROM certificates cert/i.test(c.sql) && /visibility/i.test(c.sql),
+    );
+    expect(call).toBeDefined();
+    expect(call!.sql).toMatch(/cert\.status = 'valid'/);
+    expect(call!.sql).toMatch(/cert\.visibility = 'public'/);
+    expect(call!.sql).not.toMatch(/member_display|course_title|display_name|email/i);
+  });
+
+  it("rate-limits the public list like the public check", async () => {
+    (certEnv as any).rows = [];
+    const env = certEnv();
+    env.DB.rateLimitStore.set("cert-public:unknown", { count: 30, window_start: Date.now() });
+    const res = await get(env, {}, "/public");
+    expect(res.status).toBe(429);
+  });
+});
+
 describe("certificate lists, revoke, visibility", () => {
   it("lists only the caller's certificates, keyed on the caller", async () => {
     (certEnv as any).rows = [{ ...CERT_ROW }, { ...CERT_ROW, id: "cert-2", code: "BRIM-2026-AAAAAA" }];
