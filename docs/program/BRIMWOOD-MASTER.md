@@ -1848,3 +1848,82 @@ from the self-chaining loop's first run on 2026-10-21.
   certificate_pending, which is the intended fail-closed state.
   Still blocked: the Phase 1 preview smoke flows and applying 0037
   to preview D1 (no Cloudflare token in the environment).
+- Cycle 32, 2026-10-27: Phase 4 slice 5, the sitemap listing of
+  public certificates, the remaining indexing step after cycle 31,
+  in ~/workspace/company/wt-phase4-cert-sitemap on branch
+  phase4/cert-sitemap (run on the founder's direct order, not the
+  scheduled tick; no open loop PR; develop CI green; #22 is the
+  founder-tapped README PR, not loop work). There was no public list
+  endpoint, so this slice adds one: GET /api/certificates/public,
+  public, rate-limited like verify (30 per hour per IP, its own
+  cert-public bucket). It returns only code and issued_at for
+  certificates that are valid AND visibility public, newest first,
+  capped at 5,000 (the sitemap protocol bounds one file at 50,000
+  URLs, and 5,000 bounds one response far past any near-term count).
+  The filter lives in the SQL, so a private, link, revoked,
+  superseded, or withdrawn certificate cannot appear even by
+  accident of the mapping. No names, course titles, or emails leave
+  the route; a public code is already public by its owner's choice,
+  so no sign-in is required. The certificates table has no
+  updated_at column, so issued_at is the lastmod source, the one
+  date the schema cleanly provides. Sitemap: sitemap.xml.js fetches
+  the list at build time in the same best-effort pattern as events
+  (try and catch, empty list on failure, the build never fails), and
+  lists /c/CODE in the canonical form the check page sets for a
+  public certificate (no trailing slash). Honest limit, recorded:
+  the build-time fetch means a newly public certificate enters the
+  sitemap only on the next site build, as events already do; this is
+  not real-time listing. Comments in certificates.ts and the check
+  page no longer record the listing as still open. No migration, no
+  new dependency. Verification before the PR: 796 API tests pass
+  (40 files, 3 new: lists without sign-in with exactly code and
+  issued_at and no other field, the valid-and-public filter asserted
+  in the SQL itself, rate limiting), API typecheck clean, site
+  build clean (36 pages, including a build with no API base, which
+  lists no certificates and does not fail). The sitemap fetch path
+  was exercised against a local stub API serving two codes: the
+  built sitemap.xml contains both /c/CODE URLs with the issue dates
+  as lastmod. The exact endpoint SQL was also run against a real
+  SQLite database built from the full 0001-0037 migration chain,
+  seeded with seven certificates (valid public twice, valid
+  private, valid link, revoked, superseded, withdrawn): only the
+  two valid and public rows returned, newest first. Shipped in
+  PR #71 (merged to develop; build, secrets, audit, analyze,
+  CodeQL, lighthouse, and Cloudflare Pages all green). Grade
+  (dimensions this cycle touched, scored from evidence): functional
+  2,500/2,500 (endpoint and sitemap wired, stub exercise proved the
+  URLs land in the built sitemap, SQL proved the exclusions on a
+  real database); schema and API 2,000/2,000 (new route in the
+  existing style on the shipped 0031 schema, suite green, no
+  migration needed); accessibility 1,250/1,250 (sitemap and head
+  surface only, no visible UI or focus change, Lighthouse gate
+  passed); performance 1,250/1,250 (Lighthouse budgets passed, one
+  extra build-time fetch only, no runtime weight, no new
+  dependency); security 1,250/1,250 (CodeQL and analyze green,
+  valid-and-public filter in the SQL, only code and issue date
+  exposed, rate limited like verify, no names, courses, or emails);
+  code quality 1,000/1,000 (API typecheck clean, tests in the
+  existing style, SQL verified against real SQLite, stale comments
+  updated in both touched files); brand and copy 750/750 (Canadian
+  spelling, no new em dash, no member named; the only identifier
+  listed is the code of a certificate its owner made public).
+  Pro-rated total 10,000/10,000, no zero dimension, no open P0.
+  Verdict: ACCEPT. With manual and automatic issuance (slices 1
+  and 2), the member visibility switch (slice 3), the per-code head
+  (slice 4), and this sitemap listing, the Phase 4 certificate
+  program from the phase map is complete. Next improvement: Phase 5
+  opens with the hardening and full grading run over the whole
+  build (the phase map's first Phase 5 step); the founder
+  walkthrough of every panel and flow on preview and the production
+  launch stay founder-gated behind it, and no production work
+  starts without the founder's green signal. The recorded
+  cross-phase follow-ups remain open (proposing a new group, live
+  verification of the /hub/g/* rewrite on a branch preview, a
+  rituals read API, the deck command palette, the /hub route
+  renaming, the feed header notices, the staff spotlight post type).
+  Live issuance still needs the operator setup: the two signing
+  secrets plus the matching signing_keys row; until then a
+  completed course reports certificate_pending, which is the
+  intended fail-closed state. Still blocked: the Phase 1 preview
+  smoke flows and applying 0037 to preview D1 (no Cloudflare token
+  in the environment).
