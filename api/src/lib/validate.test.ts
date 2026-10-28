@@ -1,4 +1,4 @@
-/* Unit tests: src/lib/validate.ts — input boundary helpers. */
+/* Unit tests: src/lib/validate.ts: input boundary helpers. */
 import { describe, it, expect } from "vitest";
 import { cleanStr, isEmail, isRecord, clientIp } from "./validate";
 

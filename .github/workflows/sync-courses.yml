@@ -5,7 +5,7 @@
 # POST /api/admin/sync/courses, authenticated with the SYNC_SECRET repo secret.
 #
 # Required secrets:
-#   SYNC_SECRET — must match the worker secret of the same name
+#   SYNC_SECRET: must match the worker secret of the same name
 #   (set with: wrangler secret put SYNC_SECRET)
 name: Sync courses to D1
 

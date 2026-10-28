@@ -1,6 +1,6 @@
--- 0019_chat.sql — audit/social/chat: member conversations (DMs + groups).
+-- 0019_chat.sql: audit/social/chat: member conversations (DMs + groups).
 -- Conversations are members-only; every read/write enforces membership in
--- conversation_members. Read receipts are derived from last_read_at — no
+-- conversation_members. Read receipts are derived from last_read_at, no
 -- per-message receipt rows. DMs have NULL title (the title is derived from
 -- the other participant); group titles are member-set. message media lives in
 -- the brimwood-media R2 bucket and is referenced by r2_key.

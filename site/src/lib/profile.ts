@@ -1,5 +1,5 @@
 /**
- * Canonical profile URL — the single rule every agent and page must use.
+ * Canonical profile URL: the single rule every agent and page must use.
  *
  *   profileUrl({ id, username }) → "/@username" when a username is claimed,
  *                                  "/u/<id>" as the stable alias otherwise.

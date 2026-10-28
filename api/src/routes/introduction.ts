@@ -30,7 +30,7 @@ app.post("/", async (c) => {
     return c.json({ ok: false, error: "Invalid request." }, 400);
   }
   if (cleanStr(data.website, 200)) {
-    return c.json({ ok: true }); // honeypot: bot — pretend success, store nothing
+    return c.json({ ok: true }); // honeypot: bot, pretend success, store nothing
   }
 
   // Turnstile bot check (fails closed).
@@ -51,7 +51,7 @@ app.post("/", async (c) => {
     return c.json({ ok: false, error: "Please include your name and a valid email address." }, 400);
   }
 
-  // Idempotency: a client-supplied key makes retries safe — a duplicate key
+  // Idempotency: a client-supplied key makes retries safe, a duplicate key
   // returns success without re-inserting or re-sending. The UNIQUE index on
   // introduction_requests.idempotency_key (migration 0012) is the arbiter.
   const idemKey =
@@ -81,10 +81,10 @@ app.post("/", async (c) => {
   } catch (e) {
     const msg = String((e as Error)?.message || e);
     if (idemKey && /UNIQUE/i.test(msg)) {
-      return c.json({ ok: true }); // lost the race with our own retry — already stored
+      return c.json({ ok: true }); // lost the race with our own retry, already stored
     }
     if (idemKey && /no such column/i.test(msg)) {
-      // Migration 0012 not applied yet — degrade gracefully to a keyless insert.
+      // Migration 0012 not applied yet, degrade gracefully to a keyless insert.
       await DB.prepare(
         `INSERT INTO introduction_requests
            (id, name, email, referral, message, ip_hash, user_agent, status)
@@ -110,43 +110,43 @@ app.post("/", async (c) => {
   );
   const confirmHtml = shell(
     "Request received",
-    "Thank you — your introduction request is on its way.",
+    "Thank you, your introduction request is on its way.",
     '<p style="margin:0 0 16px;">Hello ' + esc(name) + ",</p>" +
-      "<p style=\"margin:0 0 16px;\">Thank you. Your introduction request is on its way &mdash; we read every one personally and will be in touch.</p>" +
+      "<p style=\"margin:0 0 16px;\">Thank you. Your introduction request is on its way, we read every one personally and will be in touch.</p>" +
       '<p style="margin:0;font-size:13px;color:#5B6862;">Membership is by invitation. Elite by effort, not by background.</p>'
   );
 
   try {
     const notifyId = await sendEmail(resendKey, {
       to: INBOX,
-      subject: "New introduction request — " + name,
+      subject: "New introduction request - " + name,
       html: notifyHtml,
       text:
-        "New introduction request — brimwoodinnovation.com\n\nName: " + name +
-        "\nEmail: " + email + "\nReferred by: " + (referral || "—") +
-        "\n\nWhat they are building:\n" + (message || "—"),
+        "New introduction request - brimwoodinnovation.com\n\nName: " + name +
+        "\nEmail: " + email + "\nReferred by: " + (referral || "-") +
+        "\n\nWhat they are building:\n" + (message || "-"),
       replyTo: email,
     });
     const confirmId = await sendEmail(resendKey, {
       to: email,
-      subject: "Thank you — Brimwood Innovation",
+      subject: "Thank you - Brimwood Innovation",
       html: confirmHtml,
       text:
-        "Hello " + name + ",\n\nThank you. Your introduction request is on its way — we read every one personally and will be in touch.\n\nBuild a business. Build yourself.\n— Brimwood Innovation",
+        "Hello " + name + ",\n\nThank you. Your introduction request is on its way, we read every one personally and will be in touch.\n\nBuild a business. Build yourself.\n- Brimwood Innovation",
     });
     await DB.batch([
       DB.prepare(
         "INSERT INTO email_log (id, kind, to_email, subject, status, provider_id) VALUES (?, 'intro-notify', ?, ?, 'sent', ?)"
-      ).bind(crypto.randomUUID(), INBOX, "New introduction request — " + name, notifyId || null),
+      ).bind(crypto.randomUUID(), INBOX, "New introduction request - " + name, notifyId || null),
       DB.prepare(
         "INSERT INTO email_log (id, kind, to_email, subject, status, provider_id) VALUES (?, 'intro-confirm', ?, ?, 'sent', ?)"
-      ).bind(crypto.randomUUID(), email, "Thank you — Brimwood Innovation", confirmId || null),
+      ).bind(crypto.randomUUID(), email, "Thank you - Brimwood Innovation", confirmId || null),
     ]);
   } catch (e) {
     await DB.prepare(
       "INSERT INTO email_log (id, kind, to_email, subject, status, error) VALUES (?, 'intro-notify', ?, ?, 'failed', ?)"
     )
-      .bind(crypto.randomUUID(), INBOX, "New introduction request — " + name, String((e as Error)?.message || e).slice(0, 500))
+      .bind(crypto.randomUUID(), INBOX, "New introduction request - " + name, String((e as Error)?.message || e).slice(0, 500))
       .run();
     // The request is safely stored; the email failure is logged for retry.
     // Behaviour parity: the live worker would 502 here, but dropping a stored

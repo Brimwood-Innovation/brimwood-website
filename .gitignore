@@ -1,7 +1,7 @@
-# Retired / quarantined files (may contain exposed keys) — never commit
+# Retired / quarantined files (may contain exposed keys), never commit
 drafts/
 
-# Deployment artifacts — built from build/, not versioned
+# Deployment artifacts: built from build/, not versioned
 *.zip
 
 # Local environment and secrets
@@ -32,7 +32,7 @@ Thumbs.db
 .idea/
 
 # Duplicate root-level brand assets (retired with the old coming-soon build/ in F11).
-# The Astro site serves these from site/public/ (all committed there) —
+# The Astro site serves these from site/public/ (all committed there),
 # the stale root copies stay ignored.
 apple-touch-icon.png
 favicon-16.png

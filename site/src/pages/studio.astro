@@ -2,12 +2,12 @@
 /* Brimwood Studio (Phase D3): first-party CMS. Admin-only.
  * Users authenticate with Brimwood password auth; the worker commits to
  * GitHub via a server-side token. No GitHub login for users.
- * Decap at /cms/ remains as backup — do not remove. */
+ * Decap at /cms/ remains as backup, do not remove. */
 import Base from "../layouts/Base.astro";
 ---
 
 <Base
-  title="Brimwood Studio — Brimwood Innovation"
+  title="Brimwood Studio - Brimwood Innovation"
   description="Brimwood Studio: edit site content."
   path="/studio"
 >
@@ -23,7 +23,7 @@ import Base from "../layouts/Base.astro";
     <h1 class="sec" style="font-size:clamp(28px,4.5vw,44px);margin-bottom:8px;">Content Studio</h1>
     <p class="sec-lede" style="margin-bottom:24px;">
       Edit blog posts, pages, testimonials, courses, and site settings.
-      Saving commits to the <code>develop</code> branch — the site rebuilds automatically.
+      Saving commits to the <code>develop</code> branch, the site rebuilds automatically.
       Certificates live in their own panel: <a href="/studio/certificates">issue, list, and revoke member certificates</a>.
     </p>
 
@@ -86,7 +86,7 @@ import Base from "../layouts/Base.astro";
         label: "Testimonials", dir: "site/src/content/testimonials", ext: ".md",
         fields: [
           { key: "quote", label: "Quote", type: "textarea", required: true },
-          { key: "attribution", label: "Attribution", type: "text", required: true, hint: "Initials + role only — never full names" },
+          { key: "attribution", label: "Attribution", type: "text", required: true, hint: "Initials + role only, never full names" },
           { key: "role", label: "Role", type: "text" },
           { key: "featured", label: "Featured", type: "checkbox" },
           { key: "date", label: "Date", type: "date" },
@@ -103,7 +103,7 @@ import Base from "../layouts/Base.astro";
           { key: "description", label: "Description", type: "textarea" },
         ],
         rawSection: "modules",
-        rawHint: "Modules & lessons YAML — edit carefully, indentation matters.",
+        rawHint: "Modules & lessons YAML: edit carefully, indentation matters.",
       },
     };
     const JSON_FILES = {
@@ -378,7 +378,7 @@ import Base from "../layouts/Base.astro";
       }
       // Canadian spelling nudge for testimonials attribution (no full names).
       if (state.collection === "testimonials" && /\s/.test(String(fm.attribution || "").trim().replace(/^[A-Z]\.,?\s*/, ""))) {
-        if (!confirm("Attribution looks like it may contain a full name. Members stay anonymous — initials + role only. Save anyway?")) return;
+        if (!confirm("Attribution looks like it may contain a full name. Members stay anonymous, initials + role only. Save anyway?")) return;
       }
       const body = document.getElementById("st-body").value;
       const rawEl = document.getElementById("st-raw");
@@ -407,7 +407,7 @@ import Base from "../layouts/Base.astro";
             : "";
           throw new Error((d.error || "save failed") + detail);
         }
-        setStatus("Saved ✓ Commit " + String(d.commitSha || "").slice(0, 7) + " — the site will rebuild in a minute or two.");
+        setStatus("Saved ✓ Commit " + String(d.commitSha || "").slice(0, 7) + ", the site will rebuild in a minute or two.");
         state.current.isNew = false;
       } catch (e) {
         setStatus("Save failed: " + e.message, true);

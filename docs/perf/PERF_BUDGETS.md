@@ -1,4 +1,4 @@
-# Performance Budgets — Brimwood Website
+# Performance Budgets - Brimwood Website
 
 Set 2026-10-03 (Phase C3), from the [baseline](PERF_BASELINE_2026-10-03.md).
 Founder constraint: "engineered for speed." Budgets are set **tighter than
@@ -26,7 +26,7 @@ Google's "good" thresholds** to leave headroom for lab-vs-field variance.
 
 1. **No new third-party script** without a budget review. Third-party is the #1 budget risk (see Turnstile note below).
 2. **Images:** prefer SVG for graphics; photos must be WebP/AVIF, sized to display, lazy-loaded below the fold. Any single image > 100 KB needs justification.
-3. **Client-side fetching** (events, search) must show content within the LCP budget — skeleton or SSR preferred over blank-then-populate.
+3. **Client-side fetching** (events, search) must show content within the LCP budget, skeleton or SSR preferred over blank-then-populate.
 4. **Fonts:** the single variable woff2 is the entire font budget. No additional weights, styles, or families without replacing it.
 5. Re-measure any page that gains a new section, widget, or integration, before merge.
 
@@ -43,17 +43,17 @@ Google's "good" thresholds** to leave headroom for lab-vs-field variance.
 
 ### Breach notes
 
-- **`/wall/` LCP 2,582 ms** is the only genuine CWV breach. The page is fully static (build-time content), TBT is 0 ms, FCP is 1.9 s — the LCP element (likely the display headline + webfont) simply renders late under simulated throttling. Smallest fix wins: audit what the LCP element is and why it waits (see optimizations).
+- **`/wall/` LCP 2,582 ms** is the only genuine CWV breach. The page is fully static (build-time content), TBT is 0 ms, FCP is 1.9 s, the LCP element (likely the display headline + webfont) simply renders late under simulated throttling. Smallest fix wins: audit what the LCP element is and why it waits (see optimizations).
 - **`/events/` TBT 560 ms** comes from client-side rendering: the page fetches `/api/events` then lays out (707 ms style & layout). Consider prerendering the list at build time or shipping a skeleton.
-- **`/blog/<post>` LCP 2,152 ms** is within CWV but over our stricter budget — watch it as posts gain richer content (comments widget, embeds).
+- **`/blog/<post>` LCP 2,152 ms** is within CWV but over our stricter budget, watch it as posts gain richer content (comments widget, embeds).
 
-## Top optimization opportunities (report only — not implemented)
+## Top optimization opportunities (report only, not implemented)
 
 1. **Turnstile loads on every page.** `https://challenges.cloudflare.com/turnstile/v0/api.js` (~28 KB + a third-party connection + the Cloudflare Insights beacon) is in the shared `<head>`, but only ~5 pages use a captcha (introduction, newsletter, comments, RSVP, form submit). Load it only on pages that render a widget. Impact: ~30 KB and one third-party origin off every other page; also removes a render-adjacent script from the critical path.
-2. **Prerender or skeleton the `/events/` list.** Client-side fetch + layout costs 560 ms TBT. The event list changes rarely — prerender at build time (or ISR-style revalidate) and hydrate RSVP counts client-side. Impact: TBT back under 300 ms, score 86 → 95+.
+2. **Prerender or skeleton the `/events/` list.** Client-side fetch + layout costs 560 ms TBT. The event list changes rarely, prerender at build time (or ISR-style revalidate) and hydrate RSVP counts client-side. Impact: TBT back under 300 ms, score 86 → 95+.
 3. **Find `/wall/`'s LCP element.** With 0 ms TBT the delay is render/resource ordering, not JS. Candidate causes: the LCP headline waiting on the preloaded font (already `swap` + preloaded, so likely fine), or the first paint blocked by the external CSS. Consider inlining critical CSS for above-the-fold on this template. Impact: LCP back under 2 s.
 4. **Footer auth check on every page.** `fetch("/api/auth/me")` runs on all pages to toggle member links. It's async and non-blocking, but it's a same-origin API round-trip on every navigation. Defer it until after `load` or cache the result in `sessionStorage`. Impact: small; mostly cleanliness.
-5. **Evaluate the Cloudflare Insights beacon** (`beacon.min.js`, ~10 KB on every page). If its analytics aren't being read, remove it. If they are, keep — it's the cheapest way to get real-user (field) data for INP, which lab tests cannot measure.
+5. **Evaluate the Cloudflare Insights beacon** (`beacon.min.js`, ~10 KB on every page). If its analytics aren't being read, remove it. If they are, keep, it's the cheapest way to get real-user (field) data for INP, which lab tests cannot measure.
 
 ## Enforcement
 

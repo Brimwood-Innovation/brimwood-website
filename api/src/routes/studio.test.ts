@@ -44,7 +44,7 @@ describe("validContentDir", () => {
 
 describe("b64 helpers", () => {
   it("round-trips unicode", () => {
-    const s = "Héllo — Canadian spelling: behaviour ✓";
+    const s = "Héllo, Canadian spelling: behaviour ✓";
     expect(b64decode(b64encode(s))).toBe(s);
   });
 });

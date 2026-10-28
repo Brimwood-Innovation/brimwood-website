@@ -1,4 +1,4 @@
-/* Route tests: comments — validation, moderation default, privacy, admin gates. */
+/* Route tests: comments: validation, moderation default, privacy, admin gates. */
 import { describe, it, expect } from "vitest";
 import app from "./comments";
 import {
@@ -114,7 +114,7 @@ describe("POST /comments validation", () => {
 });
 
 describe("GET /comments/:slug privacy", () => {
-  it("selects only name/body/created_at — email can never leak", async () => {
+  it("selects only name/body/created_at: email can never leak", async () => {
     const env = mockEnv();
     let seen = "";
     env.DB.handler = (sql) => {

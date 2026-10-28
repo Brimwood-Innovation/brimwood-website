@@ -70,7 +70,7 @@
       var d = await r.json().catch(function () { return {}; });
       if (!r.ok || !d.ok) throw new Error("not found");
       var e = d.event;
-      document.title = e.title + " — Events — Brimwood Innovation";
+      document.title = e.title + " - Events - Brimwood Innovation";
       // Keep the head meta in sync for crawlers and link previews.
       var metaDesc = document.querySelector('meta[name="description"]');
       if (metaDesc && e.description_md) {

@@ -31,7 +31,7 @@ const GENERIC_FAIL = "Invalid email or password.";
  * verification burns ~600k PBKDF2 iterations; without padding, unknown-email
  * / suspended / no-password failures return much faster than wrong-password
  * failures, letting an attacker distinguish registered emails by timing.
- * The dummy values below are NOT secrets — they exist only to burn the same
+ * The dummy values below are NOT secrets, they exist only to burn the same
  * CPU cost as a real verification. */
 const DUMMY_SALT_HEX = [...crypto.getRandomValues(new Uint8Array(32))]
   .map((b) => b.toString(16).padStart(2, "0"))
@@ -95,7 +95,7 @@ app.post("/login", async (c) => {
     return c.json({ ok: false, error: GENERIC_FAIL }, 401);
   }
 
-  // Per-email throttle (anti brute-force) — checked before the DB lookup
+  // Per-email throttle (anti brute-force), checked before the DB lookup
   // result is revealed, error stays generic either way.
   if (!(await checkRateLimitD1(DB, "pwlogin:email:" + email, 5, 3600))) {
     return c.json({ ok: false, error: GENERIC_FAIL }, 401);
@@ -137,7 +137,7 @@ app.post("/login", async (c) => {
 
 /* ---------------- Change password ---------------- */
 
-/** POST /password/change {currentPassword, newPassword} — authenticated. */
+/** POST /password/change {currentPassword, newPassword}: authenticated. */
 app.post("/password/change", async (c) => {
   const { DB } = c.env;
   if (!(await checkRateLimitD1(DB, "pwchange:" + clientIp(c.req.raw), 5, 3600))) {
@@ -187,7 +187,7 @@ app.post("/password/change", async (c) => {
 
 /* ---------------- Reset via email ---------------- */
 
-/** POST /password/reset/request {email} — always returns ok (no enumeration). */
+/** POST /password/reset/request {email}: always returns ok (no enumeration). */
 app.post("/password/reset/request", async (c) => {
   const { DB } = c.env;
   const resendKey = (c.env as Env).RESEND_API_KEY;
@@ -207,7 +207,7 @@ app.post("/password/reset/request", async (c) => {
     }
   }
 
-  // Always respond ok — never reveal whether the email exists.
+  // Always respond ok, never reveal whether the email exists.
   if (isEmail(email) && resendKey) {
     const user = await DB.prepare(
       "SELECT id, name FROM users WHERE email = ? AND status = 'active' AND password_hash IS NOT NULL"
@@ -241,7 +241,7 @@ app.post("/password/reset/request", async (c) => {
           "<p style=\"margin:0 0 16px;\">Hello" + (user.name ? " " + esc(user.name) : "") + ",</p>" +
             "<p style=\"margin:0 0 16px;\">We received a request to reset your Brimwood password. This link expires in 30 minutes:</p>" +
             button(resetUrl, "Reset password") +
-            '<p style="font-size:13px;color:#5B6862;margin:16px 0 0;">If you did not request this, just ignore it — your password will not change.</p>'
+            '<p style="font-size:13px;color:#5B6862;margin:16px 0 0;">If you did not request this, just ignore it, your password will not change.</p>'
         ),
         text:
           "We received a request to reset your Brimwood password.\n\n" +
@@ -258,7 +258,7 @@ function toHexToken(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** POST /password/reset/confirm {token, newPassword} — single-use, 30-min TTL. */
+/** POST /password/reset/confirm {token, newPassword}: single-use, 30-min TTL. */
 app.post("/password/reset/confirm", async (c) => {
   const { DB, SESSIONS_KV } = c.env;
   if (!(await checkRateLimitD1(DB, "pwconfirm:" + clientIp(c.req.raw), 10, 900))) {

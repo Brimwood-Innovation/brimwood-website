@@ -31,7 +31,7 @@
         (window.Brimwood && window.Brimwood.renderMentions) ||
         function (t) { return esc(t); };
       listEl.innerHTML = comments.length === 0
-        ? "<p class='sec-lede'>No comments yet — be the first.</p>"
+        ? "<p class='sec-lede'>No comments yet, be the first.</p>"
         : comments.map(function (cm) {
             var anchor = cm.id ? " id=\"comment-" + esc(cm.id) + "\"" : "";
             return "\n            <div class=\"admin-card\"" + anchor + " style=\"margin-bottom:12px;\">" +

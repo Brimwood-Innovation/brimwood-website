@@ -8,7 +8,7 @@
  * - Anonymity + SEO checklist: blog and pages (the long-form collections
  *   with title / excerpt / body).
  * - Attribution anonymity: testimonials (the attribution field must never
- *   be a full name — initials + role only).
+ *   be a full name, initials + role only).
  *
  * Loaded by /cms page after Decap initializes.
  */
@@ -65,19 +65,19 @@
     const common = ["Brimwood Innovation", "Build Yourself", "Elite By"];
     const flagged = names.filter((n) => !common.some((c) => n.includes(c.split(" ")[0])));
     if (flagged.length > 0) {
-      return [`Possible real names detected: ${[...new Set(flagged)].slice(0, 3).join(", ")}. Members are anonymous by default — confirm written permission.`];
+      return [`Possible real names detected: ${[...new Set(flagged)].slice(0, 3).join(", ")}. Members are anonymous by default, confirm written permission.`];
     }
     return [];
   }
 
   // Testimonials: the attribution field must never be a full name.
-  // Members are anonymous by default — initials + role only.
+  // Members are anonymous by default, initials + role only.
   function checkAttribution(attribution) {
     const value = (attribution || "").trim();
     if (!value) return [];
     const names = value.match(NAME_PATTERN) || [];
     if (names.length > 0) {
-      return [`Attribution looks like a full name: "${names[0]}". Use initials + role only (e.g. "M., builder since 2026") — members are anonymous by default.`];
+      return [`Attribution looks like a full name: "${names[0]}". Use initials + role only (e.g. "M., builder since 2026"), members are anonymous by default.`];
     }
     return [];
   }
@@ -88,11 +88,11 @@
     // Content model uses `description` for blog; accept legacy `excerpt` too.
     const excerpt = entry.getIn(["data", "description"]) || entry.getIn(["data", "excerpt"]) || "";
     const body = entry.getIn(["data", "body"]) || "";
-    if (title.length > 60) issues.push("Title over 60 characters — will truncate in search results.");
+    if (title.length > 60) issues.push("Title over 60 characters, will truncate in search results.");
     if (title.length < 10) issues.push("Title too short for SEO.");
-    if (!excerpt) issues.push("Missing excerpt — required for SEO and social cards.");
+    if (!excerpt) issues.push("Missing excerpt, required for SEO and social cards.");
     if (excerpt.length > 160) issues.push("Excerpt over 160 characters.");
-    if (body.length < 300) issues.push("Body under 300 characters — thin content hurts SEO.");
+    if (body.length < 300) issues.push("Body under 300 characters, thin content hurts SEO.");
     // AEO: check for a clear question/answer structure.
     if (!/\?/.test(body) && body.length > 500) {
       issues.push("Consider adding a question the post answers (AEO/featured snippets).");
@@ -106,7 +106,7 @@
 
   // Recursively collect every string value from the entry's data, so the
   // spelling and banned-phrase checks cover pages, settings, navigation,
-  // and homepage fields — not just blog title/body.
+  // and homepage fields, not just blog title/body.
   function collectText(entry) {
     const data = entry.getIn(["data"]);
     const plain = data && typeof data.toJS === "function" ? data.toJS() : {};

@@ -1,4 +1,4 @@
-/* Route tests: video — access control, range requests, cache headers. */
+/* Route tests: video: access control, range requests, cache headers. */
 import { describe, it, expect } from "vitest";
 import app from "./video";
 import { mockEnv, memberSession, adminSession } from "../test/helpers";

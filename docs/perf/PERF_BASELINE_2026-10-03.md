@@ -1,4 +1,4 @@
-# Performance Baseline — 2026-10-03
+# Performance Baseline - 2026-10-03
 
 First Lighthouse baseline for the Brimwood website (Phase C3).
 Production: `https://brimwoodinnovation.com` (Cloudflare Pages + shared Worker API).
@@ -50,7 +50,7 @@ Measured from the test VM (not Toronto). Cloudflare edge serves Toronto visitors
 ## Reading the numbers
 
 - **The site is genuinely light.** Excluding the bot-challenge artifact: ~125 KB total, ~38 KB JS, zero content images (SVG logos only), 13–14 requests per page. This is an excellent starting point for "engineered for speed."
-- **Core Web Vitals: all green except one borderline.** LCP < 2.5 s on 6/7 pages; CLS = 0 everywhere except `/` (0.076, still passing). `/wall/` LCP is 2,582 ms — 82 ms over the threshold, flagged below.
+- **Core Web Vitals: all green except one borderline.** LCP < 2.5 s on 6/7 pages; CLS = 0 everywhere except `/` (0.076, still passing). `/wall/` LCP is 2,582 ms, 82 ms over the threshold, flagged below.
 - **Score drags are environmental or structural, not content:**
   - `/` score 72: caused by the bot-challenge scripts (TBT 1,560 ms from challenge evaluation). Not a real-user issue.
   - `/events/` score 86: TBT 560 ms from client-side rendering (the page fetches event data from the API and lays out on load: 707 ms style & layout).
@@ -60,5 +60,5 @@ Measured from the test VM (not Toronto). Cloudflare edge serves Toronto visitors
 
 1. Lab (simulated) throttling, not field data. Real-user CrUX data is the source of truth once traffic exists.
 2. INP cannot be measured without interaction; needs field data or scripted flows.
-3. One run per page — no variance data. Budgets below assume ±10% run-to-run noise.
+3. One run per page, no variance data. Budgets below assume ±10% run-to-run noise.
 4. Bot-challenge artifact on two runs (marked `*`); true weights are ~125 KB.

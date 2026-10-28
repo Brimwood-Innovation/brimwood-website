@@ -198,7 +198,7 @@
             '<p class="progress-line" id="gProgressLine" hidden>Your progress: <b id="gProgressText"></b></p>' +
             '<p id="gCertLine" role="status" hidden>Course complete. Your certificate is ready: <a id="gCertLink" href="#">View certificate</a></p>' +
             "</form></div>";
-          document.title = l.title + " — Academy — Brimwood Innovation";
+          document.title = l.title + " - Academy - Brimwood Innovation";
           var gels = reflectionEls("g");
           wireReflection({
             apiBase: gApiBase,

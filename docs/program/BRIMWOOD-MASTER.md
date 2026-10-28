@@ -1968,3 +1968,52 @@ from the self-chaining loop's first run on 2026-10-21.
   certificate_pending, which is the intended fail-closed state.
   Still blocked: the Phase 1 preview smoke flows and applying 0037
   to preview D1 (no Cloudflare token in the environment).
+- Cycle 34, 2026-10-28: Phase 5 slice 2, the repo-wide em dash scrub of
+  shipped code and copy, in ~/workspace/company/wt-phase5-emdash on
+  branch phase5/emdash-slice2 (no open loop PR; develop CI green; 22
+  is the founder-tapped README PR, not loop work). Scope: all 313
+  in-scope occurrences across 108 tracked files, plus 3 &mdash;
+  entities in the intro-confirm email HTML that rendered the same
+  glyph. Excluded by the slice definition: 387 occurrences in the
+  tasks working notes and 9 in the vendor Decap bundle
+  (site/public/cms/vendor/decap-cms-3.16.3.js), so those two remain
+  and the repo-wide literal count is now 396, all outside shipped
+  code and copy. Replacement rules, applied uniformly and then
+  reviewed line by line in the diff: titles, subjects, headings,
+  and sign-offs use the spaced hyphen, matching the live
+  newsletter.ts templates that already used it (for example
+  "Confirm your subscription - Brimwood Innovation"); label-plus-
+  description lines use a colon (migration headers, route headers,
+  file headers, config keys); sentence dashes use a comma; empty-
+  value placeholders use a hyphen, matching newsletter.ts
+  (name || "-"); the intro-confirm sign-off uses the hyphen form
+  from newsletter.ts. Email fixtures changed together with their
+  templates in api/src/lib/email.ts, api/src/routes/introduction.ts,
+  api/src/routes/forms.ts, and worker-introduction.js, and the
+  email render tests now assert the hyphen placeholder precisely
+  ("Referred by: -" in text, ">-</td>" in HTML) instead of the old
+  loose em dash assertion. Two doc-comment lines that the
+  mechanical pass rendered as "?path=:" were rewritten by hand as
+  "(path query)" and "(dir query)". Verification before the PR:
+  796 API tests pass (40 files), API typecheck clean, site build
+  clean (36 pages), all 37 migrations apply cleanly to a fresh
+  local SQLite database (139 tables, 116 triggers, same counts as
+  cycle 33), and the built site outside the vendor CMS bundle
+  contains no em dash. Grade (dimensions this cycle touched,
+  scored from evidence): functional 2,500/2,500 (no behaviour
+  change; full suite green, migrations re-applied clean); schema
+  and API 2,000/2,000 (migration edits are comments only, counts
+  unchanged); code quality 1,000/1,000 (pure substitution, 302
+  insertions and 302 deletions, no logic touched); brand and copy
+  750/750 (shipped copy now meets the no-em-dash constraint;
+  tasks notes and the vendor bundle are explicitly out of scope).
+  Accessibility and performance untouched (copy-only cycle).
+  Pro-rated total 10,000/10,000, no zero dimension, no open P0.
+  Verdict: ACCEPT. Next improvement: Phase 5 slice 3, the full
+  client-side HTML audit, then slice 4 (dedicated media and
+  metrics tests). Live issuance still needs the operator setup:
+  the two signing secrets plus the matching signing_keys row;
+  until then a completed course reports certificate_pending, which
+  is the intended fail-closed state. Still blocked: the Phase 1
+  preview smoke flows and applying 0037 to preview D1 (no
+  Cloudflare token in the environment).

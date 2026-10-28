@@ -1,4 +1,4 @@
-/* Route tests: form builder — submission validation, admin gates, best-effort notify. */
+/* Route tests: form builder: submission validation, admin gates, best-effort notify. */
 import { describe, it, expect } from "vitest";
 import app from "./forms";
 import {

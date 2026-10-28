@@ -1,5 +1,5 @@
 /* Password auth tests (Phase D1): hashing, policy, login, set/change,
- * reset flow, rate limits. Mocks D1/KV/fetch — no network. */
+ * reset flow, rate limits. Mocks D1/KV/fetch, no network. */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import app from "./password";
 import { hashPassword, verifyPassword, validatePassword } from "../lib/password";
@@ -203,7 +203,7 @@ describe("POST /login", () => {
       await postJSON(app, "/login", { email: "user@example.com", password: "WrongPassword99" }, env);
       expect(spy).toHaveBeenCalledTimes(1);
       spy.mockClear();
-      // Unknown email: one dummy PBKDF2 verify — same cost, same shape.
+      // Unknown email: one dummy PBKDF2 verify, same cost, same shape.
       const res = await postJSON(app, "/login", { email: "nobody@example.com", password: "WrongPassword99" }, env);
       expect(res.status).toBe(401);
       expect((await res.json()).error).toBe("Invalid email or password.");

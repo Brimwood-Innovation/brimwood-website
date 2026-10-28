@@ -56,7 +56,7 @@ function checkSvg(buf: ArrayBuffer): boolean {
   if (text.startsWith("<svg")) {
     // ok
   } else if (text.startsWith("<?xml")) {
-    // An XML prolog alone proves nothing — require the svg root nearby.
+    // An XML prolog alone proves nothing, require the svg root nearby.
     if (!text.slice(0, 2048).includes("<svg")) return false;
   } else {
     return false;
@@ -68,7 +68,7 @@ function checkSvg(buf: ArrayBuffer): boolean {
   return true;
 }
 
-/** Public URL for a media key, derived from the runtime request origin —
+/** Public URL for a media key, derived from the runtime request origin,
  *  never from the Host header. Falls back to the production API origin only
  *  if the request URL is somehow unparseable (never observed). */
 export function publicMediaUrl(

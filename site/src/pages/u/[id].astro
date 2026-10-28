@@ -32,7 +32,7 @@ export async function getStaticPaths() {
 const { id } = Astro.params;
 const profile = Astro.props.profile;
 const apiBase = import.meta.env.PUBLIC_API_BASE || "";
-const ogTitle = `${profile.display_name} — Brimwood Innovation`;
+const ogTitle = `${profile.display_name} - Brimwood Innovation`;
 const ogDesc = profile.bio?.slice(0, 160) || "A Brimwood Innovation member.";
 const ogImage = profile.avatar_url
   ? `https://brimwoodinnovation.com${profile.avatar_url}`

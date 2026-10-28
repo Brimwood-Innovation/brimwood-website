@@ -1,4 +1,4 @@
--- 0016_rich_profiles.sql — rich profiles: personal fields + per-field visibility
+-- 0016_rich_profiles.sql: rich profiles: personal fields + per-field visibility
 -- (profiles area, social-UX overhaul).
 --
 -- dob: ISO date string (YYYY-MM-DD), nullable. API validates format and

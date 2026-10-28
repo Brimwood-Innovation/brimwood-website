@@ -1,4 +1,4 @@
-# CONSTRAINTS.md — Brimwood Website Build
+# CONSTRAINTS.md - Brimwood Website Build
 
 The founder's hard constraints. Written once, enforced at every gate (`/plan` → `/build` → `/test` → `/review` → `/ship`). A task that violates any of these is not done.
 
@@ -11,7 +11,7 @@ The founder's hard constraints. Written once, enforced at every gate (`/plan` �
 - Gate: licence check on every new dependency.
 
 ## 3. Lightweight and fast
-- Core Web Vitals: LCP ≤ 2.5s (target 1.8s), INP ≤ 200ms, CLS ≤ 0.1 — Moto G4 / 4G lab profile.
+- Core Web Vitals: LCP ≤ 2.5s (target 1.8s), INP ≤ 200ms, CLS ≤ 0.1, Moto G4 / 4G lab profile.
 - Page-weight caps: home 200KB total / 60KB JS; blog post 150KB / 20KB JS; lesson 200KB / 40KB JS; admin 400KB / 250KB JS; CSS ≤ 30–50KB per page.
 - Gate: Lighthouse CI fails PRs that break budgets. No framework runtime ships for static content.
 
@@ -26,7 +26,7 @@ The founder's hard constraints. Written once, enforced at every gate (`/plan` �
 
 ## 6. Brimwood Brand Kit v1.0 is final authority
 - Emerald-led palette (#0C9463 etc.), Plus Jakarta Sans (self-hosted woff2), exact logo files, Canadian spelling, short sentences.
-- Never redraw, recolour, stretch, or add effects to kit assets. No income promises, no hype/"10x" language, no competitor criticism — including sample copy and schemas.
+- Never redraw, recolour, stretch, or add effects to kit assets. No income promises, no hype/"10x" language, no competitor criticism, including sample copy and schemas.
 - Members anonymous by default: share the what, never the how; written permission + draft review before naming anyone.
 - Gate: brand review on every visual/content PR.
 

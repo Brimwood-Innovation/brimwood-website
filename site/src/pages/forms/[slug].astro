@@ -18,7 +18,7 @@ export async function getStaticPaths() {
 ---
 
 <Base
-  title="Form — Brimwood Innovation"
+  title="Form - Brimwood Innovation"
   description="Fill in this Brimwood Innovation form."
   path="/forms"
   turnstile
@@ -43,7 +43,7 @@ export async function getStaticPaths() {
     <div id="formDone" style="display:none;text-align:center;padding:48px 0;">
       <div class="kicker" style="color:var(--emerald-deep);">Received</div>
       <h1 class="sec">Thank you.</h1>
-      <p class="sec-lede" style="margin-inline:auto;">Your response is on its way — we read every one personally.</p>
+      <p class="sec-lede" style="margin-inline:auto;">Your response is on its way, we read every one personally.</p>
     </div>
   </section>
 
@@ -65,7 +65,7 @@ export async function getStaticPaths() {
         document.getElementById('formNotFound').style.display = 'block';
         return;
       }
-      document.title = form.title + ' — Brimwood Innovation';
+      document.title = form.title + ' - Brimwood Innovation';
       document.getElementById('formTitle').textContent = form.title;
       if (form.description) {
         const desc = document.getElementById('formDesc');

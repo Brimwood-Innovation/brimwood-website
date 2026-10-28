@@ -33,14 +33,14 @@ const TARGETS: Target[] = [
   { app: eventsApp, method: "POST", path: "/admin/events", body: {} },
   { app: eventsApp, method: "PATCH", path: "/admin/events/e1", body: {} },
   { app: eventsApp, method: "GET", path: "/admin/events/e1/rsvps" },
-  // forms.ts (mounted /api/forms) — NOTE: GET /admin is shadowed by /:slug
+  // forms.ts (mounted /api/forms), NOTE: GET /admin is shadowed by /:slug
   // (see forms.test.ts); it 404s instead of 403. Both deny access.
   { app: formsApp, method: "GET", path: "/admin", allow: [403, 404] },
   { app: formsApp, method: "POST", path: "/admin", body: {} },
   { app: formsApp, method: "PATCH", path: "/admin/f1", body: {} },
   { app: formsApp, method: "DELETE", path: "/admin/f1" },
   { app: formsApp, method: "GET", path: "/admin/f1/submissions" },
-  // sync.ts (mounted /api/admin/sync) — admin session OR Bearer <redacted>
+  // sync.ts (mounted /api/admin/sync), admin session OR Bearer <redacted>
   { app: syncApp, method: "POST", path: "/courses", body: {} },
 ];
 

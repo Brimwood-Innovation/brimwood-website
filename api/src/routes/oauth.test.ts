@@ -1,6 +1,6 @@
 /* GitHub OAuth tests (audit/auth): state CSRF check (constant-time), PKCE
  * challenge/verifier round-trip, single-use state cookie, validated
- * postMessage target. Mocks fetch — no network. */
+ * postMessage target. Mocks fetch, no network. */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Hono } from "hono";
 import { getSignedCookie } from "hono/cookie";
@@ -113,7 +113,7 @@ describe("GET /oauth/callback", () => {
     expect(exchanged.code_verifier).toBe(verifier);
     expect(exchanged.code).toBe("authcode123");
     const html = await res.text();
-    // Token delivered to the exact CMS origin that opened the popup — never "*".
+    // Token delivered to the exact CMS origin that opened the popup, never "*".
     expect(html).toContain('"https://brimwoodinnovation.com"');
     expect(html).not.toContain('postMessage(msg, "*")');
     expect(html).toContain("gh_test_token");

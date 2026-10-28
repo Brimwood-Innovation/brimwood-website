@@ -1,4 +1,4 @@
-# Brimwood Website — Backup & Rollback Runbook
+# Brimwood Website - Backup & Rollback Runbook
 
 Last verified: 2026-10-02
 
@@ -22,7 +22,7 @@ CLOUDFLARE_API_TOKEN="<token>" CLOUDFLARE_ACCOUNT_ID=0721f0b5175c685d56651e435d9
 ### Restore from backup
 ```bash
 # 1. Confirm the backup file is valid SQL (spot-check tables)
-# 2. Execute against remote (DESTRUCTIVE — drops and recreates)
+# 2. Execute against remote (DESTRUCTIVE, drops and recreates)
 CLOUDFLARE_API_TOKEN="<token>" CLOUDFLARE_ACCOUNT_ID=0721f0b5175c685d56651e435d9a14dc \
   ./node_modules/.bin/wrangler d1 execute brimwood_db_v2 --remote \
   --file=/tmp/brimwood_backup_YYYYMMDD.sql
@@ -46,9 +46,9 @@ curl -s "https://api.cloudflare.com/client/v4/accounts/0721f0b5175c685d56651e435
 ```
 
 Known-good versions:
-- `ea039e05-1b0b-4323-909b-10efd00914ea` — 2026-10-02, security headers + Turnstile
-- `b3f3b508-1485-4921-bb4a-0770b6b93602` — 2026-10-02, Turnstile verification
-- `7236c0cd-982a-4001-806b-45da1c5679d2` — 2026-10-02, OAuth hardening
+- `ea039e05-1b0b-4323-909b-10efd00914ea`: 2026-10-02, security headers + Turnstile
+- `b3f3b508-1485-4921-bb4a-0770b6b93602`: 2026-10-02, Turnstile verification
+- `7236c0cd-982a-4001-806b-45da1c5679d2`: 2026-10-02, OAuth hardening
 
 ## Pages Rollback
 

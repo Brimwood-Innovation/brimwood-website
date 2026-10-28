@@ -12,7 +12,7 @@ export function isEmail(v: string): boolean {
 }
 
 /** True when v is a plain JSON object (not null, not an array).
- * Use after `await req.json()` — a valid-JSON body like `null` or `[]`
+ * Use after `await req.json()`, a valid-JSON body like `null` or `[]`
  * would otherwise crash field access. */
 export function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);

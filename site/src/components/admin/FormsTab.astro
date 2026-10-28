@@ -1,7 +1,7 @@
 ---
 /* Forms tab for the admin panel (Phase B). Self-contained: renders the tab
  * button + panel and exposes window.loadFormsTab for admin.astro's tab
- * dispatch map. The first mate wires it in — do not edit admin.astro here. */
+ * dispatch map. The first mate wires it in, do not edit admin.astro here. */
 ---
 
 <button data-tab="forms" class="btn btn-ghost small tab-btn">Forms</button>
@@ -93,7 +93,7 @@
           <input id="fbSlug" type="text" style="width:100%;padding:10px 14px;border:1px solid rgba(18,26,22,.15);border-radius:10px;font-size:15px;" placeholder="demo-night-application"></label>
         <label style="display:block;margin-bottom:12px;">Description<br>
           <textarea id="fbDesc" rows="2" style="width:100%;padding:10px 14px;border:1px solid rgba(18,26,22,.15);border-radius:10px;font-size:15px;"></textarea></label>
-        <label style="display:block;margin-bottom:20px;">Notify email (optional — defaults to info@)<br>
+        <label style="display:block;margin-bottom:20px;">Notify email (optional, defaults to info@)<br>
           <input id="fbNotify" type="email" style="width:100%;padding:10px 14px;border:1px solid rgba(18,26,22,.15);border-radius:10px;font-size:15px;" placeholder="you@brimwoodinnovation.com"></label>
         <h3>Fields</h3>
         <div id="fbFields"></div>
@@ -124,7 +124,7 @@
   function renderFieldRows(el) {
     const wrap = document.getElementById("fbFields");
     wrap.innerHTML = builderFields.length === 0
-      ? "<p class='admin-muted'>No fields yet — add one above.</p>"
+      ? "<p class='admin-muted'>No fields yet, add one above.</p>"
       : builderFields.map((f, i) => `
       <div class="admin-card" style="margin-bottom:12px;" data-fi="${i}">
         <div class="admin-row">
@@ -206,7 +206,7 @@
     el.innerHTML =
       "<div class='admin-row' style='margin-bottom:16px;'>" +
       "<button class='btn btn-ghost small' id='formsBack2'>← Back to forms</button>" +
-      `<span class="admin-muted">${fesc(d.form.title)} — ${(d.submissions || []).length} submissions</span></div>` +
+      `<span class="admin-muted">${fesc(d.form.title)}: ${(d.submissions || []).length} submissions</span></div>` +
       ((d.submissions || []).length === 0 ? "<p class='admin-muted'>No submissions yet.</p>" :
         `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;">
           <thead><tr><th style="text-align:left;padding:8px;border-bottom:2px solid rgba(18,26,22,.12);">Submitted</th>` +
@@ -215,7 +215,7 @@
           d.submissions.map((s) => `<tr><td style="padding:8px;border-bottom:1px solid rgba(18,26,22,.08);white-space:nowrap;">${fesc((s.submitted_at || "").slice(0, 16).replace("T", " "))}</td>` +
             fields.map((f) => {
               const v = s.data[f.id];
-              const disp = typeof v === "boolean" ? (v ? "Yes" : "No") : (v || "—");
+              const disp = typeof v === "boolean" ? (v ? "Yes" : "No") : (v || "-");
               return `<td style="padding:8px;border-bottom:1px solid rgba(18,26,22,.08);max-width:240px;overflow:hidden;text-overflow:ellipsis;">${fesc(String(disp))}</td>`;
             }).join("") + `</tr>`).join("") +
           `</tbody></table></div>`);

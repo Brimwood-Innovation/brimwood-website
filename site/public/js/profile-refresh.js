@@ -4,7 +4,7 @@
  *
  * Privacy rule: if the API no longer returns the profile (the member turned off
  * "Make my profile public", or was suspended), the statically prerendered page
- * must NOT keep showing the stale profile — replace it with a private notice.
+ * must NOT keep showing the stale profile, replace it with a private notice.
  * Consent revoked means exposure stops. */
 (function () {
   var section = document.getElementById("profileSection");

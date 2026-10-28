@@ -7,7 +7,7 @@
  * videos) are public; members-only lessons' videos require a session +
  * enrolment, checked per request against the lesson that owns the key, so the
  * URL cannot be hotlinked by non-members.
- * Caching: gated responses use `Cache-Control: private` — the shared edge
+ * Caching: gated responses use `Cache-Control: private`, the shared edge
  * cache never varies on Cookie, so `public` here would leak members-only bytes
  * to anonymous users. Preview videos are immutable content → `public`.
  */
@@ -18,7 +18,7 @@ import type { Bindings } from "../index";
 const app = new Hono<{ Bindings: Bindings }>();
 
 /** Return the session's user id, or null. Role is intentionally NOT cached
- * here — authorization checks re-read it from D1 via isAdminUser so a
+ * here, authorization checks re-read it from D1 via isAdminUser so a
  * demoted admin loses access on the next request. */
 async function sessionUserId(c: any): Promise<string | null> {
   const s = await readSession(c);
@@ -57,7 +57,7 @@ app.get("/:key{.+}", async (c) => {
   }
 
   // Find which lesson (if any) uses this video key, to enforce access.
-  // Course must be published — matches GET /api/courses/lessons/:id.
+  // Course must be published, matches GET /api/courses/lessons/:id.
   const lesson = await DB.prepare(
     `SELECT l.is_preview, m.course_id, co.visibility AS course_visibility
      FROM lessons l
@@ -78,7 +78,7 @@ app.get("/:key{.+}", async (c) => {
   if (gated) {
     const userId = await sessionUserId(c);
     if (!userId) return c.json({ ok: false, error: "Members only" }, 401);
-    // The admin check re-reads the role from D1 — never trust the cached
+    // The admin check re-reads the role from D1, never trust the cached
     // session role, which can be stale for up to 30 days after a demotion.
     if (!(await isAdminUser(c, userId))) {
       const enr = await DB.prepare(

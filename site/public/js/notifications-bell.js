@@ -1,4 +1,4 @@
-/* Notification bell (audit/social/wiring) — header badge + dropdown.
+/* Notification bell (audit/social/wiring): header badge + dropdown.
  * Expects: <button id="notifBell"> with <span id="notifBadge"> and
  * <div id="notifPanel"> in the header (see layouts/Base.astro).
  * Hidden entirely for anonymous visitors (401) or when the API is absent.

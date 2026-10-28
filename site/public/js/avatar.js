@@ -1,4 +1,4 @@
-/* Shared avatar renderer — client-side twin of site/src/components/Avatar.astro.
+/* Shared avatar renderer: client-side twin of site/src/components/Avatar.astro.
  * Round everywhere, consistent sizes, initials fallback in brand colours.
  * Brand Kit v1.0. Usage: brimwoodAvatar({ src, name, size }) -> HTML string.
  * size: 'sm' | 'md' | 'lg' | 'xl' or a pixel number. */

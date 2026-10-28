@@ -1,4 +1,4 @@
--- 0018_stories.sql — social stories (24h ephemeral, Instagram/Facebook model).
+-- 0018_stories.sql: social stories (24h ephemeral, Instagram/Facebook model).
 --
 -- Stories are member-authored photos/videos that disappear 24h after posting.
 -- Expiry is enforced LAZILY: expires_at is written at insert time and every
@@ -12,7 +12,7 @@
 -- remain invisible to readers but still occupy D1/R2. The read filters below
 -- make that safe: expiry correctness never depends on the cleanup running.
 -- Suggested: add `pruneStories(env)` to api/src/cron.ts alongside
--- pruneSessions/pruneRateLimits —
+-- pruneSessions/pruneRateLimits:
 --   DELETE FROM stories WHERE expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now')
 -- plus an R2 delete for each reclaimed r2_key. (Not added in 0018: cron
 -- changes are a separate, reviewable unit.)
