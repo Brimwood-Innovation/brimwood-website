@@ -20,7 +20,7 @@
       headers: { accept: "application/json", ...(opts.headers || {}) },
       ...opts,
     });
-  /* Hardening: complete HTML escaper — the old version left & and quotes
+  /* Hardening: complete HTML escaper, the old version left & and quotes
      unescaped, brittle if this ever moves from text into an attribute. */
   const evEsc = (s) =>
     String(s || "")
@@ -30,7 +30,7 @@
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
   const evFmt = (iso) =>
-    iso ? new Date(iso).toLocaleString("en-CA", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—";
+    iso ? new Date(iso).toLocaleString("en-CA", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "-";
   const evInput = 'padding:8px 12px;border:1px solid rgba(18,26,22,.12);border-radius:8px;width:100%;margin-bottom:10px;';
 
   window.loadEventsTab = async function () {
@@ -43,8 +43,8 @@
     el.innerHTML =
       `<div class="admin-card"><strong>Create event</strong>
         <div style="margin-top:12px;max-width:560px;">
-          <input id="evTitle" placeholder="Title — e.g. Demo night #12" style="${evInput}">
-          <input id="evSlug" placeholder="Slug (optional — auto from title)" style="${evInput}">
+          <input id="evTitle" placeholder="Title (e.g. Demo night #12)" style="${evInput}">
+          <input id="evSlug" placeholder="Slug (optional, auto from title)" style="${evInput}">
           <div style="display:flex;gap:10px;">
             <input id="evStarts" type="datetime-local" title="Starts at" style="${evInput}">
             <input id="evEnds" type="datetime-local" title="Ends at (optional)" style="${evInput}">

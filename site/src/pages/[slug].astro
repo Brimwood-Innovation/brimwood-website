@@ -1,7 +1,7 @@
 ---
 /* CMS-driven pages (site integration): renders Markdown pages created in
  * Decap (Pages collection) at top-level URLs. Drafts are never built.
- * Reserved slugs can't be claimed — static file routes take precedence. */
+ * Reserved slugs can't be claimed, static file routes take precedence. */
 import { getCollection, render } from "astro:content";
 import Base from "../layouts/Base.astro";
 
@@ -22,7 +22,7 @@ const { Content } = await render(page);
 ---
 
 <Base
-  title={`${page.data.title} — Brimwood Innovation`}
+  title={`${page.data.title} - Brimwood Innovation`}
   description={page.data.excerpt || page.data.title}
   path={`/${page.data.slug}`}
 >

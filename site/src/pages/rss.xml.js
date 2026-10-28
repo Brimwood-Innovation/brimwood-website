@@ -27,7 +27,7 @@ export async function GET() {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>Brimwood Innovation — Blog</title>
+    <title>Brimwood Innovation - Blog</title>
     <link>https://brimwoodinnovation.com/blog/</link>
     <atom:link href="https://brimwoodinnovation.com/rss.xml" rel="self" type="application/rss+xml" />
     <description>Notes on micro business, AI in practice, and the owner mindset.</description>

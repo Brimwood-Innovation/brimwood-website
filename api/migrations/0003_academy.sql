@@ -1,4 +1,4 @@
--- 0003_academy.sql — courses, modules, lessons, enrolments, progress (report §11.2)
+-- 0003_academy.sql: courses, modules, lessons, enrolments, progress (report §11.2)
 
 CREATE TABLE courses (
   id              TEXT PRIMARY KEY,

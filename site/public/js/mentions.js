@@ -1,4 +1,4 @@
-/* @mention rendering (audit/social/wiring) — client side.
+/* @mention rendering (audit/social/wiring): client side.
  * Mirrors the server rule in api/src/routes/notifications.ts (parseMentions):
  * 3–30 chars, lowercase letters/numbers/underscores, starts with a letter.
  * Brimwood.renderMentions(text) escapes HTML, then turns @handles into links

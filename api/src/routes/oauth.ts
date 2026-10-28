@@ -8,13 +8,13 @@
  * 3. Return token to Decap via postMessage (restricted to the validated CMS origin)
  *
  * Decap's NetlifyAuthenticator REQUIRES the step-1 handshake before it will
- * accept the token in step 3 — without it Decap stays on the login screen.
+ * accept the token in step 3, without it Decap stays on the login screen.
  *
  * Security:
  * - state parameter prevents CSRF (random 32 bytes, httpOnly cookie, 10-min expiry)
  * - postMessage targets the exact CMS origin that opened the popup (Referer
  *   validated against an allowlist at /auth time), never "*"
- * - scope is public_repo (repo is public) — least privilege
+ * - scope is public_repo (repo is public), least privilege
  *
  * Requires a GitHub OAuth App:
  * - Authorization callback URL: https://brimwood-api.adamsayani.workers.dev/api/oauth/callback
@@ -34,7 +34,7 @@ const STATE_COOKIE = "gh_oauth_state";
 const STATE_TTL = 600; // 10 minutes
 
 // Origins allowed to host the CMS. The postMessage target is derived from the
-// Referer at /auth time and validated against this list — never "*".
+// Referer at /auth time and validated against this list, never "*".
 const ALLOWED_CMS_ORIGINS = [
   "https://brimwoodinnovation.com",
   "https://www.brimwoodinnovation.com",
@@ -99,7 +99,7 @@ app.get("/auth", async (c) => {
   const origin = cmsOriginFromReferer(c) || fallback;
   const cookieValue = JSON.stringify({ state, origin, verifier });
   // Signed cookie so the callback can verify the state wasn't tampered with.
-  // SESSION_SECRET is the signing key. Fail closed if unset — never fall back
+  // SESSION_SECRET is the signing key. Fail closed if unset, never fall back
   // to a hardcoded key (M3).
   const signingKey = c.env.SESSION_SECRET;
   if (!signingKey) return c.json({ ok: false, error: "OAuth not configured" }, 500);
@@ -154,7 +154,7 @@ app.get("/auth", async (c) => {
           n += 1;
           if (n >= 8 || done) {
             clearInterval(t);
-            if (!done) show("Still waiting for the CMS — if this persists, close this window and try again.");
+            if (!done) show("Still waiting for the CMS, if this persists, close this window and try again.");
             return;
           }
           ping();
@@ -162,7 +162,7 @@ app.get("/auth", async (c) => {
       }
     })();
   </script></body></html>`;
-  // NOTE: use c.html(), not `new Response()` — returning a raw Response
+  // NOTE: use c.html(), not `new Response()`, returning a raw Response
   // discards the Set-Cookie header staged by setSignedCookie above, which
   // breaks the state check in /callback ("Invalid state" on every attempt).
   return c.html(html);
@@ -177,7 +177,7 @@ app.get("/callback", async (c) => {
 
   const code = c.req.query("code");
   const returnedState = c.req.query("state");
-  // Fail closed if the signing key is unset (M3) — never verify with a default.
+  // Fail closed if the signing key is unset (M3), never verify with a default.
   const signingKey = c.env.SESSION_SECRET;
   if (!signingKey) {
     return c.text("OAuth not configured", 500);
@@ -185,7 +185,7 @@ app.get("/callback", async (c) => {
   const storedRaw = await getSignedCookie(c, signingKey, STATE_COOKIE);
 
   // Clear the state cookie regardless of outcome (single use). NOTE: the
-  // responses below MUST go through c.text()/c.html() — returning a raw
+  // responses below MUST go through c.text()/c.html(), returning a raw
   // Response would discard this staged Set-Cookie header (same trap as the
   // setSignedCookie note in /auth above).
   deleteCookie(c, STATE_COOKIE, { path: "/api/oauth" });
@@ -199,10 +199,10 @@ app.get("/callback", async (c) => {
   }
   // Constant-time state compare (house rule: never === on secrets).
   if (!returnedState || !stored.state || !safeEqual(returnedState, stored.state)) {
-    return c.text("Invalid state — possible CSRF. Please try signing in again.", 403);
+    return c.text("Invalid state, possible CSRF. Please try signing in again.", 403);
   }
   if (!stored.verifier) {
-    return c.text("Invalid state — please try signing in again.", 403);
+    return c.text("Invalid state, please try signing in again.", 403);
   }
 
   const tokenRes = await fetch(GITHUB_TOKEN, {

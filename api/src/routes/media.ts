@@ -125,7 +125,7 @@ app.post("/admin/media", async (c) => {
 
   // Server-generated flat key: unique per upload, no client input in the path.
   const key = `media-${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${ext}`;
-  // Hardening: file.type is browser-supplied — verify the actual content bytes
+  // Hardening: file.type is browser-supplied, verify the actual content bytes
   // before storing (polyglot / renamed-executable defense in depth).
   const bytes = await file.arrayBuffer();
   if (!checkMagicBytes(bytes, file.type)) {
@@ -173,7 +173,7 @@ app.get("/media/:key", async (c) => {
   }
   // Keys are unique per upload → immutable, cache aggressively at the edge.
   headers.set("cache-control", "public, max-age=31536000, immutable");
-  // L1: SVGs can carry scripts — force download so they never execute in
+  // L1: SVGs can carry scripts, force download so they never execute in
   // the worker origin's context.
   if ((headers.get("content-type") || "").includes("svg")) {
     headers.set("content-disposition", "attachment");

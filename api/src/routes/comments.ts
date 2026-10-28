@@ -64,7 +64,7 @@ app.post("/comments", async (c) => {
     return c.json({ ok: false, error: "Please enter a valid email address." }, 400);
   }
   if (body.length < 10) {
-    return c.json({ ok: false, error: "Your comment is a little short — please write a bit more." }, 400);
+    return c.json({ ok: false, error: "Your comment is a little short, please write a bit more." }, 400);
   }
 
   // Turnstile bot check (fails closed).
@@ -84,7 +84,7 @@ app.post("/comments", async (c) => {
     .bind(crypto.randomUUID(), postSlug, name, email, body)
     .run();
 
-  // Always the same response — never reveal moderation state.
+  // Always the same response, never reveal moderation state.
   return c.json({ ok: true });
 });
 
@@ -165,7 +165,7 @@ app.patch("/admin/comments/:id", async (c) => {
     .run();
 
   // Approving makes the comment visible: @mentions in it now notify.
-  // (Best-effort — a failed notification never fails the moderation action.)
+  // (Best-effort, a failed notification never fails the moderation action.)
   if (status === "approved") {
     try {
       const handles = parseMentions(existing.body || "");

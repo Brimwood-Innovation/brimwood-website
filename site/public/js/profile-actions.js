@@ -5,7 +5,7 @@
  *    the URL with the canonical /@username (search engines see one profile).
  * 2. Message button: signed-in members viewing someone else's profile get a
  *    "Message" button under the name → Brimwood.messageMember (share-to-dm.js),
- *    which opens/creates the 1:1 DM. Anonymous visitors see nothing new —
+ *    which opens/creates the 1:1 DM. Anonymous visitors see nothing new,
  *    anonymous-by-default holds.
  */
 (function () {

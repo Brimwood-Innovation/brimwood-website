@@ -14,7 +14,7 @@ import HubShell from "../components/HubShell.astro";
 ---
 
 <Base
-  title="Messages — Brimwood Innovation"
+  title="Messages - Brimwood Innovation"
   description="Private messages for Brimwood members."
   path="/messages"
 >
@@ -336,7 +336,7 @@ import HubShell from "../components/HubShell.astro";
     function clock(iso) {
       return new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
     }
-    /* Shared renderer (public/js/avatar.js) — matches Avatar.astro exactly. */
+    /* Shared renderer (public/js/avatar.js): matches Avatar.astro exactly. */
     function avatar(p, cls) {
       return brimwoodAvatar({ src: p.avatar_url, name: p.display_name, size: cls === "sm" ? 32 : 48 });
     }
@@ -421,7 +421,7 @@ import HubShell from "../components/HubShell.astro";
             `<span class="thread-sub"> · ${esc(relTime(sr.created_at))}</span>` +
             `<p>${esc(sr.body)}</p></div></div>`
           ).join("");
-      } catch { /* stories not ready — the section stays hidden */ }
+      } catch { /* stories not ready, the section stays hidden */ }
     }
 
     /* --- thread --- */

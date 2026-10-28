@@ -185,7 +185,7 @@ function loadCourses() {
     process.exit(1);
   }
   if (files.length === 0) {
-    console.error(`no course Markdown files in ${COURSES_DIR} — nothing to sync.`);
+    console.error(`no course Markdown files in ${COURSES_DIR}, nothing to sync.`);
     process.exit(1);
   }
   return files.map((f) => {

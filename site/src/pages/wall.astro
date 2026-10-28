@@ -1,6 +1,6 @@
 ---
 /* Wall of builders (Phase B): public testimonials wall, featured first.
- * Members are anonymous by default — attributions use initials + role only. */
+ * Members are anonymous by default, attributions use initials + role only. */
 import Base from "../layouts/Base.astro";
 import { getCollection } from "astro:content";
 
@@ -11,7 +11,7 @@ const testimonials = (await getCollection("testimonials")).sort((a, b) => {
 ---
 
 <Base
-  title="Wall of builders — Brimwood Innovation"
+  title="Wall of builders - Brimwood Innovation"
   description="What members say about building at Brimwood Innovation. Anonymous by default, honest by standard."
   path="/wall"
 >

@@ -5,10 +5,10 @@
 // Newsletter subscribers live in the KV binding NEWSLETTER.
 //
 // Endpoints:
-//   POST /api/introduction          — introduction request form
-//   POST /api/newsletter            — newsletter signup (sends double opt-in)
-//   GET  /api/newsletter/verify     — confirm subscription (?token=...)
-//   GET  /api/newsletter/unsubscribe — leave the list (?email=...&token=...)
+//   POST /api/introduction: introduction request form
+//   POST /api/newsletter: newsletter signup (sends double opt-in)
+//   GET  /api/newsletter/verify: confirm subscription (?token=...)
+//   GET  /api/newsletter/unsubscribe: leave the list (?email=...&token=...)
 
 const INBOX = 'info@brimwoodinnovation.com';
 const FROM = 'Brimwood Innovation <introductions@brimwoodinnovation.com>';
@@ -74,7 +74,7 @@ function fieldRow(label, value) {
   return (
     '<tr><td style="padding:10px 0;border-bottom:1px solid #DDF5E9;">' +
     '<div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#5B6862;">' + esc(label) + '</div>' +
-    '<div style="font-size:15px;color:#121A16;margin-top:4px;white-space:pre-wrap;">' + esc(value || '—') + '</div>' +
+    '<div style="font-size:15px;color:#121A16;margin-top:4px;white-space:pre-wrap;">' + esc(value || '-') + '</div>' +
     '</td></tr>'
   );
 }
@@ -92,7 +92,7 @@ function page(title, heading, message) {
   return new Response(
     '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1">' +
-    '<title>' + esc(title) + ' — Brimwood Innovation</title></head>' +
+    '<title>' + esc(title) + ' - Brimwood Innovation</title></head>' +
     '<body style="margin:0;padding:48px 16px;background-color:#F6F8F7;font-family:\'Plus Jakarta Sans\',-apple-system,Segoe UI,Helvetica,Arial,sans-serif;">' +
     '<div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;">' +
     '<div style="background-color:#0C9463;padding:28px 32px;">' +
@@ -141,7 +141,7 @@ async function handleIntroduction(request, env) {
     return Response.json({ ok: false }, { status: 400 });
   }
   if (String(data.website || '').trim()) {
-    return Response.json({ ok: true }); // honeypot: bot — pretend success
+    return Response.json({ ok: true }); // honeypot: bot, pretend success
   }
   const name = String(data.name || '').trim().slice(0, 100);
   const email = String(data.email || '').trim().slice(0, 200);
@@ -167,26 +167,26 @@ async function handleIntroduction(request, env) {
   );
   const confirmHtml = shell(
     'Request received',
-    'Thank you — your introduction request is on its way.',
+    'Thank you, your introduction request is on its way.',
     '<p style="margin:0 0 16px;">Hello ' + esc(name) + ',</p>' +
-      '<p style="margin:0 0 16px;">Thank you. Your introduction request is on its way &mdash; we read every one personally and will be in touch.</p>' +
+      '<p style="margin:0 0 16px;">Thank you. Your introduction request is on its way, we read every one personally and will be in touch.</p>' +
       '<p style="margin:0;font-size:13px;color:#5B6862;">Membership is by invitation. Elite by effort, not by background.</p>'
   );
 
   await sendEmail(env, {
     to: INBOX,
-    subject: 'New introduction request — ' + name,
+    subject: 'New introduction request - ' + name,
     html: notifyHtml,
-    text: 'New introduction request — brimwoodinnovation.com\n\nName: ' + name +
-      '\nEmail: ' + email + '\nReferred by: ' + (referral || '—') +
-      '\n\nWhat they are building:\n' + (message || '—'),
+    text: 'New introduction request - brimwoodinnovation.com\n\nName: ' + name +
+      '\nEmail: ' + email + '\nReferred by: ' + (referral || '-') +
+      '\n\nWhat they are building:\n' + (message || '-'),
     replyTo: email,
   });
   await sendEmail(env, {
     to: email,
-    subject: 'Thank you — Brimwood Innovation',
+    subject: 'Thank you - Brimwood Innovation',
     html: confirmHtml,
-    text: 'Hello ' + name + ',\n\nThank you. Your introduction request is on its way — we read every one personally and will be in touch.\n\nBuild a business. Build yourself.\n— Brimwood Innovation',
+    text: 'Hello ' + name + ',\n\nThank you. Your introduction request is on its way, we read every one personally and will be in touch.\n\nBuild a business. Build yourself.\n- Brimwood Innovation',
   });
   return Response.json({ ok: true });
 }
@@ -232,11 +232,11 @@ async function handleNewsletterSubscribe(request, env) {
     '<p style="margin:0 0 16px;">Hello' + (name ? ' ' + esc(name) : '') + ',</p>' +
       '<p style="margin:0 0 8px;">You asked to join the Brimwood Innovation list. Please confirm your email address:</p>' +
       button(verifyUrl, 'Confirm my email') +
-      '<p style="font-size:13px;color:#5B6862;margin:16px 0 0;">If you did not request this, just ignore this email — nothing will happen.</p>'
+      '<p style="font-size:13px;color:#5B6862;margin:16px 0 0;">If you did not request this, just ignore this email, nothing will happen.</p>'
   );
   await sendEmail(env, {
     to: email,
-    subject: 'Confirm your subscription — Brimwood Innovation',
+    subject: 'Confirm your subscription - Brimwood Innovation',
     html,
     text: 'Hello' + (name ? ' ' + name : '') + ',\n\nYou asked to join the Brimwood Innovation list. Confirm your email address:\n' + verifyUrl + '\n\nIf you did not request this, just ignore this email.',
   });
@@ -262,20 +262,20 @@ async function handleNewsletterVerify(url, env) {
     "You're on the list",
     'Welcome to Brimwood Innovation.',
     '<p style="margin:0 0 16px;">Hello' + (name ? ' ' + esc(name) : '') + ',</p>' +
-      '<p style="margin:0 0 16px;">You are on the list. We will write when there is something worth your time — no noise.</p>' +
+      '<p style="margin:0 0 16px;">You are on the list. We will write when there is something worth your time, no noise.</p>' +
       '<p style="margin:0;font-size:13px;color:#5B6862;">Build a business. Build yourself.</p>' +
       '<p style="font-size:12px;color:#5B6862;margin:24px 0 0;"><a href="' + esc(unsubUrl) + '" style="color:#5B6862;">Unsubscribe</a></p>'
   );
   await sendEmail(env, {
     to: email,
-    subject: "You're on the list — Brimwood Innovation",
+    subject: "You're on the list - Brimwood Innovation",
     html,
-    text: "Hello" + (name ? ' ' + name : '') + ",\n\nYou are on the list. We will write when there is something worth your time — no noise.\n\nBuild a business. Build yourself.\n— Brimwood Innovation\n\nUnsubscribe: " + unsubUrl,
+    text: "Hello" + (name ? ' ' + name : '') + ",\n\nYou are on the list. We will write when there is something worth your time, no noise.\n\nBuild a business. Build yourself.\n- Brimwood Innovation\n\nUnsubscribe: " + unsubUrl,
     headers: { 'List-Unsubscribe': '<' + unsubUrl + '>' },
   });
   await sendEmail(env, {
     to: INBOX,
-    subject: 'New newsletter subscriber — Brimwood Innovation',
+    subject: 'New newsletter subscriber - Brimwood Innovation',
     html: shell(
       'New newsletter subscriber',
       'Someone joined the Brimwood list.',
@@ -284,7 +284,7 @@ async function handleNewsletterVerify(url, env) {
         fieldRow('Name', name) +
         '</table>'
     ),
-    text: 'New newsletter subscriber — brimwoodinnovation.com\n\nEmail: ' + email + '\nName: ' + (name || '—'),
+    text: 'New newsletter subscriber - brimwoodinnovation.com\n\nEmail: ' + email + '\nName: ' + (name || '-'),
   });
   return page("You're on the list", "You're on the list", '<p style="margin:0;">Welcome aboard' + (name ? ', ' + esc(name) : '') + '. We will write when there is something worth your time.</p>');
 }

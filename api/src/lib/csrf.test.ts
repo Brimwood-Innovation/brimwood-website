@@ -170,7 +170,7 @@ describe("RFC 8058 one-click unsubscribe exemption", () => {
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: "List-Unsubscribe=One-Click",
     });
-    // Guard passes (handler then 429/200s on its own — never 403).
+    // Guard passes (handler then 429/200s on its own, never 403).
     expect(res.status).not.toBe(403);
   });
 

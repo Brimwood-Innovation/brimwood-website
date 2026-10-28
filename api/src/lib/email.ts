@@ -1,5 +1,5 @@
 /* Branded email templates + Resend sender (T16).
- * Templates are byte-equivalent in design to the live worker's — the brand
+ * Templates are byte-equivalent in design to the live worker's, the brand
  * shell (emerald header, kit logo, forest footer) is unchanged. */
 
 const FROM = "Brimwood Innovation <introductions@brimwoodinnovation.com>";
@@ -7,7 +7,7 @@ const INBOX = "info@brimwoodinnovation.com";
 const DEFAULT_SITE = "https://brimwoodinnovation.com";
 const LOGO_URL = "https://brimwoodinnovation.com/logo-email.png";
 
-/** Site base URL — override via SITE_URL env var for staging/preview. */
+/** Site base URL: override via SITE_URL env var for staging/preview. */
 export function SITE(env?: { SITE_URL?: string }): string {
   return env?.SITE_URL || DEFAULT_SITE;
 }
@@ -22,7 +22,7 @@ export function esc(s: string): string {
 
 export function shell(title: string, preheader: string, bodyHtml: string): string {
   return (
-    "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>" + esc(title) + " — Brimwood Innovation</title></head><body style=\"margin:0;padding:0;font-family:'Plus Jakarta Sans',-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;background:#F6F8F7;\">" +
+    "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>" + esc(title) + " - Brimwood Innovation</title></head><body style=\"margin:0;padding:0;font-family:'Plus Jakarta Sans',-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;background:#F6F8F7;\">" +
     '<div style="display:none;max-height:0;overflow:hidden;opacity:0;">' + esc(preheader) + "</div>" +
     '<div style="max-width:560px;margin:0 auto;padding:32px 20px;">' +
     '<div style="background:#0C9463;border-radius:16px 16px 0 0;padding:28px 32px;text-align:center;">' +
@@ -42,7 +42,7 @@ export function fieldRow(label: string, value: string): string {
     '<tr><td style="padding:8px 0;border-bottom:1px solid rgba(18,26,22,.08);font-size:13px;color:#5B6862;width:140px;">' +
     esc(label) +
     '</td><td style="padding:8px 0 8px 16px;border-bottom:1px solid rgba(18,26,22,.08);font-size:14px;color:#121A16;">' +
-    esc(value || "—") +
+    esc(value || "-") +
     "</td></tr>"
   );
 }
@@ -58,7 +58,7 @@ export function page(title: string, heading: string, message: string, env?: { SI
   const site = SITE(env);
   const html =
     "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
-    "<title>" + esc(title) + " — Brimwood Innovation</title></head>" +
+    "<title>" + esc(title) + " - Brimwood Innovation</title></head>" +
     '<body style="margin:0;font-family:\'Plus Jakarta Sans\',-apple-system,\'Segoe UI\',Helvetica,Arial,sans-serif;background:#F6F8F7;color:#121A16;">' +
     '<div style="max-width:520px;margin:80px auto;padding:0 20px;text-align:center;">' +
     '<img src="' + LOGO_URL + '" alt="Brimwood Innovation" style="height:48px;width:auto;margin-bottom:32px;" />' +
@@ -69,7 +69,7 @@ export function page(title: string, heading: string, message: string, env?: { SI
   // Tight CSP for these standalone pages (newsletter verify/unsubscribe):
   // no scripts at all, inline styles only, logo from our own origin.
   // (The OAuth popup pages in routes/oauth.ts carry their own inline scripts
-  // and must NOT inherit this policy — hence it lives here, not globally.)
+  // and must NOT inherit this policy, hence it lives here, not globally.)
   return new Response(html, {
     headers: {
       "content-type": "text/html; charset=utf-8",

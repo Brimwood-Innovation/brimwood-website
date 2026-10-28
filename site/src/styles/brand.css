@@ -90,7 +90,7 @@ header.site img.logo { height: 38px; width: auto; display: block; }
   display: inline-flex; align-items: center;
 }
 .main-nav a:not(.btn):hover { color: var(--emerald-deep); }
-/* Subtle underline reveal on hover — soft, not loud. */
+/* Subtle underline reveal on hover, soft, not loud. */
 .main-nav a:not(.btn)::after {
   content: ""; position: absolute; left: 0; right: 0; bottom: 4px;
   height: 2px; background: var(--emerald);

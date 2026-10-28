@@ -1,4 +1,4 @@
--- 0017_feed_polls.sql — social area (feed agent): posts, post media, polls.
+-- 0017_feed_polls.sql: social area (feed agent): posts, post media, polls.
 -- Feed is members-only, chronological, calm (no algorithmic ranking).
 -- Polls: one vote per member per poll, changeable until close. Voter list is
 -- exposed only when the poll's show_voters flag is on (private polls show

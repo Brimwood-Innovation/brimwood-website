@@ -1,4 +1,4 @@
--- 0010_profiles.sql — user profiles (Phase D2, extended with founder additions)
+-- 0010_profiles.sql: user profiles (Phase D2, extended with founder additions)
 -- display_name: user-controlled public name; NULL → derived from initials (e.g. "J.")
 -- bio: free text, max 500 chars enforced in API
 -- avatar_key: R2 object key in brimwood-media (member-scoped uploads)

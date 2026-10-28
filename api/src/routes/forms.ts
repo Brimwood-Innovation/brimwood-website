@@ -78,7 +78,7 @@ async function audit(DB: D1Database, actorId: string, action: string, detail: st
     .catch(() => {});
 }
 
-/** GET /admin — list forms with counts. */
+/** GET /admin: list forms with counts. */
 app.get("/admin", async (c) => {
   const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
@@ -118,7 +118,7 @@ function validateFields(raw: unknown): { ok: boolean; error?: string; fields?: {
   return { ok: true, fields: out };
 }
 
-/** POST /admin — create form with fields. */
+/** POST /admin: create form with fields. */
 app.post("/admin", async (c) => {
   const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
@@ -168,7 +168,7 @@ app.post("/admin", async (c) => {
   return c.json({ ok: true, id, slug });
 });
 
-/** PATCH /admin/:id — update form metadata (not fields; delete + recreate fields via POST for structural changes). */
+/** PATCH /admin/:id: update form metadata (not fields; delete + recreate fields via POST for structural changes). */
 app.patch("/admin/:id", async (c) => {
   const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
@@ -228,7 +228,7 @@ app.patch("/admin/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-/** DELETE /admin/:id — delete form (fields + submissions cascade). */
+/** DELETE /admin/:id: delete form (fields + submissions cascade). */
 app.delete("/admin/:id", async (c) => {
   const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
@@ -241,7 +241,7 @@ app.delete("/admin/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-/** GET /admin/:id/submissions — list submissions for a form. */
+/** GET /admin/:id/submissions: list submissions for a form. */
 app.get("/admin/:id/submissions", async (c) => {
   const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
@@ -280,7 +280,7 @@ app.get("/admin/:id/submissions", async (c) => {
 
 /* ---------------- Public ---------------- */
 
-/** GET / — public directory of published forms (slug + title only).
+/** GET /: public directory of published forms (slug + title only).
  * Used by the site build to pre-render form pages. */
 app.get("/", async (c) => {
   const rows = await c.env.DB.prepare(
@@ -289,7 +289,7 @@ app.get("/", async (c) => {
   return c.json({ ok: true, forms: rows.results });
 });
 
-/** GET /:slug — published form definition. */
+/** GET /:slug: published form definition. */
 app.get("/:slug", async (c) => {
   const slug = slugify(c.req.param("slug"));
   const form = await c.env.DB.prepare(
@@ -306,7 +306,7 @@ app.get("/:slug", async (c) => {
   return c.json({ ok: true, form: { ...form, fields: parseFields(fields.results as any[]) } });
 });
 
-/** POST /:slug/submit — validate, Turnstile, store, notify. */
+/** POST /:slug/submit: validate, Turnstile, store, notify. */
 app.post("/:slug/submit", async (c) => {
   const { DB } = c.env;
   const slug = slugify(c.req.param("slug"));
@@ -333,7 +333,7 @@ app.post("/:slug/submit", async (c) => {
   }
   const body = raw;
   if (cleanStr(body.website, 200)) {
-    return c.json({ ok: true }); // honeypot: bot — pretend success, store nothing
+    return c.json({ ok: true }); // honeypot: bot, pretend success, store nothing
   }
 
   // Turnstile bot check (fails closed).
@@ -366,7 +366,7 @@ app.post("/:slug/submit", async (c) => {
       continue;
     }
 
-    // Non-scalar payloads (objects/arrays) are rejected outright — coercing
+    // Non-scalar payloads (objects/arrays) are rejected outright, coercing
     // them would store "[object Object]" junk.
     if (typeof rawVal === "object" && rawVal !== null) {
       return c.json({ ok: false, error: `"${f.label}" has an invalid value.` }, 400);
@@ -407,10 +407,10 @@ app.post("/:slug/submit", async (c) => {
   } catch (e) {
     const msg = String((e as Error)?.message || e);
     if (idemKey && /UNIQUE/i.test(msg)) {
-      return c.json({ ok: true }); // lost the race with our own retry — already stored
+      return c.json({ ok: true }); // lost the race with our own retry, already stored
     }
     if (idemKey && /no such column/i.test(msg)) {
-      // Migration 0012 not applied yet — degrade gracefully to a keyless insert.
+      // Migration 0012 not applied yet, degrade gracefully to a keyless insert.
       await DB.prepare("INSERT INTO form_submissions (id, form_id, data) VALUES (?, ?, ?)")
         .bind(crypto.randomUUID(), form.id, payload)
         .run();
@@ -426,7 +426,7 @@ app.post("/:slug/submit", async (c) => {
     const rows = parsed
       .map((f) => {
         const v = cleaned[f.id];
-        const display = typeof v === "boolean" ? (v ? "Yes" : "No") : v || "—";
+        const display = typeof v === "boolean" ? (v ? "Yes" : "No") : v || "-";
         return fieldRow(f.label, String(display));
       })
       .join("");
@@ -436,13 +436,13 @@ app.post("/:slug/submit", async (c) => {
       `<p style="margin:0 0 16px;">New submission for <strong>${esc(form.title)}</strong>:</p>` +
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">' + rows + "</table>"
     );
-    const subject = `New submission — ${form.title}`;
+    const subject = `New submission - ${form.title}`;
     try {
       const providerId = await sendEmail(resendKey, {
         to,
         subject,
         html,
-        text: `New submission for "${form.title}":\n\n` + parsed.map((f) => `${f.label}: ${String(cleaned[f.id] ?? "—")}`).join("\n"),
+        text: `New submission for "${form.title}":\n\n` + parsed.map((f) => `${f.label}: ${String(cleaned[f.id] ?? "-")}`).join("\n"),
       });
       await DB.prepare(
         "INSERT INTO email_log (id, kind, to_email, subject, status, provider_id) VALUES (?, 'form-notify', ?, ?, 'sent', ?)"

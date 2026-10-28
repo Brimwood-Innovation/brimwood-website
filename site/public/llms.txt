@@ -8,13 +8,13 @@ referral only. Standard: "Elite by effort, not by background."
 
 ## Site
 
-- Home: https://brimwoodinnovation.com/ — what Brimwood is, the four promises, how it works, introduction request form
-- About: https://brimwoodinnovation.com/about/ — story, the standard, the hub, weekly rhythm, what we are not
-- Blog: https://brimwoodinnovation.com/blog/ — notes on micro business, AI in practice, owner mindset
-- Events: https://brimwoodinnovation.com/events/ — demo nights and gatherings, with RSVP
-- Invite: https://brimwoodinnovation.com/invite/ — redeem an invitation to join
-- Search: https://brimwoodinnovation.com/search/ — search blog posts, lessons, and pages
-- Newsletter: https://brimwoodinnovation.com/newsletter/ — signup (double opt-in), email-exclusive archive
+- Home: https://brimwoodinnovation.com/: what Brimwood is, the four promises, how it works, introduction request form
+- About: https://brimwoodinnovation.com/about/: story, the standard, the hub, weekly rhythm, what we are not
+- Blog: https://brimwoodinnovation.com/blog/: notes on micro business, AI in practice, owner mindset
+- Events: https://brimwoodinnovation.com/events/: demo nights and gatherings, with RSVP
+- Invite: https://brimwoodinnovation.com/invite/: redeem an invitation to join
+- Search: https://brimwoodinnovation.com/search/: search blog posts, lessons, and pages
+- Newsletter: https://brimwoodinnovation.com/newsletter/: signup (double opt-in), email-exclusive archive
 - Privacy: https://brimwoodinnovation.com/privacy/
 - Terms: https://brimwoodinnovation.com/terms/
 - RSS: https://brimwoodinnovation.com/rss.xml
@@ -30,5 +30,5 @@ referral only. Standard: "Elite by effort, not by background."
 ## Voice
 
 Canadian spelling. Short sentences. No income promises, no hype language,
-no "10x" claims. Members are anonymous by default — share the what, never
+no "10x" claims. Members are anonymous by default, share the what, never
 the how, unless written permission was given.

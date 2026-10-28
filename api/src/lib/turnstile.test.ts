@@ -1,4 +1,4 @@
-/* Unit tests: src/lib/turnstile.ts — fails closed, never throws. */
+/* Unit tests: src/lib/turnstile.ts: fails closed, never throws. */
 import { describe, it, expect } from "vitest";
 import { verifyTurnstile } from "./turnstile";
 import { stubFetch } from "../test/helpers";

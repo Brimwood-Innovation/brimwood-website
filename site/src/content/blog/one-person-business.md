@@ -12,7 +12,7 @@ A decade ago, starting a business meant hiring. You needed people for the websit
 
 That math has changed.
 
-One person with good AI tooling can now do the work that used to need a small team. The website gets built in an afternoon. The first draft of everything — emails, listings, documentation — takes minutes. What used to be a hiring plan is now a Tuesday.
+One person with good AI tooling can now do the work that used to need a small team. The website gets built in an afternoon. The first draft of everything, emails, listings, documentation, takes minutes. What used to be a hiring plan is now a Tuesday.
 
 This does not mean the work is easy. It means the bottleneck moved. The constraint is no longer headcount. It is judgement: knowing what to build, who it serves, and whether the numbers work.
 

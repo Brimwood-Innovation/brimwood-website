@@ -67,7 +67,7 @@ app.use("*", async (c, next) => {
   c.header("x-frame-options", "DENY");
   c.header("referrer-policy", "strict-origin-when-cross-origin");
   c.header("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=()");
-  /* Hardening: HSTS on API responses too — the worker is called directly at
+  /* Hardening: HSTS on API responses too, the worker is called directly at
    * its workers.dev origin, which site _headers never covers. */
   c.header("strict-transport-security", "max-age=31536000; includeSubDomains");
 });

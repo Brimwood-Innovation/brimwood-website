@@ -2,7 +2,7 @@
  *
  * The WORKER commits content files to GitHub via the API using a server-side
  * token (GITHUB_CONTENT_TOKEN). Users authenticate with Brimwood password
- * auth (admin role) — no GitHub OAuth anywhere in this flow.
+ * auth (admin role), no GitHub OAuth anywhere in this flow.
  *
  * All endpoints are admin-gated, audit-logged, and rate-limited.
  * If GITHUB_CONTENT_TOKEN is unset, endpoints return 500 "not configured".
@@ -103,7 +103,7 @@ export function b64decode(b64: string): string {
 
 /* --- Routes --- */
 
-/** GET /file?path= — read a content file from GitHub (develop branch). */
+/** GET /file (path query): read a content file from GitHub (develop branch). */
 app.get("/file", async (c) => {
   const admin = await getAdminUser(c);
   if (!admin) return c.json({ ok: false, error: "Admin only." }, 403);
@@ -131,7 +131,7 @@ app.get("/file", async (c) => {
   return c.json({ ok: true, content: b64decode(data.content), sha: data.sha || null });
 });
 
-/** GET /list?dir= — list files under a content dir via the trees API. */
+/** GET /list (dir query): list files under a content dir via the trees API. */
 app.get("/list", async (c) => {
   const admin = await getAdminUser(c);
   if (!admin) return c.json({ ok: false, error: "Admin only." }, 403);
@@ -161,7 +161,7 @@ app.get("/list", async (c) => {
   return c.json({ ok: true, files });
 });
 
-/** POST /commit — {path, content, message} → commit to GitHub (develop). */
+/** POST /commit: {path, content, message} → commit to GitHub (develop). */
 app.post("/commit", async (c) => {
   const admin = await getAdminUser(c);
   if (!admin) return c.json({ ok: false, error: "Admin only." }, 403);

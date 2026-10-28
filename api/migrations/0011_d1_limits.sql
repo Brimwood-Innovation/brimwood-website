@@ -1,4 +1,4 @@
--- 0011_d1_limits.sql — F9: rate limits and sessions in D1 (atomic, no KV writes)
+-- 0011_d1_limits.sql: F9: rate limits and sessions in D1 (atomic, no KV writes)
 -- Replaces KV-backed rate limiting (eventually consistent, every check is a
 -- KV write) and KV sessions with D1 tables. Atomic upserts make bursts
 -- correct; the per-user session index replaces the full KV scan on reset.

@@ -1,4 +1,4 @@
-/* Share-to-DM (audit/social/wiring) — the Instagram paper-plane pattern,
+/* Share-to-DM (audit/social/wiring): the Instagram paper-plane pattern,
  * Brimwood-adapted: share any post to a member conversation with the quoted
  * post attached.
  *
@@ -8,7 +8,7 @@
  *     3. Posts the share as a message and navigates to the conversation.
  *
  *   Brimwood.messageMember(userId)
- *     Opens (or creates — the endpoint is idempotent) a 1:1 DM and navigates
+ *     Opens (or creates, the endpoint is idempotent) a 1:1 DM and navigates
  *     to it. Used by the Message button on profile pages.
  *
  * Defensive by contract: if the chat routes are not deployed yet (404), both
@@ -46,7 +46,7 @@
   }
 
   function copyLink(url, fallbackMsg) {
-    var done = function () { toast("Link copied — chat is coming soon."); };
+    var done = function () { toast("Link copied, chat is coming soon."); };
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(url).then(done, function () { toast(fallbackMsg || url); });
     } else {
@@ -82,7 +82,7 @@
     }).join("");
     dlg.innerHTML =
       '<div style="padding:20px 20px 8px;"><h3 style="margin:0 0 4px;color:#121A16;">Share to DM</h3>' +
-      '<p style="margin:0 0 12px;font-size:13px;color:#5B6862;">Pick a conversation — the post goes with a quote.</p></div>' +
+      '<p style="margin:0 0 12px;font-size:13px;color:#5B6862;">Pick a conversation, the post goes with a quote.</p></div>' +
       '<div style="max-height:320px;overflow:auto;">' + (rows || '<p style="padding:0 20px 16px;color:#5B6862;">No conversations yet.</p>') + "</div>" +
       '<div style="padding:12px 20px 20px;display:flex;gap:8px;justify-content:flex-end;">' +
       '<button id="bw-share-cancel" class="btn btn-ghost small">Cancel</button></div>';
@@ -119,12 +119,12 @@
           }
         } catch (e) {
           if (e.chatUnavailable) copyLink(url);
-          else toast("Could not send — try again.");
+          else toast("Could not send, try again.");
         }
       });
     } catch (e) {
       if (e.chatUnavailable) copyLink(url);
-      else toast("Could not load conversations — try again.");
+      else toast("Could not load conversations, try again.");
     }
   }
 
@@ -143,7 +143,7 @@
         location.href = "/hub/messages?with=" + encodeURIComponent(userId);
       }
     } catch (e) {
-      // Chat not deployed yet — the messages page contract still applies.
+      // Chat not deployed yet, the messages page contract still applies.
       location.href = "/hub/messages?with=" + encodeURIComponent(userId);
     }
   }

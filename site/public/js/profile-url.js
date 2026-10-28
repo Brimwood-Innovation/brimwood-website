@@ -1,4 +1,4 @@
-/* Shared profile-URL convention (audit/social/wiring) — client side.
+/* Shared profile-URL convention (audit/social/wiring): client side.
  * Mirrors site/src/lib/profile.ts. Every avatar and display name rendered
  * anywhere on the site must link to the profile through Brimwood.profileUrl.
  *

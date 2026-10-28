@@ -1,4 +1,4 @@
--- 0020_notifications.sql — audit/social/wiring: in-app notifications.
+-- 0020_notifications.sql: audit/social/wiring: in-app notifications.
 -- One row per event that deserves the bell: @mentions, replies, follows,
 -- story replies, closed polls, event reminders. Unread rows drive the header
 -- badge; clicking a row marks it read and follows its deep link.

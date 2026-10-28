@@ -76,7 +76,7 @@
       var items = d.notifications || [];
       if (!more) list.innerHTML = "";
       if (!items.length && !more) {
-        list.innerHTML = '<p class="sec-lede" style="text-align:center;padding:32px 0;">Nothing yet — mentions, replies, and reminders will land here.</p>';
+        list.innerHTML = '<p class="sec-lede" style="text-align:center;padding:32px 0;">Nothing yet, mentions, replies, and reminders will land here.</p>';
       }
       list.insertAdjacentHTML("beforeend", items.map(rowHtml).join(""));
       list.querySelectorAll("[data-nid]").forEach(function (b) {

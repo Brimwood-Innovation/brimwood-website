@@ -1,4 +1,4 @@
--- 0012_api_core_audit.sql — audit(api-core) fixes.
+-- 0012_api_core_audit.sql: audit(api-core) fixes.
 --  * index for newsletter double-opt-in token lookups (GET /api/newsletter/verify)
 --  * idempotency_key columns (+ unique indexes) for introduction_requests and
 --    form_submissions, backing client-supplied idempotency keys on the public
