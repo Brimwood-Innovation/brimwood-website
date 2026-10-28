@@ -2032,14 +2032,24 @@ from the self-chaining loop's first run on 2026-10-21.
   paths, anchors; protocol-relative URLs rejected) and renders
   anything else as plain text, stripping control characters
   before the check so a tab or newline inside a scheme cannot
-  smuggle a blocked scheme past it. Everything else audited
-  clean: every user-controlled value reaching a sink passes
-  through that file's escaper (feed and post bodies go through
+  smuggle a blocked scheme past it. Two further hardening gaps
+  from the same audit were fixed in this cycle: the
+  notifications safeUrl gate (notifications-bell.js and
+  notifications-page.js) accepted protocol-relative URLs, so a
+  stored "//evil.com" notification URL would have flowed to
+  location.href as an open redirect; it now requires a single
+  leading slash. And the Base.astro JSON-LD blocks now escape
+  "<" as \u003c, because JSON.stringify alone does not escape
+  "</script>", so a future site-settings or CMS value
+  containing it could have broken out of the script block
+  during server serialization (values today are build-time
+  staff content only). Everything else audited clean: every
+  user-controlled value reaching a sink passes through that
+  file's escaper (feed and post bodies go through
   renderMentions, which escapes then linkifies only validated
   handles; avatars go through the shared avatar renderer, which
-  escapes fully); notifications already restrict deep links to
-  same-origin paths with safeUrl; profile and certificate URLs
-  are server-constructed relative paths, and member website and
+  escapes fully); profile and certificate URLs are
+  server-constructed relative paths, and member website and
   social links are server-validated to http(s) only; SVG media
   is already forced to download server-side, so it never
   executes in the worker origin; title, meta, and textContent
@@ -2048,12 +2058,18 @@ from the self-chaining loop's first run on 2026-10-21.
   files (some omit & or the single quote) but each is safe in
   the contexts it serves (double-quoted attributes and element
   content); raw server ids in data attributes are server
-  integers. Verification before the PR: 796 API tests pass (40
-  files), API typecheck clean, site build clean (36 pages), and
-  the fixed preview function, extracted verbatim from the file,
-  passes 7 allow and block cases (http, mailto, site-relative,
-  anchor allowed; javascript, data, protocol-relative, and
-  tab-smuggled schemes rendered as plain text). Grade
+  integers. Follow-up hardening backlog, not this cycle:
+  unifying the partial escapers into one canonical full
+  escaper, escaping raw server ids in attributes, and adding
+  scheme allowlists for href and src fields. Verification
+  before the PR: 796 API tests pass (40 files), API typecheck
+  clean, site build clean (36 pages), the fixed preview
+  function, extracted verbatim from the file, passes 7 allow
+  and block cases (http, mailto, site-relative, anchor
+  allowed; javascript, data, protocol-relative, and
+  tab-smuggled schemes rendered as plain text), and the
+  safeUrl and JSON-LD escape cases pass as extracted logic.
+  Grade
   (dimensions this cycle touched, scored from evidence):
   functional 2,500/2,500 (no behaviour change except blocked
   link targets; full suite green); security 1,250/1,250 (the
