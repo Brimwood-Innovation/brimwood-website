@@ -32,8 +32,10 @@ import HubShell from "../components/HubShell.astro";
     const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
     const show = (id) => (document.getElementById(id).style.display = "block");
     const hide = (id) => (document.getElementById(id).style.display = "none");
-    const esc = (s) => String(s || "").replace(/</g, "&lt;");
-    const escAttr = (s) => String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+    // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
+    // One full escaper covers both text and attribute values now, so escAttr is the same function.
+    const esc = window.Brimwood.escapeHtml;
+    const escAttr = window.Brimwood.escapeHtml;
     const VIS_OPTIONS = [["private", "Private"], ["link", "Link"], ["public", "Public"]];
 
     /* Certificate block for one enrolment: the link on its own when the

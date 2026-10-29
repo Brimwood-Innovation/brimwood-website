@@ -2134,3 +2134,55 @@ from the self-chaining loop's first run on 2026-10-21.
   reports certificate_pending, which is the intended fail-closed
   state. Still blocked: the Phase 1 preview smoke flows and applying
   0037 to preview D1 (no Cloudflare token in the environment).
+- Cycle 37, 2026-10-29: Phase 5 slice 5, the cycle 35 follow-up hardening
+  backlog, unifying the partial client-side escapers into one canonical
+  full escaper, in ~/workspace/company/wt-phase5-escaper on branch
+  phase5/canonical-escaper (no open loop PR; develop CI green; 22 is
+  the founder-tapped README PR, not loop work). Audit found 34 local
+  escapers: 10 in site/public/js and 24 inline in pages and components.
+  Most were partial: the dominant pattern escaped only <, >, and "
+  (academy-lesson.js, the hub pages, messages, certificates, and the
+  comments tab, which escaped only < and >), dashboard esc escaped
+  only <, and search, academy-lesson, and studio sesc missed the single
+  quote; only the admin tabs, studio markdown preview, events, and
+  forms pages were already full. New site/public/js/escape.js defines
+  the single canonical window.Brimwood.escapeHtml (escapes &, <, >,
+  ", and ', null-safe, safe for text and for double- and
+  single-quoted attribute values). Base loads it as a classic is:inline
+  script with no defer directly after <body>, so it runs during parsing
+  before the slot's page scripts (Astro module scripts and is:inline
+  scripts) and before the deferred footer scripts; every local escaper
+  is now an alias to it under its old name (esc, cEsc, evEsc, fesc,
+  sesc, escAttr), so no call site changed. Deliberately untouched: the
+  Base JSON-LD < escaping (script data, not HTML text) and CSS.escape
+  (selector escaping, not HTML). Behaviour change, all in the safer
+  direction: values that used to pass through unescaped (&, and '
+  in most pages) are now escaped; escaping ' as &#39; renders
+  identically in text. Verification before the PR: 822 API tests pass
+  (42 files, unchanged), API typecheck clean, site build clean (36
+  pages), all public JS files pass node syntax check, the canonical
+  function passes 9 behaviour vectors (all five characters, null,
+  undefined, zero, script tag), the built output carries
+  dist/js/escape.js ahead of the slot and the module scripts in every
+  page, and a grep confirms no local escaper definition remains. One
+  build note: the first build failed because Astro requires is:inline
+  on layout script tags that reference public/ assets; the tag now
+  carries it. Grade (dimensions this cycle touched, scored from
+  evidence): functional 2,500/2,500 (no behaviour change except
+  strictly stronger escaping; full suite and build green);
+  security 1,250/1,250 (the & and ' gaps are closed on every page
+  that renders untrusted values into HTML, including attribute
+  contexts); code quality 1,000/1,000 (one canonical implementation,
+  34 aliases, load order documented in Base and in escape.js).
+  Schema and API, accessibility, performance, and brand and copy
+  untouched (no API, UI, schema, or copy change). Pro-rated total
+  10,000/10,000, no zero dimension, no open P0. Verdict: ACCEPT. Next
+  improvement: Phase 5 slice 6, the next item in the cycle 35
+  hardening backlog after escaper unification: escaping raw server
+  ids in attributes (scheme allowlists for href and src fields
+  follow after that). Live issuance still
+  needs the operator setup: the two signing secrets plus the matching
+  signing_keys row; until then a completed course reports
+  certificate_pending, which is the intended fail-closed state. Still
+  blocked: the Phase 1 preview smoke flows and applying 0037 to
+  preview D1 (no Cloudflare token in the environment).

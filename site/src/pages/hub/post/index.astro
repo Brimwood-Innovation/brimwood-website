@@ -65,7 +65,8 @@ import HubShell from "../../../components/HubShell.astro";
     const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
     const POST_ID = new URLSearchParams(window.location.search).get("id") || "";
     const $ = (id) => document.getElementById(id);
-    const esc = (s) => String(s || "").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
+    const esc = window.Brimwood.escapeHtml;
     const api = (p, opts = {}) =>
       fetch(API_BASE + p, { credentials: "include", headers: { accept: "application/json", ...(opts.headers || {}) }, ...opts });
     const show = (id) => {

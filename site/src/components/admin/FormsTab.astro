@@ -11,14 +11,8 @@
   const FAPI_BASE = import.meta.env.PUBLIC_API_BASE || "";
   const fapi = (p, opts = {}) =>
     fetch(FAPI_BASE + p, { credentials: "include", headers: { accept: "application/json", ...(opts.headers || {}) }, ...opts });
-  /* Hardening: complete HTML escaper (was missing & and quotes). */
-  const fesc = (s) =>
-    String(s ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
+  // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
+  const fesc = window.Brimwood.escapeHtml;
   const FIELD_TYPES = ["text", "email", "textarea", "select", "checkbox"];
 
   let formsView = "list"; // list | builder | submissions

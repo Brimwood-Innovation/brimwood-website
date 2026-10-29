@@ -49,7 +49,8 @@ import Base from "../layouts/Base.astro";
           el.innerHTML = '<p class="sec-lede">No upcoming events yet. Check back soon.</p>';
           return;
         }
-        const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
+        const esc = window.Brimwood.escapeHtml;
         const fmt = (iso) => new Date(iso).toLocaleString('en-CA', {
           timeZone: 'America/Toronto',
           weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'

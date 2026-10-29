@@ -56,7 +56,8 @@ import Base from "../layouts/Base.astro";
         headers: { accept: "application/json", ...(opts.headers || {}) },
         ...opts,
       });
-    const sesc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
+    const sesc = window.Brimwood.escapeHtml;
 
     // ---- Collection schemas (mirror site/src/content.config.ts) ----
     const PILLARS = ["micro-business", "ai-in-practice", "owner-mindset", "members-hub"];
@@ -180,14 +181,8 @@ import Base from "../layouts/Base.astro";
 
     // ---- Tiny Markdown preview (subset: headings, bold/italic, links, lists, code, quotes) ----
     function mdPreview(src) {
-      /* Hardening: complete HTML escaper (was missing quotes). */
-      const esc = (s) =>
-        s
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#39;");
+      // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
+      const esc = window.Brimwood.escapeHtml;
       /* Link targets are allowlisted (Phase 5 slice 3 audit): a markdown
        * link used to render any URL verbatim, so a javascript: or data:
        * target in a Studio document executed on click in the preview.

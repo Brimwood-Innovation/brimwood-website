@@ -21,11 +21,8 @@
     API = (document.querySelector("[data-api-base]") || {}).dataset?.apiBase || "";
   } catch (e) {}
 
-  function esc(s) {
-    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
-    });
-  }
+  // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
+  var esc = window.Brimwood.escapeHtml;
 
   function toast(msg) {
     var t = document.getElementById("bw-toast");

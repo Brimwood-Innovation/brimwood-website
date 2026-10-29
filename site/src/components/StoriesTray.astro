@@ -114,9 +114,8 @@
         '<span id="svAvatar" style="display:inline-flex;flex:none;">' +
         brimwoodAvatar({ src: url, name: name, size: 32 }) + '</span>';
     }
-    function esc(s) {
-      return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    }
+    // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
+    const esc = window.Brimwood.escapeHtml;
 
     async function loadTray() {
       let d;
