@@ -48,11 +48,11 @@
               <span class="admin-muted">/forms/${fesc(f.slug)}</span><br>
               <span class="admin-muted">${fesc(f.status)} · ${f.field_count} fields · ${f.submission_count} submissions</span></div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <button class="btn btn-ghost small" data-fv="subs" data-id="${f.id}">Submissions</button>
+              <button class="btn btn-ghost small" data-fv="subs" data-id="${fesc(f.id)}">Submissions</button>
               ${f.status === "published"
-                ? `<button class="btn btn-ghost small" data-fv="close" data-id="${f.id}">Close</button>`
-                : `<button class="btn small" data-fv="publish" data-id="${f.id}">Publish</button>`}
-              <button class="btn btn-ghost small" data-fv="del" data-id="${f.id}" style="color:#b3261e;">Delete</button>
+                ? `<button class="btn btn-ghost small" data-fv="close" data-id="${fesc(f.id)}">Close</button>`
+                : `<button class="btn small" data-fv="publish" data-id="${fesc(f.id)}">Publish</button>`}
+              <button class="btn btn-ghost small" data-fv="del" data-id="${fesc(f.id)}" style="color:#b3261e;">Delete</button>
             </div>
           </div>
         </div>`).join(""));

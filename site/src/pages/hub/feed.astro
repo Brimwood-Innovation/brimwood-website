@@ -205,16 +205,16 @@ import StoriesTray from "../../components/StoriesTray.astro";
       const opts = poll.options.map((o) => {
         const pct = poll.total_votes ? Math.round((o.votes / poll.total_votes) * 100) : 0;
         if (canVote) {
-          return `<button type="button" class="poll-opt" data-poll="${poll.id}" data-opt="${o.id}">${esc(o.label)}</button>`;
+          return `<button type="button" class="poll-opt" data-poll="${esc(poll.id)}" data-opt="${esc(o.id)}">${esc(o.label)}</button>`;
         }
         return `<div class="poll-bar${poll.my_vote === o.id ? " mine" : ""}">` +
           `<div class="fill" style="width:${pct}%"></div>` +
           `<div class="lbl"><span>${esc(o.label)}</span><span>${pct}% · ${o.votes}</span></div></div>`;
       }).join("");
       const voters = poll.show_voters && poll.total_votes > 0
-        ? `<button type="button" class="btn btn-ghost btn-sm" data-voters="${poll.id}" style="margin-top:4px;">Who voted</button><div class="voter-list" id="voters-${poll.id}"></div>`
+        ? `<button type="button" class="btn btn-ghost btn-sm" data-voters="${esc(poll.id)}" style="margin-top:4px;">Who voted</button><div class="voter-list" id="voters-${esc(poll.id)}"></div>`
         : "";
-      return `<div class="poll-card" id="poll-${poll.id}">
+      return `<div class="poll-card" id="poll-${esc(poll.id)}">
         <h4>📊 ${esc(poll.question)}</h4>
         <div class="closes">${esc(closesLabel(poll))} · ${poll.total_votes} vote${poll.total_votes === 1 ? "" : "s"}</div>
         ${opts}${voters}
@@ -235,18 +235,18 @@ import StoriesTray from "../../components/StoriesTray.astro";
       const reacts = REACTS.map((r) => {
         const n = (p.reactions && p.reactions.counts && p.reactions.counts[r.kind]) || 0;
         const on = p.reactions && p.reactions.my_reaction === r.kind ? " on" : "";
-        return `<button type="button" class="react${on}" data-post="${p.id}" data-kind="${r.kind}">${r.icon} ${esc(r.label)}${n ? " " + n : ""}</button>`;
+        return `<button type="button" class="react${on}" data-post="${esc(p.id)}" data-kind="${r.kind}">${r.icon} ${esc(r.label)}${n ? " " + n : ""}</button>`;
       }).join("");
       // Deck feed screen: the meta names the group ("Forge Talk · 2 h"), or
       // Only me, or Members; staff authors carry a Staff badge.
       const audienceLabel = p.group ? esc(p.group.name) : (p.audience === "only_me" ? "Only me" : "Members");
       const staffBadge = p.author && p.author.is_staff ? ` <span class="staff-badge">Staff</span>` : "";
-      return `<article class="feed-post" id="post-${p.id}">
+      return `<article class="feed-post" id="post-${esc(p.id)}">
         <div style="display:flex;gap:10px;align-items:center;">
           <a href="${esc(p.author.profile_url || "/members")}" style="display:inline-flex;flex:none;text-decoration:none;" aria-label="${esc(p.author.display)}'s profile">${avatarHtml(p.author)}</a>
           <div><a href="${esc(p.author.profile_url || "/members")}" style="font-size:14px;font-weight:700;color:inherit;text-decoration:none;">${esc(p.author.display)}</a>${staffBadge}<br /><span class="meta">${relTime(p.created_at)} · ${audienceLabel}</span></div>
-          <button type="button" class="btn btn-ghost btn-sm" data-save="${p.id}" style="margin-left:auto;" aria-label="Save post" aria-pressed="false">Save</button>
-          <button type="button" class="btn btn-ghost btn-sm" data-share="${p.id}" data-share-author="${esc(p.author.display)}" aria-label="Share post">↗</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-save="${esc(p.id)}" style="margin-left:auto;" aria-label="Save post" aria-pressed="false">Save</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-share="${esc(p.id)}" data-share-author="${esc(p.author.display)}" aria-label="Share post">↗</button>
         </div>
         ${p.body ? `<p class="feed-body">${Brimwood.renderMentions(p.body)}</p>` : ""}
         ${mediaGridHtml(p.media)}

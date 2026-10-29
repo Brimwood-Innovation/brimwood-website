@@ -2186,3 +2186,61 @@ from the self-chaining loop's first run on 2026-10-21.
   certificate_pending, which is the intended fail-closed state. Still
   blocked: the Phase 1 preview smoke flows and applying 0037 to
   preview D1 (no Cloudflare token in the environment).
+- Cycle 38, 2026-10-29: Phase 5 slice 6, escaping raw server ids in
+  attributes, in ~/workspace/company/wt-phase5-server-ids on branch
+  phase5/server-ids (no open loop PR; develop CI green at the PR 77
+  merge; 22 is the founder-tapped README PR, not loop work). Audit
+  found 22 raw server-id interpolations into HTML-string attributes,
+  all in client-side inline scripts that build markup with innerHTML:
+  admin EventsTab 4 (data-ev and data-id for event ids), admin
+  FormsTab 4 (data-id for form ids), admin page 4 (data-id for intro
+  ids and data-revoke for invite ids), hub feed 9 (data-poll,
+  data-voters, id voters-, id poll-, data-post, id post-, data-save,
+  data-share, data-opt), and hub post page 1 (data-opt). Each now
+  passes through that file's existing alias of the cycle 37 canonical
+  escaper (evEsc, fesc, or esc, all window.Brimwood.escapeHtml), so
+  no new helper was added and no call site logic changed. The ids
+  are server integers today, so this was defence in depth, not a
+  live exploit: a future string id, or a malformed API answer,
+  could previously have broken out of a quoted attribute. The
+  change is behaviour-preserving for today's ids because the
+  values are read back through dataset and getElementById, and the
+  HTML parser decodes the entities back to the original id before
+  any lookup or API call. Audited clean and left untouched:
+  server-rendered Astro attributes (the framework escapes attribute
+  expressions, for example data-lesson-id on the academy page),
+  ids already escaped elsewhere (dashboard escAttr on certificate
+  ids, studio esc on certificate ids, messages, groups, saved, and
+  space pages), local loop counters (i, idx) and fixed status
+  enums in data attributes, and setAttribute uses, which are not
+  HTML sinks. Out of scope for this slice, and still open: scheme
+  allowlists for href and src fields. Verification before the PR:
+  822 API tests pass (42 files, unchanged), API typecheck clean,
+  site build clean (36 pages), the canonical escaper passes 7
+  behaviour vectors (integer id unchanged, quote, single quote
+  with script tag, ampersand, null, undefined, zero), and the
+  built bundles carry the escaped interpolations (the bundler
+  minifies the escaper alias, so the feed bundle reads
+  data-poll="${t(e.id)}" with t defined as
+  window.Brimwood.escapeHtml, and likewise for the admin tabs and
+  the post page); a grep confirms no raw .id attribute template
+  remains, the only ${...dataset.id} uses being API URL paths
+  built from already-decoded dataset values, not HTML. Grade
+  (dimensions this cycle touched, scored from evidence):
+  functional 2,500/2,500 (no behaviour change for integer ids;
+  full suite and build green); security 1,250/1,250 (all 22 raw
+  id attribute sinks closed, hostile vectors escaped, no raw
+  attribute template left); code quality 1,000/1,000 (5 files, 20
+  lines changed, existing canonical aliases reused, no new
+  dependency, no API or schema change). Schema and API,
+  accessibility, performance, and brand and copy untouched (no
+  API, UI, schema, or copy change). Pro-rated total
+  10,000/10,000, no zero dimension, no open P0. Verdict: ACCEPT.
+  Next improvement: Phase 5 slice 7, the last item in the cycle
+  35 hardening backlog: scheme allowlists for href and src
+  fields. Live issuance still needs the operator setup: the two
+  signing secrets plus the matching signing_keys row; until then
+  a completed course reports certificate_pending, which is the
+  intended fail-closed state. Still blocked: the Phase 1 preview
+  smoke flows and applying 0037 to preview D1 (no Cloudflare
+  token in the environment).

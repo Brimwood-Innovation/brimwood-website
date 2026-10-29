@@ -102,7 +102,7 @@ import HubShell from "../../../components/HubShell.astro";
       const canVote = !poll.closed && !poll.my_vote;
       const opts = poll.options.map((o) => {
         const pct = poll.total_votes ? Math.round((o.votes / poll.total_votes) * 100) : 0;
-        if (canVote) return `<button type="button" class="poll-opt" data-opt="${o.id}">${esc(o.label)}</button>`;
+        if (canVote) return `<button type="button" class="poll-opt" data-opt="${esc(o.id)}">${esc(o.label)}</button>`;
         return `<div class="poll-bar${poll.my_vote === o.id ? " mine" : ""}">` +
           `<div class="fill" style="width:${pct}%"></div>` +
           `<div class="lbl"><span>${esc(o.label)}</span><span>${pct}% · ${o.votes}</span></div></div>`;
