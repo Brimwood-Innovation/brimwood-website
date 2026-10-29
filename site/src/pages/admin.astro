@@ -114,9 +114,9 @@ import FormsTab from "../components/admin/FormsTab.astro";
               <div><strong>${esc(i.name)}</strong> <span class="admin-muted">${esc(i.email)}</span><br>
               <span class="admin-muted">${esc(i.referral || "no referral")} · ${i.created_at.slice(0, 10)}</span></div>
               <div style="display:flex;gap:8px;">
-                ${introStatus !== "contacted" ? `<button class="btn small" data-act="contacted" data-id="${i.id}">Contacted</button>` : ""}
-                ${introStatus !== "archived" ? `<button class="btn btn-ghost small" data-act="archived" data-id="${i.id}">Archive</button>` : ""}
-                ${introStatus !== "new" ? `<button class="btn btn-ghost small" data-act="new" data-id="${i.id}">Reopen</button>` : ""}
+                ${introStatus !== "contacted" ? `<button class="btn small" data-act="contacted" data-id="${esc(i.id)}">Contacted</button>` : ""}
+                ${introStatus !== "archived" ? `<button class="btn btn-ghost small" data-act="archived" data-id="${esc(i.id)}">Archive</button>` : ""}
+                ${introStatus !== "new" ? `<button class="btn btn-ghost small" data-act="new" data-id="${esc(i.id)}">Reopen</button>` : ""}
               </div>
             </div>
             ${i.message ? `<p style="margin:12px 0 0;">${esc(i.message)}</p>` : ""}
@@ -161,7 +161,7 @@ import FormsTab from "../components/admin/FormsTab.astro";
           </div></div>
           <p class="admin-muted">New code: <strong id="invNew"></strong></p></div>` +
         (d.invites.length === 0 ? "<p class='admin-muted'>No invite codes yet.</p>" :
-          d.invites.map((i) => `<div class="admin-card"><div class="admin-row"><div><strong style="font-family:monospace;">${esc(i.code)}</strong><br><span class="admin-muted">${i.uses}/${i.max_uses} used · by ${esc(i.created_by || "?")} · ${i.created_at.slice(0, 10)}${i.expires_at ? " · expires " + i.expires_at.slice(0, 10) : ""}</span></div><button class="btn btn-ghost small" data-revoke="${i.id}" data-code="${esc(i.code)}">Revoke</button></div></div>`).join(""));
+          d.invites.map((i) => `<div class="admin-card"><div class="admin-row"><div><strong style="font-family:monospace;">${esc(i.code)}</strong><br><span class="admin-muted">${i.uses}/${i.max_uses} used · by ${esc(i.created_by || "?")} · ${i.created_at.slice(0, 10)}${i.expires_at ? " · expires " + i.expires_at.slice(0, 10) : ""}</span></div><button class="btn btn-ghost small" data-revoke="${esc(i.id)}" data-code="${esc(i.code)}">Revoke</button></div></div>`).join(""));
       document.getElementById("invCreate").addEventListener("click", async () => {
         const rr = await api("/api/admin/invites", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ max_uses: +document.getElementById("invUses").value, expires_days: +document.getElementById("invDays").value }) });
         const dd = await rr.json();
