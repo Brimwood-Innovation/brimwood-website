@@ -183,17 +183,14 @@ import Base from "../layouts/Base.astro";
     function mdPreview(src) {
       // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
       const esc = window.Brimwood.escapeHtml;
-      /* Link targets are allowlisted (Phase 5 slice 3 audit): a markdown
-       * link used to render any URL verbatim, so a javascript: or data:
-       * target in a Studio document executed on click in the preview.
-       * Only http(s), mailto, site-relative, and anchor targets render as links;
-       * anything else renders as plain text, never as a link. Control
-       * characters are stripped before the check so a tab or newline
-       * inside a scheme cannot smuggle a blocked scheme past it. */
-      const safeLink = (url) => {
-        const clean = String(url).replace(/[\u0000-\u0020]+/g, "");
-        return /^(https?:\/\/|mailto:|#|\/(?!\/))/i.test(clean) ? clean : null;
-      };
+      /* Link targets are allowlisted (Phase 5 slice 3 audit, now the
+       * canonical helper from site/public/js/safe-url.js, loaded by Base):
+       * a markdown link used to render any URL verbatim, so a javascript:
+       * or data: target in a Studio document executed on click in the
+       * preview. Only http(s), mailto, site-relative, and anchor targets
+       * render as links; anything else renders as plain text, never as
+       * a link. Same allowlist as before, now shared. */
+      const safeLink = (url) => window.Brimwood.safeLinkUrl(url, null);
       const inline = (s) =>
         esc(s)
           .replace(/`([^`]+)`/g, "<code>$1</code>")

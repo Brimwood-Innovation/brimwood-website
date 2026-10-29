@@ -67,6 +67,11 @@ import FormsTab from "../components/admin/FormsTab.astro";
     const api = (p, opts = {}) => fetch(API_BASE + p, { credentials: "include", headers: { accept: "application/json", ...(opts.headers || {}) }, ...opts });
     // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
     const esc = window.Brimwood.escapeHtml;
+    // Canonical media allowlist: window.Brimwood.safeMediaUrl
+    // (site/public/js/safe-url.js), loaded by Base beside the escaper.
+    // A rejected thumbnail source renders the placeholder, never an
+    // img src.
+    const safeMedia = (u) => window.Brimwood.safeMediaUrl(u, null);
     const show = (id) => (document.getElementById(id).style.display = "block");
     const hide = (id) => (document.getElementById(id).style.display = "none");
 
@@ -266,11 +271,11 @@ import FormsTab from "../components/admin/FormsTab.astro";
           <p class="admin-muted" id="mediaMsg">PNG, JPG, WEBP, GIF, SVG, or MP4. Maximum 10 MB.</p></div>` +
         (mediaItems.length === 0 ? "<p class='admin-muted'>No media files yet.</p>" :
           `<div class="media-grid">` + mediaItems.map((m) => {
-            const url = API_BASE + "/api/media/" + encodeURIComponent(m.key);
+            const url = safeMedia(API_BASE + "/api/media/" + encodeURIComponent(m.key));
             const isImg = /\.(png|jpg|jpeg|webp|gif|svg)$/i.test(m.key);
             return `<div class="media-item">
-              ${isImg
-                ? `<img class="media-thumb" src="${url}" alt="" loading="lazy">`
+              ${isImg && url
+                ? `<img class="media-thumb" src="${esc(url)}" alt="" loading="lazy">`
                 : `<div class="media-thumb" style="display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--stone);">MP4</div>`}
               <div class="media-meta">
                 <div class="admin-muted" style="word-break:break-all;">${esc(m.key)}</div>

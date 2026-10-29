@@ -300,6 +300,11 @@ import HubShell from "../components/HubShell.astro";
     const withCreds = { credentials: "include" };
     // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
     const esc = window.Brimwood.escapeHtml;
+    // Canonical media allowlist: window.Brimwood.safeMediaUrl
+    // (site/public/js/safe-url.js), loaded by Base beside the escaper.
+    // Shared-media URLs come from API answers; a rejected scheme drops
+    // the media instead of landing in an img or video src.
+    const safeMedia = (u) => window.Brimwood.safeMediaUrl(u, null);
     const $ = (id) => document.getElementById(id);
     const show = (id) => ($(id).style.display = "");
     const hide = (id) => ($(id).style.display = "none");
@@ -470,10 +475,11 @@ import HubShell from "../components/HubShell.astro";
         lastSender = m.sender.id;
         const nameLine = current.kind === "group" && !m.mine && runStart
           ? `<span class="sender">${esc(m.sender.display_name)}</span>` : "";
-        const media = m.media_url
+        const mediaSrc = safeMedia(m.media_url);
+        const media = mediaSrc
           ? (m.is_video
-              ? `<video src="${esc(m.media_url)}" controls preload="metadata"></video>`
-              : `<img src="${esc(m.media_url)}" alt="Shared photo" loading="lazy" />`)
+              ? `<video src="${esc(mediaSrc)}" controls preload="metadata"></video>`
+              : `<img src="${esc(mediaSrc)}" alt="Shared photo" loading="lazy" />`)
           : "";
         html +=
           `<div class="msg-row ${m.mine ? "mine" : "theirs"}${runStart ? " run-start" : ""}">` +

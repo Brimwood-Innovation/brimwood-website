@@ -10,6 +10,11 @@
 
   // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
   var esc = window.Brimwood.escapeHtml;
+  // Canonical scheme allowlist: window.Brimwood.safeMediaUrl
+  // (site/public/js/safe-url.js), loaded by Base beside the escaper. A
+  // rejected avatar source falls back to initials, exactly as a missing
+  // source does, so a hostile API answer can never land in an img src.
+  var safeMedia = window.Brimwood.safeMediaUrl;
 
   function initials(n) {
     var parts = String(n || "").trim().split(/\s+/).filter(Boolean);
@@ -30,9 +35,10 @@
     var name = opts.name || "Member";
     var label = esc(name) + "'s avatar";
     var dim = "width:" + px + "px;height:" + px + "px;";
-    if (opts.src) {
+    var src = opts.src ? safeMedia(opts.src, null) : null;
+    if (src) {
       return (
-        '<img src="' + esc(opts.src) + '" alt="' + label + '" loading="lazy" style="' +
+        '<img src="' + esc(src) + '" alt="' + label + '" loading="lazy" style="' +
         dim + 'border-radius:50%;object-fit:cover;display:block;flex:none;" />'
       );
     }

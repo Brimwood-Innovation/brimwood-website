@@ -5,6 +5,7 @@
  * Skills, Hobbies, Achievements, Work, Education. D11: date of birth, gender,
  * and life events are never collected or shown. Empty sections never render. */
 import Avatar from "./Avatar.astro";
+import { safeExternalUrl } from "../lib/safeUrl";
 
 interface Props {
   profile: any;
@@ -51,27 +52,47 @@ const secStyle = "margin-top:32px;text-align:left;";
       <div style={secStyle}>
         <div class="kicker">About</div>
         {profile.location && <p>📍 {profile.location}</p>}
-        {profile.website && (
-          <p>
-            🔗{" "}
-            <a href={profile.website} rel="noopener" target="_blank">
-              {profile.website.replace(/^https?:\/\//, "")}
-            </a>
-          </p>
-        )}
+        {profile.website && (() => {
+          // Render-time scheme allowlist (Phase 5 slice 7): the API
+          // restricts these to http(s) at write time, but a stored row
+          // must never be trusted at render, or a javascript: value
+          // would execute on click. Rejected values render as plain
+          // text, never as a link.
+          const websiteUrl = safeExternalUrl(profile.website);
+          return websiteUrl ? (
+            <p>
+              🔗{" "}
+              <a href={websiteUrl} rel="noopener" target="_blank">
+                {profile.website.replace(/^https?:\/\//, "")}
+              </a>
+            </p>
+          ) : (
+            <p>🔗 {profile.website}</p>
+          );
+        })()}
         {socialEntries.length > 0 && (
           <p>
-            {socialEntries.map(([k, v]) => (
-              <a
-                href={v as string}
-                target="_blank"
-                rel="noopener"
-                class="btn btn-ghost small"
-                style="margin:0 8px 8px 0;"
-              >
-                {k} →
-              </a>
-            ))}
+            {socialEntries.map(([k, v]) => {
+              const href = safeExternalUrl(v);
+              return href ? (
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noopener"
+                  class="btn btn-ghost small"
+                  style="margin:0 8px 8px 0;"
+                >
+                  {k} →
+                </a>
+              ) : (
+                <span
+                  class="btn btn-ghost small"
+                  style="margin:0 8px 8px 0;"
+                >
+                  {k} →
+                </span>
+              );
+            })}
           </p>
         )}
       </div>
