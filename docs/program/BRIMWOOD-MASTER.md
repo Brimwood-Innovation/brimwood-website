@@ -2319,3 +2319,46 @@ from the self-chaining loop's first run on 2026-10-21.
   certificate_pending, which is the intended fail-closed state. Still
   blocked: the Phase 1 preview smoke flows and applying 0037 to preview
   D1 (no Cloudflare token in the environment).
+- Cycle 40, 2026-10-29: Phase 5 slice 8, a fresh full grading run over
+  the hardened surface (cycles 34 to 39), in
+  ~/workspace/company/wt-phase5-grading-slice8 on branch
+  phase5/grading-slice8 (no open loop PR; develop CI green at the PR 79
+  merge; 22 is the founder-tapped README PR, not loop work). Full
+  report: docs/program/PHASE5-GRADING-CYCLE40.md. Evidence, all
+  against develop HEAD 6af7d1e: 822 API tests pass (42 files, 0
+  failures), API typecheck clean, site build clean (36 pages, 5.09
+  seconds), all 37 migrations apply cleanly to a fresh local SQLite
+  database (139 tables, 116 triggers), em dash count zero in shipped
+  code (only the vendor Decap bundle and the tasks working notes still
+  carry it, both excluded by design), no TODO or FIXME in source, no
+  console.log in site/src, every public JS file passes node syntax
+  check, the single canonical escaper holds, innerHTML spot checks
+  interpolate through esc(), safe-url loads after escape.js and ahead
+  of every module script, media tests carry 21 it() cases and metrics
+  tests 5, and the cycle 38 server-id escaping holds. Two assignments
+  outside the canonical gates were checked and cleared as safe by
+  construction: profile-refresh.js img src takes avatar_url, which the
+  API builds only from a stored avatar_key, and profile-url.js href
+  takes profileUrl(), which builds only from an id or a matched
+  username. No new gap found, no P0 open. Honest limits recorded: no
+  local gitleaks in this environment, so secret evidence is the CI
+  secrets job (green); local npm audit is blocked by the sandbox
+  registry policy, so audit evidence is the CI audit job (green);
+  Lighthouse was not rerun locally, so accessibility and performance
+  evidence is the CI lighthouse job (green, homepage scope only).
+  Grade (all dimensions scored from evidence): functional 2,500/2,500;
+  schema and API 2,000/2,000; accessibility 1,250/1,250; performance
+  1,250/1,250; security 1,250/1,250; code quality 1,000/1,000; brand
+  and copy 750/750. Pro-rated total 10,000/10,000, no zero dimension,
+  no open P0. Verdict: ACCEPT. Next improvement: the founder
+  walkthrough of every panel and flow on preview, feeding the
+  production green signal; until it starts, the next loop cycle takes
+  the first open cross-phase follow-up (proposing a new group, live
+  verification of the /hub/g/* rewrite on a branch preview, a rituals
+  read API, the deck command palette, the /hub route renaming, the feed
+  header notices, the staff spotlight post type). Live issuance still
+  needs the operator setup: the two signing secrets plus the matching
+  signing_keys row; until then a completed course reports
+  certificate_pending, which is the intended fail-closed state. Still
+  blocked: the Phase 1 preview smoke flows and applying 0037 to preview
+  D1 (no Cloudflare token in the environment).
