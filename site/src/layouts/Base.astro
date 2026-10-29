@@ -205,6 +205,11 @@ const siteTitle = siteSettings.site_title || "Brimwood Innovation";
       (Astro module scripts and is:inline scripts) and before the deferred
       footer scripts. Every client escaper aliases window.Brimwood.escapeHtml. -->
     <script is:inline src="/js/escape.js"></script>
+    <!-- Canonical URL scheme allowlist (Phase 5 slice 7): loaded with the
+      escaper, before the slot, so every page script can gate href/src
+      values through window.Brimwood.safeLinkUrl, safeSameOriginUrl, and
+      safeMediaUrl. -->
+    <script is:inline src="/js/safe-url.js"></script>
     <a class="skip-link" href="#main">Skip to content</a>
     <header class="site">
       <a href="/" aria-label="Brimwood Innovation home">

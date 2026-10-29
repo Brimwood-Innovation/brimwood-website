@@ -164,6 +164,11 @@ import StoriesTray from "../../components/StoriesTray.astro";
     const $ = (id) => document.getElementById(id);
     // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
     const esc = window.Brimwood.escapeHtml;
+    // Canonical media allowlist: window.Brimwood.safeMediaUrl
+    // (site/public/js/safe-url.js), loaded by Base beside the escaper.
+    // Media and attachment URLs come from API answers; a rejected scheme
+    // drops that item instead of landing in an img or video src.
+    const safeMedia = (u) => window.Brimwood.safeMediaUrl(u, null);
     const api = (p, opts = {}) =>
       fetch(API_BASE + p, { credentials: "include", headers: { accept: "application/json", ...(opts.headers || {}) }, ...opts });
 
@@ -224,11 +229,14 @@ import StoriesTray from "../../components/StoriesTray.astro";
     function mediaGridHtml(media) {
       if (!media.length) return "";
       const items = media.map((m) => {
-        if (m.kind === "photo") return `<div class="media-wrap"><img src="${esc(m.url)}" alt="Post photo" loading="lazy" /></div>`;
+        const url = safeMedia(m.url);
+        if (!url) return "";
+        if (m.kind === "photo") return `<div class="media-wrap"><img src="${esc(url)}" alt="Post photo" loading="lazy" /></div>`;
         const badge = m.kind === "reel" ? `<span class="reel-badge">Reel</span>` : "";
-        return `<div class="media-wrap"><video src="${esc(m.url)}" controls preload="metadata" playsinline></video>${badge}</div>`;
-      }).join("");
-      return `<div class="media-grid${media.length > 1 ? " cols-2" : ""}">${items}</div>`;
+        return `<div class="media-wrap"><video src="${esc(url)}" controls preload="metadata" playsinline></video>${badge}</div>`;
+      }).filter(Boolean);
+      if (!items.length) return "";
+      return `<div class="media-grid${items.length > 1 ? " cols-2" : ""}">${items.join("")}</div>`;
     }
 
     function postHtml(p) {
@@ -264,11 +272,13 @@ import StoriesTray from "../../components/StoriesTray.astro";
       $("reels-rail").style.display = "block";
       const el = $("reels-list");
       reels.forEach(({ m, author }) => {
+        const url = safeMedia(m.url);
+        if (!url) return;
         if (el.querySelector(`[data-reel="${m.url}"]`)) return;
         const card = document.createElement("div");
         card.className = "reel-card";
         card.dataset.reel = m.url;
-        card.innerHTML = `<video src="${esc(m.url)}" preload="metadata" muted playsinline></video><div class="cap">${esc(author.display)}</div>`;
+        card.innerHTML = `<video src="${esc(url)}" preload="metadata" muted playsinline></video><div class="cap">${esc(author.display)}</div>`;
         card.addEventListener("mouseenter", () => card.querySelector("video").play().catch(() => {}));
         card.addEventListener("mouseleave", () => card.querySelector("video").pause());
         el.appendChild(card);
@@ -325,14 +335,16 @@ import StoriesTray from "../../components/StoriesTray.astro";
 
     function renderAttachments() {
       const el = $("attach-preview");
-      el.innerHTML = attachments.map((a, i) =>
-        `<div style="position:relative;width:84px;height:84px;border-radius:10px;overflow:hidden;background:#000;">` +
+      el.innerHTML = attachments.map((a, i) => {
+        const url = safeMedia(a.url);
+        if (!url) return "";
+        return `<div style="position:relative;width:84px;height:84px;border-radius:10px;overflow:hidden;background:#000;">` +
         (a.kind === "photo"
-          ? `<img src="${esc(a.url)}" style="width:100%;height:100%;object-fit:cover;" />`
-          : `<video src="${esc(a.url)}" style="width:100%;height:100%;object-fit:cover;" muted></video>
+          ? `<img src="${esc(url)}" style="width:100%;height:100%;object-fit:cover;" />`
+          : `<video src="${esc(url)}" style="width:100%;height:100%;object-fit:cover;" muted></video>
              <span class="reel-badge" style="font-size:10px;">${a.kind === "reel" ? "Reel" : "Video"}</span>`) +
-        `<button type="button" data-rm="${i}" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.6);color:#fff;border:0;border-radius:50%;width:22px;height:22px;cursor:pointer;">×</button></div>`
-      ).join("");
+        `<button type="button" data-rm="${i}" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.6);color:#fff;border:0;border-radius:50%;width:22px;height:22px;cursor:pointer;">×</button></div>`;
+      }).join("");
       el.querySelectorAll("[data-rm]").forEach((b) =>
         b.addEventListener("click", () => { attachments.splice(Number(b.dataset.rm), 1); renderAttachments(); })
       );

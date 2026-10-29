@@ -2244,3 +2244,78 @@ from the self-chaining loop's first run on 2026-10-21.
   intended fail-closed state. Still blocked: the Phase 1 preview
   smoke flows and applying 0037 to preview D1 (no Cloudflare
   token in the environment).
+- Cycle 39, 2026-10-29: Phase 5 slice 7, the last item in the cycle
+  35 hardening backlog: scheme allowlists for href and src fields, in
+  ~/workspace/company/wt-phase5-scheme-allowlist on branch
+  phase5/scheme-allowlist (no open loop PR; develop CI green at the PR 78
+  merge; 22 is the founder-tapped README PR, not loop work). Audit
+  covered every href and src built from an API answer. Safe by
+  construction and left alone except for the new gate: profile URLs
+  ("/@" plus a username matched by USERNAME_RE, or "/u/" plus an id),
+  search URLs, certificate verify URLs ("/c/" plus a code), event
+  slugs, media URLs (server-built "/api/media/" plus an encoded key or
+  an https host URL), and the notification and certificate deep links
+  that already passed a same-origin check. One live sink found: the
+  public profile page rendered member website and social links as
+  anchors from stored rows, trusting API write-time http(s) validation
+  alone, so a legacy row or a future write path skipping validation
+  could have served a javascript: link that executes on click (Astro
+  escapes attributes but does not strip schemes). New canonical client
+  module site/public/js/safe-url.js defines window.Brimwood.safeLinkUrl
+  (http(s) with "//", mailto, site-relative, anchor), safeSameOriginUrl
+  (site-relative only), and safeMediaUrl (http(s) with "//",
+  site-relative, data:image payloads, blob object URLs); all three strip
+  tabs, newlines, and carriage returns anywhere and trim leading and
+  trailing C0 controls and spaces before the check, matching what the
+  WHATWG URL parser does to the value, and all three reject
+  protocol-relative "//host" values. Base loads it as a classic
+  is:inline script directly after escape.js, so it runs during parsing
+  before every module and deferred footer script. Migrations: the two
+  notification safeUrl copies and the Studio safeLink are now aliases
+  to the canonical helpers with identical allowlists; avatar.js, the
+  people page avatar, and both notification avatar images gate src
+  through safeMediaUrl with an initials fallback; feed, post, and
+  messages media and the feed attachment previews gate src through
+  safeMediaUrl and drop rejected items; the admin media thumbnail
+  gates its constructed URL the same way; the academy certificate link
+  gates verify_url through safeSameOriginUrl and leaves the line hidden
+  when rejected, without disturbing the completion flow. New
+  site/src/lib/safeUrl.ts gives the server-rendered side the same rule
+  for external links (http(s) only via URL parsing), and ProfileView
+  renders website and social links through it, falling back to plain
+  text or a chip with no link when a value is rejected. Audited clean
+  and left untouched: the API write-time validUrl check (URL parsing
+  already neutralises control-character smuggling before the protocol
+  check, so no API change was needed), blog post rendering (repo
+  author content, not member input), the member profile editor preview
+  (website renders as plain text, never as a link), and programmatic
+  assignments that build from encoded ids or object URLs (share to DM,
+  profile URL helpers, event RSVP download). Verification before the
+  PR: 822 API tests pass (42 files, unchanged), API typecheck clean,
+  site build clean (36 pages), all public JS files pass node syntax
+  check, the canonical helpers pass 43 behaviour vectors extracted
+  verbatim from the file (allowed schemes and relative paths pass;
+  javascript, vbscript, data:text/html, protocol-relative, tab and
+  newline smuggled schemes, and "https:" without "//" are rejected;
+  tab smuggling inside an allowed data:image scheme cleans to the same
+  allowed value, exactly as the browser parses it), the built output
+  carries dist/js/safe-url.js after escape.js and ahead of every module
+  and deferred script, and a grep confirms no raw API URL reaches an
+  href or src outside a canonical gate. Grade (dimensions this cycle
+  touched, scored from evidence): functional 2,500/2,500 (no behaviour
+  change except blocked schemes; full suite and build green); security
+  1,250/1,250 (the one live href sink closed, every client href and
+  src sink gated, hostile vectors rejected in extracted tests); code
+  quality 1,000/1,000 (one canonical client module plus one server
+  helper, three duplicated helpers replaced by aliases, no new
+  dependency, no API or schema change). Schema and API, accessibility,
+  performance, and brand and copy untouched (no API, UI, schema, or
+  copy change). Pro-rated total 10,000/10,000, no zero dimension, no
+  open P0. Verdict: ACCEPT. Next improvement: Phase 5 slice 8, a fresh
+  full grading run over the hardened surface (cycles 34 to 39),
+  feeding the founder walkthrough. Live issuance still needs the
+  operator setup: the two signing secrets plus the matching
+  signing_keys row; until then a completed course reports
+  certificate_pending, which is the intended fail-closed state. Still
+  blocked: the Phase 1 preview smoke flows and applying 0037 to preview
+  D1 (no Cloudflare token in the environment).

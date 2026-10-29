@@ -96,9 +96,15 @@
         var d = await r.json().catch(function () { return {}; });
         if (!r.ok || !d.ok) throw new Error(d.error || "save failed");
         if (d.certificate && o.certLine && o.certLink) {
-          o.certLink.setAttribute("href", d.certificate.verify_url);
-          o.certLink.textContent = "View certificate " + d.certificate.code;
-          o.certLine.hidden = false;
+          // Canonical scheme allowlist (site/public/js/safe-url.js, loaded
+          // by Base): verify_url is server-constructed "/c/<code>", and a
+          // hostile API answer must not land in an href via setAttribute.
+          var certHref = window.Brimwood.safeSameOriginUrl(d.certificate.verify_url, "");
+          if (certHref) {
+            o.certLink.setAttribute("href", certHref);
+            o.certLink.textContent = "View certificate " + d.certificate.code;
+            o.certLine.hidden = false;
+          }
         } else if (d.course_completed && d.certificate_pending && o.msg) {
           // Completion stands; signing is not ready yet, so the
           // certificate follows from the dashboard or a re-submit.

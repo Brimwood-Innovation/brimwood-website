@@ -64,6 +64,11 @@ import HubShell from "../../components/HubShell.astro";
     const withCreds = { credentials: "include" };
     // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
     const esc = window.Brimwood.escapeHtml;
+    // Canonical media allowlist: window.Brimwood.safeMediaUrl
+    // (site/public/js/safe-url.js), loaded by Base beside the escaper.
+    // A rejected avatar source falls back to initials, as a missing
+    // source does.
+    const safeMedia = (u) => window.Brimwood.safeMediaUrl(u, null);
     const $ = (id) => document.getElementById(id);
     const show = (id) => ($(id).style.display = "");
     const hide = (id) => ($(id).style.display = "none");
@@ -80,7 +85,8 @@ import HubShell from "../../components/HubShell.astro";
     }
 
     function avatar(p) {
-      if (p.avatar_url) return `<img src="${esc(p.avatar_url)}" alt="${esc(p.display_name)}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;flex:none;" />`;
+      const src = safeMedia(p.avatar_url);
+      if (src) return `<img src="${esc(src)}" alt="${esc(p.display_name)}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;flex:none;" />`;
       return `<span role="img" aria-label="${esc(p.display_name)}" style="width:64px;height:64px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex:none;background:#0C9463;color:#F6F8F7;font-weight:700;font-size:24px;">${esc(initials(p.display_name))}</span>`;
     }
 

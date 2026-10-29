@@ -28,11 +28,18 @@
     } catch (e) { return ""; }
   }
 
+  // Canonical scheme allowlist: window.Brimwood.safeSameOriginUrl
+  // (site/public/js/safe-url.js), loaded by Base before this script.
+  // Same behaviour as the old local safeUrl (single leading slash only,
+  // so a protocol-relative "//evil.com" cannot flow to location.href as
+  // an open redirect), now shared instead of duplicated.
   function safeUrl(u) {
-    /* Single leading slash only: a protocol-relative "//evil.com"
-     * would otherwise pass and flow to location.href as an open
-     * redirect (Phase 5 slice 3 audit). */
-    return typeof u === "string" && u.charAt(0) === "/" && u.charAt(1) !== "/" ? u : "/notifications";
+    return window.Brimwood.safeSameOriginUrl(u, "/notifications");
+  }
+  // Avatar sources go through the canonical media allowlist; a rejected
+  // source falls back to the initials circle, as a missing source does.
+  function safeAvatar(u) {
+    return window.Brimwood.safeMediaUrl(u, null);
   }
 
   function renderBadge(unread) {
@@ -49,8 +56,9 @@
 
   function rowHtml(n) {
     var a = n.actor || {};
-    var avatar = a.avatar_url
-      ? '<img src="' + esc(a.avatar_url) + '" alt="" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex:none;">'
+    var avatarSrc = safeAvatar(a.avatar_url);
+    var avatar = avatarSrc
+      ? '<img src="' + esc(avatarSrc) + '" alt="" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex:none;">'
       : '<span style="width:36px;height:36px;border-radius:50%;background:#DDF5E9;color:#075E40;display:flex;align-items:center;' +
         'justify-content:center;font-weight:700;flex:none;">' + esc((a.display_name || "?").charAt(0).toUpperCase()) + "</span>";
     return (
