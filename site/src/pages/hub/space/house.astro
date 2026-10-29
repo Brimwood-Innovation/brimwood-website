@@ -59,7 +59,8 @@ import HubShell from "../../../components/HubShell.astro";
   <script>
     const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
     const withCreds = { credentials: "include" };
-    const esc = (s) => String(s ?? "").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
+    const esc = window.Brimwood.escapeHtml;
     const $ = (id) => document.getElementById(id);
     const show = (id) => ($(id).style.display = "");
     const hide = (id) => ($(id).style.display = "none");

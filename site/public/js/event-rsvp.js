@@ -11,11 +11,8 @@
   var slug = wrap.dataset.slug || "";
   var API_BASE = wrap.dataset.apiBase || "";
 
-  var esc = function (s) {
-    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
-    });
-  };
+  // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
+  var esc = window.Brimwood.escapeHtml;
   /* Deck format (prototype section 06): "Wed, Oct 14, 6:30 p.m.".
    * Times show in America/Toronto, the stored zone (R5). */
   var fmt = function (iso) {

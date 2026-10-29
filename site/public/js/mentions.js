@@ -8,11 +8,8 @@
 (function () {
   var MENTION_RE = /(^|[^a-zA-Z0-9_@])@([a-z][a-z0-9_]{2,29})/g;
 
-  function esc(s) {
-    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
-    });
-  }
+  // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
+  var esc = window.Brimwood.escapeHtml;
 
   function parseMentions(text) {
     var out = [];

@@ -8,11 +8,8 @@
   var BG = ["#0C9463", "#075E40", "#0A3D2B"]; // Emerald, Deep Emerald, Forest
   var FG = "#F6F8F7"; // Paper
 
-  function esc(s) {
-    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
-    });
-  }
+  // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
+  var esc = window.Brimwood.escapeHtml;
 
   function initials(n) {
     var parts = String(n || "").trim().split(/\s+/).filter(Boolean);

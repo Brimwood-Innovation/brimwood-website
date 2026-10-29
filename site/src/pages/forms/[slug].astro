@@ -51,7 +51,8 @@ export async function getStaticPaths() {
     const API_BASE = import.meta.env.PUBLIC_API_BASE || '';
     const slug = location.pathname.split('/').filter(Boolean).pop() || '';
 
-    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
+    const esc = window.Brimwood.escapeHtml;
 
     async function init() {
       let form;

@@ -200,6 +200,11 @@ const siteTitle = siteSettings.site_title || "Brimwood Innovation";
     )}
   </head>
   <body>
+    <!-- Canonical client-side HTML escaper (Phase 5 slice 5): classic script,
+      no defer, so it runs during parsing before the slot's page scripts
+      (Astro module scripts and is:inline scripts) and before the deferred
+      footer scripts. Every client escaper aliases window.Brimwood.escapeHtml. -->
+    <script is:inline src="/js/escape.js"></script>
     <a class="skip-link" href="#main">Skip to content</a>
     <header class="site">
       <a href="/" aria-label="Brimwood Innovation home">

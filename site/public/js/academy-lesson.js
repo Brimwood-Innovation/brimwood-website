@@ -11,11 +11,8 @@
  * the Next lesson link stays disabled with the deck note; submitting
  * opens it. The progress line reads GET /api/progress for the course. */
 (function () {
-  function esc(s) {
-    return String(s || "").replace(/[&<>"]/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
-    });
-  }
+  // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
+  var esc = window.Brimwood.escapeHtml;
 
   function wireReflection(o) {
     var done = false;

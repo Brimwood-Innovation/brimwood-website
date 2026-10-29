@@ -15,7 +15,8 @@
     Object.keys(opts).forEach(function (k) { init[k] = opts[k]; });
     return fetch(apiBase + p, init);
   };
-  var cEsc = function (s) { return String(s || "").replace(/</g, "&lt;").replace(/>/g, "&gt;"); };
+  // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
+  var cEsc = window.Brimwood.escapeHtml;
   var cDate = function (iso) {
     try { return new Date(iso).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" }); }
     catch (e) { return iso || ""; }

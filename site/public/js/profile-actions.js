@@ -15,11 +15,8 @@
   var apiBase = section.getAttribute("data-api-base") || "";
   var nameEl = document.getElementById("uName");
 
-  function esc(s) {
-    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
-    });
-  }
+  // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
+  var esc = window.Brimwood.escapeHtml;
 
   async function getJSON(url) {
     var r = await fetch(url, { headers: { accept: "application/json" } });
