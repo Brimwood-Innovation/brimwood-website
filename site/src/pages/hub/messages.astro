@@ -8,15 +8,18 @@
  * hides receipts then), and request rows never badge the Chats list.
  * No typing indicator and no presence (D8).
  * All data loads client-side from /api/chat; signed-out visitors see the
- * sign-in prompt. */
-import Base from "../layouts/Base.astro";
-import HubShell from "../components/HubShell.astro";
+ * sign-in prompt. Canonical route since Phase 5 cycle 44: /hub/messages
+ * (the old /messages URL 301-redirects here, so saved links keep working).
+ * Deep links are honoured at boot: ?conversation=<id> opens that thread
+ * when it is in the loaded list, ?with=<user_id> starts that DM. */
+import Base from "../../layouts/Base.astro";
+import HubShell from "../../components/HubShell.astro";
 ---
 
 <Base
   title="Messages - Brimwood Innovation"
   description="Private messages for Brimwood members."
-  path="/messages"
+  path="/hub/messages"
 >
   <HubShell current="messages">
   <section class="block" id="msg-loading">
@@ -790,6 +793,20 @@ import HubShell from "../components/HubShell.astro";
         me = d.user;
         hide("msg-loading"); hide("msg-login"); show("msg-app");
         await Promise.all([loadConversations(""), loadStoryReplies()]);
+
+        /* Deep links (share-to-dm.js targets this page): ?conversation
+         * opens a thread already in the loaded list; ?with starts that
+         * member's DM. Anything unknown is ignored and the list stays. */
+        try {
+          const deep = new URLSearchParams(window.location.search);
+          const convId = deep.get("conversation");
+          const withId = deep.get("with");
+          if (convId && conversations.find((c) => c.id === convId)) {
+            await openConversation(convId);
+          } else if (withId) {
+            await startConversation("dm", [withId]).catch(() => {});
+          }
+        } catch { /* deep link failure leaves the list view */ }
 
         let deb;
         $("convSearch").addEventListener("input", (e) => {

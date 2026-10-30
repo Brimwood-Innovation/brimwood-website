@@ -2529,3 +2529,65 @@ from the self-chaining loop's first run on 2026-10-21.
   intended fail-closed state. Still blocked: the Phase 1 preview
   smoke flows and applying 0037 to preview D1 (no Cloudflare token
   in the environment).
+- Cycle 44, 2026-10-30: the /hub route renaming, the recorded Phase 3
+  follow-up (the shell comment kept Messages at /messages and the
+  bell inbox at /notifications even though the deck routes them
+  under /hub), in ~/workspace/company/wt-phase5-hub-routes on branch
+  phase5/hub-routes (no open loop PR; develop CI green at the PR 83
+  merge; 22 is the founder-tapped README PR, not loop work).
+  Messages moved to /hub/messages and Notifications to
+  /hub/notifications (files moved, imports re-pointed, Base path
+  props updated). Every in-site link follows: the shell sidebar,
+  phone tabs, and bell, the Base header "View all", the members
+  page Messages button, the people page message fallback, and the
+  safe-URL fallbacks in notifications-bell.js and
+  notifications-page.js. site/public/_redirects gains 301s from the
+  old URLs to the new ones, listed first so Pages applies them
+  before the 200 rewrites, so saved links, bookmarks, and
+  notification deep links keep working. The rename also repairs a
+  live broken target: share-to-dm.js already navigated to
+  /hub/messages, which did not exist, so shares landed on a 404.
+  That target now honours its own contract at boot:
+  ?conversation=<id> opens the thread when it is in the loaded
+  list, ?with=<user_id> starts that DM, and anything unknown is
+  ignored with the list left standing. Scope kept honest: only
+  the two deck-routed places moved. Academy, Profile, Search,
+  and the public events index stay at their existing routes;
+  renaming them is not claimed here. No API change, no migration,
+  no new dependency. Em dashes scrubbed from the touched files
+  (none found). Verification before the PR: 832 API tests pass
+  (43 files, unchanged count, as expected for a route-only
+  change), API typecheck clean, both changed public scripts pass
+  node syntax check, site build clean (36 pages, unchanged),
+  and the built output inspected directly: dist/hub/messages and
+  dist/hub/notifications exist, dist/messages and
+  dist/notifications are gone, the new links appear in the built
+  hub pages, no stale page-route href remains in the built hub
+  pages, the 301s are in dist/_redirects, and the deep-link code
+  is in the built messages bundle. Grade (dimensions this cycle
+  touched, scored from evidence): functional 2,500/2,500 (both
+  pages render at their new routes, all shell and page links
+  point there, share deep links open the thread or start the
+  DM); schema and API 2,000/2,000 (no API change, suite green,
+  no migration needed); accessibility 1,250/1,250 (no markup
+  pattern change, shell navigation and current-page marking
+  untouched, no-JavaScript fallbacks intact); performance
+  1,250/1,250 (no new dependency, no new script, page count
+  unchanged); security 1,250/1,250 (member-only pages
+  unchanged, same-site link gates unchanged, old URLs redirect
+  rather than serving stale pages); code quality 1,000/1,000
+  (typecheck clean, syntax checked, moved files keep their
+  existing patterns, one redirect rule per old route); brand
+  and copy 750/750 (Canadian spelling, no new em dash, no
+  member named, deck place labels unchanged). Pro-rated total
+  10,000/10,000, no zero dimension, no open P0. Verdict:
+  ACCEPT. Next improvement: the founder walkthrough of every
+  panel and flow on preview, feeding the production green
+  signal; until it starts, the next loop cycle takes the next
+  open cross-phase follow-up (the feed header notices, the
+  staff spotlight post type). Live issuance still needs the
+  operator setup: the two signing secrets plus the matching
+  signing_keys row; until then a completed course reports
+  certificate_pending, which is the intended fail-closed state.
+  Still blocked: the Phase 1 preview smoke flows and applying
+  0037 to preview D1 (no Cloudflare token in the environment).

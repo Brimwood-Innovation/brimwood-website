@@ -34,7 +34,7 @@
   // so a protocol-relative "//evil.com" cannot flow to location.href as
   // an open redirect), now shared instead of duplicated.
   function safeUrl(u) {
-    return window.Brimwood.safeSameOriginUrl(u, "/notifications");
+    return window.Brimwood.safeSameOriginUrl(u, "/hub/notifications");
   }
   // Avatar sources go through the canonical media allowlist; a rejected
   // source falls back to the initials circle, as a missing source does.
