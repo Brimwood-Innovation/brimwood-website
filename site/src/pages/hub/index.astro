@@ -5,8 +5,8 @@
  * slice 8: today's bookings and the check-in count), Your next event
  * (GET /api/events), Continue learning (GET /api/progress plus the
  * course detail and progress detail for the resume link), and This
- * week's rituals (the standing weekly rhythm; live ritual thread state
- * has no read API yet, so the card shows the rhythm, not thread state).
+ * week's rituals (GET /api/rituals, the standing weekly rhythm with
+ * each ritual's weekday and local time).
  * No streaks and no activity feed (D7, C14, per the deck caption).
  * Members-only: a signed-out visitor gets the sign-in gate, the same
  * pattern as the feed and dashboard pages. Brand Kit v1.0.
@@ -63,16 +63,12 @@ import HubShell from "../../components/HubShell.astro";
           <p class="hub-home-note" id="hubLearnBody">Loading…</p>
         </article>
 
-        <!-- This week's rituals: the standing weekly rhythm. Live
-             thread state (open, closed, thread links) has no read API
-             yet; the build log row links to the feed composer, the one
-             real place to add yours today. -->
-        <article class="card">
+        <!-- This week's rituals: filled from GET /api/rituals. -->
+        <article class="card" id="hubRitualsCard">
           <div class="n">This week's rituals</div>
-          <div class="hub-home-row"><span>Mon debrief</span></div>
-          <div class="hub-home-row"><span>Wed build log</span><a class="btn btn-secondary btn-sm" href="/hub/feed">Add yours</a></div>
-          <div class="hub-home-row"><span>Fri feedback</span></div>
+          <div id="hubRitualsBody"><p class="hub-home-note">Loading…</p></div>
           <p class="hub-home-note">Ritual threads appear in the feed.</p>
+          <p style="margin-top:12px;"><a class="btn btn-secondary btn-sm" href="/hub/feed">Add yours</a></p>
         </article>
       </div>
     </div>
@@ -248,6 +244,27 @@ import HubShell from "../../components/HubShell.astro";
           }
         } catch {
           $("hubLearnBody").textContent = "Could not load your progress.";
+        }
+
+        /* This week's rituals: the standing weekly rhythm from
+         * GET /api/rituals, Monday first in the API's order. */
+        try {
+          const d = await (await api("/api/rituals")).json();
+          const rituals = (d && d.ok && d.rituals) || [];
+          const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+          const fmtTime = (t) => {
+            const [h, m] = String(t).split(":").map(Number);
+            const ap = h >= 12 ? "p.m." : "a.m.";
+            const hh = h % 12 === 0 ? 12 : h % 12;
+            return `${hh}:${String(m).padStart(2, "0")} ${ap}`;
+          };
+          $("hubRitualsBody").innerHTML = rituals.length
+            ? rituals.map((r) =>
+              `<div class="hub-home-row"><span>${esc(r.title)}</span><span class="thread-sub">${esc(days[r.weekday] || "")}, ${esc(fmtTime(r.local_time))}${r.group ? ` · ${esc(r.group.name)}` : ""}</span></div>`
+            ).join("")
+            : `<p class="hub-home-note">No rituals scheduled this week yet.</p>`;
+        } catch {
+          $("hubRitualsBody").innerHTML = `<p class="hub-home-note">Could not load this week's rituals.</p>`;
         }
       } catch {
         $("hub-loading").style.display = "none";
