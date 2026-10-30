@@ -16,8 +16,17 @@
  *     group admin or staff can reopen one.
  *   - Group posts stay visible only to active group members.
  *
- * Not in this slice: proposing a new group (three co-founders plus
- * admin approval) is a separate flow and stays a recorded follow-up.
+ * Proposing a new group (Phase 5 cycle 41, the recorded Phase 3
+ * follow-up): any member proposes a group (name, purpose, join policy,
+ * optional address slug); the proposer is co-founder one. Two more
+ * distinct members endorse the proposal, then staff approve it and the
+ * co-founders become the group (proposer as group admin, endorsers as
+ * members). Staff can also reject a proposal. A proposed or rejected
+ * group never appears in the group list or detail: proposal endpoints
+ * below are the only way to see one, and only its proposer, its
+ * supporters, or staff can see it. No member ids are exposed: cards
+ * carry only the supporter count and the caller's own flags, so the
+ * anonymity rule (share the what, never the who) holds here too.
  * Mutating routes are covered by the global CSRF guard.
  */
 import { Hono } from "hono";
@@ -32,6 +41,88 @@ app.use(requireUser);
 
 const GROUP_LIMIT = 100;
 const POST_LIMIT = 20;
+
+/** Co-founders needed before staff can approve a proposal. */
+const COFOUNDERS_REQUIRED = 3;
+const JOIN_POLICIES = ["open", "request", "invite"];
+const SLUG_RE = /^[a-z0-9-]{3,40}$/;
+
+/** Address slug from a group name: lowercase, dashes, nothing else. */
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+interface ProposalRow {
+  id: string;
+  name: string;
+  slug: string;
+  purpose: string;
+  join_policy: string;
+  status: string;
+  proposed_by: string | null;
+  created_at: string;
+}
+
+interface ProposalCard {
+  id: string;
+  name: string;
+  slug: string;
+  purpose: string;
+  join_policy: string;
+  status: string;
+  supporters: number;
+  ready: boolean;
+  is_proposer: boolean;
+  is_supporter: boolean;
+}
+
+function proposalCard(
+  p: ProposalRow,
+  supporterIds: string[],
+  userId: string
+): ProposalCard {
+  return {
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    purpose: p.purpose,
+    join_policy: p.join_policy,
+    status: p.status,
+    supporters: supporterIds.length,
+    ready: supporterIds.length >= COFOUNDERS_REQUIRED,
+    is_proposer: p.proposed_by === userId,
+    is_supporter: supporterIds.includes(userId),
+  };
+}
+
+async function proposalSupporters(
+  DB: D1Database,
+  groupId: string
+): Promise<string[]> {
+  const rows = await DB.prepare(
+    `SELECT user_id FROM group_proposal_supporters WHERE group_id = ? ORDER BY created_at`
+  )
+    .bind(groupId)
+    .all();
+  return ((rows.results as { user_id: string }[]) || []).map((r) => r.user_id);
+}
+
+/** A proposed group row by slug, or null when it is not proposed. */
+async function findProposal(
+  DB: D1Database,
+  slug: string
+): Promise<ProposalRow | null> {
+  return (await DB.prepare(
+    `SELECT id, name, slug, purpose, join_policy, status, proposed_by, created_at
+     FROM groups WHERE slug = ? AND status = 'proposed'`
+  )
+    .bind(slug)
+    .first()) as ProposalRow | null;
+}
 
 interface GroupRow {
   id: string;
@@ -85,6 +176,202 @@ async function findGroup(
     .bind(userId, slug)
     .first()) as GroupRow | null;
 }
+
+/* --- Proposals: list what the caller may see --- *
+ * Staff see every proposed group; a member sees only proposals they
+ * proposed or endorsed. Anyone else gets an empty list, never a leak.
+ * Registered before "/:slug" so "proposals" is not read as a slug. */
+app.get("/proposals", async (c) => {
+  const user = c.get("user");
+  const { DB } = c.env;
+  const isStaff = user.role === "admin";
+  const rows = await DB.prepare(
+    `SELECT id, name, slug, purpose, join_policy, status, proposed_by, created_at
+     FROM groups WHERE status = 'proposed' ORDER BY created_at ASC LIMIT ?`
+  )
+    .bind(GROUP_LIMIT)
+    .all();
+  const proposals: ProposalCard[] = [];
+  for (const p of ((rows.results as unknown) as ProposalRow[]) || []) {
+    const supporters = await proposalSupporters(DB, p.id);
+    const card = proposalCard(p, supporters, user.userId);
+    if (isStaff || card.is_proposer || card.is_supporter) proposals.push(card);
+  }
+  return c.json({ ok: true, proposals });
+});
+
+/* --- Member: propose a new group; the proposer is co-founder one --- */
+app.post("/proposals", async (c) => {
+  const user = c.get("user");
+  const { DB } = c.env;
+  const data: unknown = await c.req.json().catch(() => null);
+  if (!isRecord(data))
+    return c.json({ ok: false, error: "Send a name and a purpose." }, 400);
+  const name = cleanStr(data.name, 60);
+  const purpose = cleanStr(data.purpose, 200);
+  const joinPolicy =
+    typeof data.join_policy === "string" ? data.join_policy : "open";
+  if (name.length < 2 || name.length > 60)
+    return c.json(
+      { ok: false, error: "Give the group a name of 2 to 60 characters." },
+      400
+    );
+  if (purpose.length < 10 || purpose.length > 200)
+    return c.json(
+      { ok: false, error: "Describe the purpose in 10 to 200 characters." },
+      400
+    );
+  if (!JOIN_POLICIES.includes(joinPolicy))
+    return c.json(
+      { ok: false, error: "Join policy must be open, request, or invite." },
+      400
+    );
+  const slug =
+    typeof data.slug === "string" && data.slug.trim()
+      ? data.slug.trim().toLowerCase()
+      : slugify(name);
+  if (!SLUG_RE.test(slug))
+    return c.json(
+      {
+        ok: false,
+        error:
+          "Pick an address of 3 to 40 lowercase letters, numbers, or dashes.",
+      },
+      400
+    );
+  const taken = await DB.prepare(`SELECT id FROM groups WHERE slug = ?`)
+    .bind(slug)
+    .first();
+  if (taken)
+    return c.json(
+      { ok: false, error: "That group address is already taken." },
+      409
+    );
+  const id = crypto.randomUUID();
+  await DB.batch([
+    DB.prepare(
+      `INSERT INTO groups (id, slug, name, purpose, join_policy, status, proposed_by)
+       VALUES (?, ?, ?, ?, ?, 'proposed', ?)`
+    ).bind(id, slug, name, purpose, joinPolicy, user.userId),
+    DB.prepare(
+      `INSERT INTO group_proposal_supporters (group_id, user_id) VALUES (?, ?)`
+    ).bind(id, user.userId),
+  ]);
+  const row: ProposalRow = {
+    id,
+    name,
+    slug,
+    purpose,
+    join_policy: joinPolicy,
+    status: "proposed",
+    proposed_by: user.userId,
+    created_at: "",
+  };
+  return c.json(
+    { ok: true, proposal: proposalCard(row, [user.userId], user.userId) },
+    201
+  );
+});
+
+/* --- Proposal detail: proposer, supporters, or staff only --- */
+app.get("/proposals/:slug", async (c) => {
+  const user = c.get("user");
+  const { DB } = c.env;
+  const slug = (c.req.param("slug") || "").slice(0, 40);
+  const p = await findProposal(DB, slug);
+  if (!p) return c.json({ ok: false, error: "Not found." }, 404);
+  const supporters = await proposalSupporters(DB, p.id);
+  const card = proposalCard(p, supporters, user.userId);
+  if (user.role !== "admin" && !card.is_proposer && !card.is_supporter)
+    return c.json({ ok: false, error: "Not found." }, 404);
+  return c.json({ ok: true, proposal: card });
+});
+
+/* --- Member: endorse a proposal, becoming a co-founder --- *
+ * Any signed-in member may endorse: the two co-founders beyond the
+ * proposer are not participants yet, so no participant check applies.
+ * Endorsing twice is a no-op, never a second count. */
+app.post("/proposals/:slug/endorse", async (c) => {
+  const user = c.get("user");
+  const { DB } = c.env;
+  const slug = (c.req.param("slug") || "").slice(0, 40);
+  const p = await findProposal(DB, slug);
+  if (!p) return c.json({ ok: false, error: "Not found." }, 404);
+  let supporters = await proposalSupporters(DB, p.id);
+  if (!supporters.includes(user.userId)) {
+    await DB.prepare(
+      `INSERT INTO group_proposal_supporters (group_id, user_id) VALUES (?, ?)`
+    )
+      .bind(p.id, user.userId)
+      .run();
+    supporters = await proposalSupporters(DB, p.id);
+  }
+  return c.json({
+    ok: true,
+    proposal: proposalCard(p, supporters, user.userId),
+  });
+});
+
+/* --- Staff: approve a ready proposal; co-founders become the group --- */
+app.post("/proposals/:slug/approve", async (c) => {
+  const user = c.get("user");
+  const { DB } = c.env;
+  if (user.role !== "admin")
+    return c.json(
+      { ok: false, error: "Only staff can approve a group proposal." },
+      403
+    );
+  const slug = (c.req.param("slug") || "").slice(0, 40);
+  const p = await findProposal(DB, slug);
+  if (!p) return c.json({ ok: false, error: "Not found." }, 404);
+  const supporters = await proposalSupporters(DB, p.id);
+  if (supporters.length < COFOUNDERS_REQUIRED)
+    return c.json(
+      {
+        ok: false,
+        error: `A group needs ${COFOUNDERS_REQUIRED} co-founders before approval.`,
+      },
+      400
+    );
+  const stmts: D1PreparedStatement[] = [
+    DB.prepare(
+      `UPDATE groups SET status = 'active', approved_by = ?,
+       approved_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
+    ).bind(user.userId, p.id),
+  ];
+  for (const supporterId of supporters) {
+    stmts.push(
+      DB.prepare(
+        `INSERT INTO group_members (group_id, user_id, role, state)
+         VALUES (?, ?, ?, 'active')`
+      ).bind(
+        p.id,
+        supporterId,
+        supporterId === p.proposed_by ? "admin" : "member"
+      )
+    );
+  }
+  await DB.batch(stmts);
+  return c.json({ ok: true, status: "active", slug: p.slug });
+});
+
+/* --- Staff: reject a proposal; its address stays reserved --- */
+app.post("/proposals/:slug/reject", async (c) => {
+  const user = c.get("user");
+  const { DB } = c.env;
+  if (user.role !== "admin")
+    return c.json(
+      { ok: false, error: "Only staff can reject a group proposal." },
+      403
+    );
+  const slug = (c.req.param("slug") || "").slice(0, 40);
+  const p = await findProposal(DB, slug);
+  if (!p) return c.json({ ok: false, error: "Not found." }, 404);
+  await DB.prepare(`UPDATE groups SET status = 'rejected' WHERE id = ?`)
+    .bind(p.id)
+    .run();
+  return c.json({ ok: true, status: "rejected", slug: p.slug });
+});
 
 /* --- Member: list groups, active first, archived last --- */
 

@@ -34,11 +34,50 @@ import HubShell from "../../components/HubShell.astro";
     <h1 class="sec" style="font-size:clamp(28px,4vw,40px);margin-bottom:8px;">Groups.</h1>
     <p class="sec-lede" style="margin-bottom:22px;">Each card shows recent activity, not a member count.</p>
     <p id="groups-error" class="thread-sub" style="display:none;color:var(--brimwood-red, #b42318);"></p>
+    <div style="margin-bottom:22px;">
+      <button type="button" class="btn btn-primary btn-sm" id="propose-open">Propose a group</button>
+      <p class="thread-sub" style="margin:8px 0 0;">A proposal needs three co-founders, then staff approval.</p>
+    </div>
     <div id="groups-list" style="display:grid;gap:14px;"></div>
     <div id="groups-empty" style="display:none;">
       <p class="sec-lede">No groups yet. Check back after the next Demo Night.</p>
     </div>
+    <div id="proposals-wrap" style="margin-top:32px;">
+      <h2 style="font-size:22px;margin-bottom:6px;">Proposals.</h2>
+      <p class="sec-lede" style="margin-bottom:14px;">Proposed groups are visible only to their co-founders and staff.</p>
+      <p id="proposals-error" class="thread-sub" style="display:none;color:var(--brimwood-red, #b42318);"></p>
+      <div id="proposals-list" style="display:grid;gap:14px;"></div>
+      <div id="proposals-empty" style="display:none;">
+        <p class="sec-lede">No proposals yet.</p>
+      </div>
+    </div>
   </section>
+
+  <dialog id="propose-dialog" aria-labelledby="propose-dialog-title" style="max-width:520px;width:calc(100% - 32px);border:1px solid rgba(18,26,22,0.14);border-radius:12px;padding:22px;">
+    <h2 id="propose-dialog-title" style="font-size:22px;margin-bottom:6px;">Propose a group</h2>
+    <p class="thread-sub" style="margin-bottom:16px;">You are co-founder one. Two more members endorse, then staff approve.</p>
+    <form id="propose-form" method="dialog">
+      <div style="display:grid;gap:14px;">
+        <label style="display:block;font-weight:600;">Name
+          <input name="propose-name" required minlength="2" maxlength="60" style="display:block;width:100%;margin-top:6px;font:inherit;font-weight:400;padding:8px 10px;border:1px solid rgba(18,26,22,0.14);border-radius:8px;" /></label>
+        <label style="display:block;font-weight:600;">Purpose
+          <textarea name="propose-purpose" required minlength="10" maxlength="200" rows="3" style="display:block;width:100%;margin-top:6px;font:inherit;font-weight:400;padding:8px 10px;border:1px solid rgba(18,26,22,0.14);border-radius:8px;"></textarea></label>
+        <label style="display:block;font-weight:600;">Join policy
+          <select name="propose-policy" style="display:block;width:100%;margin-top:6px;font:inherit;font-weight:400;padding:8px 10px;border:1px solid rgba(18,26,22,0.14);border-radius:8px;">
+            <option value="open">Open</option>
+            <option value="request">Ask to join</option>
+            <option value="invite">Invite only</option>
+          </select></label>
+        <label style="display:block;font-weight:600;">Address (optional)
+          <input name="propose-slug" maxlength="40" placeholder="Left blank, it follows the name" style="display:block;width:100%;margin-top:6px;font:inherit;font-weight:400;padding:8px 10px;border:1px solid rgba(18,26,22,0.14);border-radius:8px;" /></label>
+      </div>
+      <p id="propose-error" class="thread-sub" style="display:none;color:var(--brimwood-red, #b42318);margin-top:10px;"></p>
+      <div style="display:flex;gap:8px;margin-top:18px;">
+        <button type="submit" class="btn btn-primary btn-sm">Send proposal</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="propose-cancel">Cancel</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="join-dialog" aria-labelledby="join-dialog-title" style="max-width:520px;width:calc(100% - 32px);border:1px solid rgba(18,26,22,0.14);border-radius:12px;padding:22px;">
     <h2 id="join-dialog-title" style="font-size:22px;margin-bottom:6px;">Join a group</h2>
@@ -63,6 +102,8 @@ import HubShell from "../../components/HubShell.astro";
     const hide = (id) => ($(id).style.display = "none");
 
     let groups = [];
+    let proposals = [];
+    let isStaff = false;
     let joinSlug = null;
 
     function relTime(iso) {
@@ -179,6 +220,88 @@ import HubShell from "../../components/HubShell.astro";
       await loadGroups();
     }
 
+    function proposalActions(p) {
+      const bits = [];
+      if (p.is_proposer) bits.push(`<span class="thread-sub">You proposed this</span>`);
+      else if (p.is_supporter) bits.push(`<span class="thread-sub">You are a co-founder</span>`);
+      else bits.push(`<button type="button" class="btn btn-primary btn-sm" data-endorse="${esc(p.slug)}">Endorse</button>`);
+      if (isStaff) {
+        if (p.ready) bits.push(`<button type="button" class="btn btn-primary btn-sm" data-approve="${esc(p.slug)}">Approve</button>`);
+        bits.push(`<button type="button" class="btn btn-ghost btn-sm" data-reject="${esc(p.slug)}">Reject</button>`);
+      }
+      return bits.join(" ");
+    }
+
+    function renderProposals() {
+      const list = $("proposals-list");
+      if (!proposals.length) { hide("proposals-list"); show("proposals-empty"); return; }
+      hide("proposals-empty"); show("proposals-list");
+      list.innerHTML = proposals.map((p) => `
+        <article class="card" style="padding:18px 20px;">
+          <h3 style="font-size:20px;margin-bottom:4px;">${esc(p.name)}</h3>
+          <p class="thread-sub" style="margin:0 0 8px;">${esc(p.purpose)}</p>
+          <p class="thread-sub" style="margin:0;">${esc(p.supporters)} of 3 co-founders${p.ready ? " · Ready for approval" : ""} · ${p.join_policy === "request" ? "Ask to join" : p.join_policy === "invite" ? "Invite only" : "Open"}</p>
+          <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">${proposalActions(p)}</div>
+        </article>`).join("");
+      list.querySelectorAll("[data-endorse]").forEach((b) => b.addEventListener("click", () => decideProposal(b.dataset.endorse, "endorse")));
+      list.querySelectorAll("[data-approve]").forEach((b) => b.addEventListener("click", () => decideProposal(b.dataset.approve, "approve")));
+      list.querySelectorAll("[data-reject]").forEach((b) => b.addEventListener("click", () => decideProposal(b.dataset.reject, "reject")));
+    }
+
+    async function loadProposals() {
+      try {
+        const r = await fetch(API_BASE + "/api/groups/proposals", { ...withCreds });
+        const d = await r.json();
+        if (!r.ok || !d.ok) throw 0;
+        proposals = d.proposals || [];
+        hide("proposals-error");
+        renderProposals();
+      } catch {
+        const e = $("proposals-error");
+        e.textContent = "Could not load the proposals. Try again in a moment.";
+        show("proposals-error");
+      }
+    }
+
+    async function decideProposal(slug, action) {
+      const r = await fetch(API_BASE + `/api/groups/proposals/${encodeURIComponent(slug)}/${action}`, { method: "POST", ...withCreds });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) {
+        const e = $("proposals-error");
+        e.textContent = d.error || "Could not do that. Try again in a moment.";
+        show("proposals-error");
+        return;
+      }
+      hide("proposals-error");
+      await loadProposals();
+      if (action === "approve") await loadGroups();
+    }
+
+    $("propose-open").addEventListener("click", () => { hide("propose-error"); $("propose-dialog").showModal(); });
+    $("propose-cancel").addEventListener("click", () => $("propose-dialog").close());
+    $("propose-form").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const body = {
+        name: document.querySelector("[name=propose-name]").value,
+        purpose: document.querySelector("[name=propose-purpose]").value,
+        join_policy: document.querySelector("[name=propose-policy]").value,
+        slug: document.querySelector("[name=propose-slug]").value,
+      };
+      const r = await fetch(API_BASE + "/api/groups/proposals", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), ...withCreds,
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) {
+        const e = $("propose-error");
+        e.textContent = d.error || "Could not send that proposal.";
+        show("propose-error");
+        return;
+      }
+      $("propose-dialog").close();
+      $("propose-form").reset();
+      await loadProposals();
+    });
+
     $("join-cancel").addEventListener("click", () => $("join-dialog").close());
     $("join-form").addEventListener("submit", async (ev) => {
       ev.preventDefault();
@@ -213,8 +336,10 @@ import HubShell from "../../components/HubShell.astro";
         const me = await fetch(API_BASE + "/api/auth/me", { headers: { accept: "application/json" }, ...withCreds });
         const d = await me.json().catch(() => ({}));
         if (!me.ok || !d.ok) throw 0;
+        isStaff = d.user && d.user.role === "admin";
         hide("groups-loading"); hide("groups-login"); show("groups-app");
         await loadGroups();
+        await loadProposals();
       } catch {
         hide("groups-loading"); hide("groups-app"); show("groups-login");
       }
