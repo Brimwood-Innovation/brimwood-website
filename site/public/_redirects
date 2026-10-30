@@ -1,3 +1,9 @@
+# Hub route renaming (Phase 5 cycle 44): Messages and Notifications moved
+# under /hub as the deck routes them. The old URLs 301-redirect, so saved
+# links, bookmarks, and notification deep links keep working. Redirects
+# come first: Cloudflare Pages applies rules in file order.
+/messages /hub/messages 301
+/notifications /hub/notifications 301
 # Deck route /hub/g/SLUG is served by the static group page (no adapter
 # on this static-first site): the rewrite keeps the URL while the page
 # loads its group client-side from /api/groups.
