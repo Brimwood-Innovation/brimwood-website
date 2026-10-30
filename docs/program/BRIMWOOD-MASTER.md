@@ -2362,3 +2362,57 @@ from the self-chaining loop's first run on 2026-10-21.
   certificate_pending, which is the intended fail-closed state. Still
   blocked: the Phase 1 preview smoke flows and applying 0037 to preview
   D1 (no Cloudflare token in the environment).
+- Cycle 41, 2026-10-30: the first open cross-phase follow-up, proposing
+  a new group (three co-founders plus admin approval), in
+  ~/workspace/company/wt-phase5-group-proposals on branch
+  phase5/group-proposals (no open loop PR; develop CI green at the PR 80
+  merge; 22 is the founder-tapped README PR, not loop work). Migration
+  0038 adds group_proposal_supporters (one row per supporter per
+  proposal; the groups table already carried status proposed, proposed_by,
+  approved_by, and approved_at from 0026). Flow: any member proposes a
+  group (name 2 to 60, purpose 10 to 200, join policy open, request, or
+  invite, optional address slug, otherwise slugged from the name;
+  duplicate address 409); the proposer is co-founder one. Two more
+  distinct members endorse (repeat endorsement is a no-op, never a
+  second count). Staff approve only at three supporters: the group goes
+  active with approved_by and approved_at, and the co-founders become
+  group_members (proposer as group admin, endorsers as members). Staff
+  can also reject a proposal; its address stays reserved. Visibility
+  keeps the existing leak rule: proposed and rejected groups never
+  appear in the group list or detail, proposal endpoints are the only
+  way to see one, and only its proposer, its supporters, or staff can;
+  strangers get 404 and an empty list. No member ids are exposed: cards
+  carry only the supporter count, a ready flag, and the caller's own
+  is_proposer and is_supporter flags. The hub groups page gains a
+  Propose a group dialog and a Proposals section (endorse for
+  non-supporters, approve when ready and reject for staff, from the
+  /me role); approving reloads the group list so the new group appears.
+  Em dashes scrubbed from the touched files (none found). Verification
+  before the PR: 829 API tests pass (42 files, 7 new proposal tests
+  covering creation, validation, duplicate address, list visibility,
+  endorsement to three with repeat no-op, stranger hiding, approval
+  seating, and rejection hiding), API typecheck clean, site build
+  clean (36 pages), all 38 migrations apply cleanly to a fresh local
+  SQLite database (140 tables). Grade (dimensions this cycle touched,
+  scored from evidence): functional 2,500/2,500 (full flow works end
+  to end in tests, UI included); schema and API 2,000/2,000 (one new
+  table, six new endpoints, migration chain green); security
+  1,250/1,250 (leak rule preserved, staff-only decisions, boundary
+  validation, no ids exposed); code quality 1,000/1,000 (typecheck
+  clean, tests in the existing style, no new dependency); brand and
+  copy 750/750 (Canadian spelling, no new em dash, no member named).
+  Accessibility and performance untouched (no new page weight, no
+  interaction pattern change beyond the existing dialog and card
+  shapes). Pro-rated total 10,000/10,000, no zero dimension, no open
+  P0. Verdict: ACCEPT. Next improvement: the founder walkthrough of
+  every panel and flow on preview, feeding the production green
+  signal; until it starts, the next loop cycle takes the next open
+  cross-phase follow-up (live verification of the /hub/g/* rewrite on
+  a branch preview, a rituals read API, the deck command palette, the
+  /hub route renaming, the feed header notices, the staff spotlight
+  post type). Live issuance still needs the operator setup: the two
+  signing secrets plus the matching signing_keys row; until then a
+  completed course reports certificate_pending, which is the intended
+  fail-closed state. Still blocked: the Phase 1 preview smoke flows
+  and applying 0037 to preview D1 (no Cloudflare token in the
+  environment).

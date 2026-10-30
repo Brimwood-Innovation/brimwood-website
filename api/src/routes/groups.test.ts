@@ -249,3 +249,246 @@ describe("reopen", () => {
     expect(active.status).toBe(400);
   });
 });
+
+/* --- Group proposals: three co-founders plus admin approval --- *
+ * A shared store lets several member and staff envs act on the same
+ * proposal, the way real members would: propose, endorse, approve. */
+interface ProposalSeed {
+  id: string;
+  name: string;
+  slug: string;
+  purpose: string;
+  join_policy: string;
+  status: string;
+  proposed_by: string;
+  created_at: string;
+}
+
+interface ProposalStore {
+  proposals: Map<string, ProposalSeed>;
+  supporters: Map<string, string[]>;
+}
+
+function newProposalStore(): ProposalStore {
+  const proposals = new Map<string, ProposalSeed>();
+  const supporters = new Map<string, string[]>();
+  proposals.set("new-builders", {
+    id: "prop-1",
+    name: "New Builders",
+    slug: "new-builders",
+    purpose: "A group for people starting their first build.",
+    join_policy: "open",
+    status: "proposed",
+    proposed_by: "member-1",
+    created_at: "2026-10-29T00:00:00Z",
+  });
+  supporters.set("prop-1", ["member-1"]);
+  proposals.set("quiet-craft", {
+    id: "prop-2",
+    name: "Quiet Craft",
+    slug: "quiet-craft",
+    purpose: "Slow, careful work shared once a week.",
+    join_policy: "request",
+    status: "proposed",
+    proposed_by: "member-9",
+    created_at: "2026-10-29T01:00:00Z",
+  });
+  supporters.set("prop-2", ["member-9"]);
+  return { proposals, supporters };
+}
+
+function proposalEnv(
+  store: ProposalStore,
+  user: { kind: "member" | "admin"; id: string }
+) {
+  const env = mockEnv();
+  const cookie =
+    user.kind === "admin"
+      ? adminSession(env, user.id)
+      : memberSession(env, user.id);
+  const prev = env.DB.handler;
+  env.DB.handler = (sql: string, params: unknown[]) => {
+    if (/INSERT INTO groups/i.test(sql)) {
+      const [id, slug, name, purpose, joinPolicy, proposedBy] = params as string[];
+      store.proposals.set(slug, {
+        id,
+        name,
+        slug,
+        purpose,
+        join_policy: joinPolicy,
+        status: "proposed",
+        proposed_by: proposedBy,
+        created_at: "2026-10-30T00:00:00Z",
+      });
+      return;
+    }
+    if (/INSERT INTO group_proposal_supporters/i.test(sql)) {
+      const [groupId, userId] = params as string[];
+      const list = store.supporters.get(groupId) ?? [];
+      if (!list.includes(userId)) list.push(userId);
+      store.supporters.set(groupId, list);
+      return;
+    }
+    if (/UPDATE groups SET status = 'active'/i.test(sql)) {
+      const groupId = params[1] as string;
+      for (const p of store.proposals.values())
+        if (p.id === groupId) p.status = "active";
+      return;
+    }
+    if (/UPDATE groups SET status = 'rejected'/i.test(sql)) {
+      const groupId = params[0] as string;
+      for (const p of store.proposals.values())
+        if (p.id === groupId) p.status = "rejected";
+      return;
+    }
+    if (/FROM group_proposal_supporters/i.test(sql)) {
+      return {
+        results: (store.supporters.get(params[0] as string) ?? []).map(
+          (user_id) => ({ user_id })
+        ),
+      };
+    }
+    if (/SELECT id FROM groups WHERE slug/i.test(sql)) {
+      const p = store.proposals.get(params[0] as string);
+      return { row: p ? { id: p.id } : null };
+    }
+    if (/FROM groups WHERE slug/i.test(sql)) {
+      const p = store.proposals.get(params[0] as string);
+      if (!p || p.status !== "proposed") return { row: null };
+      return { row: { ...p } };
+    }
+    if (/FROM groups WHERE status = 'proposed'/i.test(sql)) {
+      return {
+        results: [...store.proposals.values()]
+          .filter((p) => p.status === "proposed")
+          .map((p) => ({ ...p })),
+      };
+    }
+    return prev?.(sql, params);
+  };
+  return { env, cookie };
+}
+
+describe("group proposals", () => {
+  it("creates a proposal with the proposer as co-founder one", async () => {
+    const store = newProposalStore();
+    const { env, cookie } = proposalEnv(store, { kind: "member", id: "member-1" });
+    const res = await postJSON(
+      app,
+      "/proposals",
+      { name: "Night Owls Club", purpose: "People building late at night together." },
+      env,
+      cookie
+    );
+    const body: any = await res.json();
+    expect(res.status).toBe(201);
+    expect(body.proposal.slug).toBe("night-owls-club");
+    expect(body.proposal.supporters).toBe(1);
+    expect(body.proposal.ready).toBe(false);
+    expect(body.proposal.is_proposer).toBe(true);
+    expect(env.DB.inserts.get("groups")?.[0]).toMatchObject({
+      status: "proposed",
+      proposed_by: "member-1",
+    });
+    expect(env.DB.inserts.get("group_proposal_supporters")?.length).toBe(1);
+  });
+
+  it("rejects a short purpose, a bad slug, and a taken slug", async () => {
+    const store = newProposalStore();
+    const { env, cookie } = proposalEnv(store, { kind: "member", id: "member-1" });
+    const short = await postJSON(app, "/proposals", { name: "Owls", purpose: "Short." }, env, cookie);
+    expect(short.status).toBe(400);
+    const badSlug = await postJSON(
+      app,
+      "/proposals",
+      { name: "Owls Club", purpose: "People building late at night together.", slug: "Bad Slug!" },
+      env,
+      cookie
+    );
+    expect(badSlug.status).toBe(400);
+    const taken = await postJSON(
+      app,
+      "/proposals",
+      { name: "Other", purpose: "People building late at night together.", slug: "new-builders" },
+      env,
+      cookie
+    );
+    expect(taken.status).toBe(409);
+  });
+
+  it("lists only own proposals for members and all for staff", async () => {
+    const store = newProposalStore();
+    const member = proposalEnv(store, { kind: "member", id: "member-1" });
+    const mine = await get(member.env, member.cookie, "/proposals");
+    const mineBody: any = await mine.json();
+    expect(mineBody.proposals.map((p: any) => p.slug)).toEqual(["new-builders"]);
+    const staff = proposalEnv(store, { kind: "admin", id: "admin-1" });
+    const all = await get(staff.env, staff.cookie, "/proposals");
+    const allBody: any = await all.json();
+    expect(allBody.proposals.map((p: any) => p.slug)).toEqual([
+      "new-builders",
+      "quiet-craft",
+    ]);
+  });
+
+  it("endorses to three co-founders and ignores a repeat endorsement", async () => {
+    const store = newProposalStore();
+    const second = proposalEnv(store, { kind: "member", id: "member-2" });
+    const two = await postJSON(app, "/proposals/new-builders/endorse", {}, second.env, second.cookie);
+    const twoBody: any = await two.json();
+    expect(twoBody.proposal.supporters).toBe(2);
+    expect(twoBody.proposal.ready).toBe(false);
+    const third = proposalEnv(store, { kind: "member", id: "member-3" });
+    const three = await postJSON(app, "/proposals/new-builders/endorse", {}, third.env, third.cookie);
+    const body: any = await three.json();
+    expect(body.proposal.supporters).toBe(3);
+    expect(body.proposal.ready).toBe(true);
+    const again = await postJSON(app, "/proposals/new-builders/endorse", {}, third.env, third.cookie);
+    expect((await again.json()).proposal.supporters).toBe(3);
+    expect(third.env.DB.inserts.get("group_proposal_supporters")?.length).toBe(1);
+  });
+
+  it("hides a proposal from strangers but shows it to staff", async () => {
+    const store = newProposalStore();
+    const stranger = proposalEnv(store, { kind: "member", id: "member-7" });
+    const hidden = await get(stranger.env, stranger.cookie, "/proposals/new-builders");
+    expect(hidden.status).toBe(404);
+    const staff = proposalEnv(store, { kind: "admin", id: "admin-1" });
+    const seen = await get(staff.env, staff.cookie, "/proposals/new-builders");
+    expect(seen.status).toBe(200);
+    const seenBody: any = await seen.json();
+    expect(seenBody.proposal.supporters).toBe(1);
+  });
+
+  it("approves only a ready proposal and seats the co-founders", async () => {
+    const store = newProposalStore();
+    const staff = proposalEnv(store, { kind: "admin", id: "admin-1" });
+    const early = await postJSON(app, "/proposals/new-builders/approve", {}, staff.env, staff.cookie);
+    expect(early.status).toBe(400);
+    const second = proposalEnv(store, { kind: "member", id: "member-2" });
+    await postJSON(app, "/proposals/new-builders/endorse", {}, second.env, second.cookie);
+    const third = proposalEnv(store, { kind: "member", id: "member-3" });
+    await postJSON(app, "/proposals/new-builders/endorse", {}, third.env, third.cookie);
+    const member = proposalEnv(store, { kind: "member", id: "member-1" });
+    const denied = await postJSON(app, "/proposals/new-builders/approve", {}, member.env, member.cookie);
+    expect(denied.status).toBe(403);
+    const approved = await postJSON(app, "/proposals/new-builders/approve", {}, staff.env, staff.cookie);
+    expect((await approved.json()).status).toBe("active");
+    expect(staff.env.DB.inserts.get("group_members")?.length).toBe(3);
+    expect(staff.env.DB.inserts.get("group_members")).toContainEqual(
+      expect.objectContaining({ group_id: "prop-1", user_id: "member-1", role: "admin", state: "active" })
+    );
+    expect(staff.env.DB.inserts.get("group_members")).toContainEqual(
+      expect.objectContaining({ group_id: "prop-1", user_id: "member-2", role: "member", state: "active" })
+    );
+  });
+
+  it("rejects on staff decision and then hides the proposal", async () => {
+    const store = newProposalStore();
+    const staff = proposalEnv(store, { kind: "admin", id: "admin-1" });
+    const rejected = await postJSON(app, "/proposals/quiet-craft/reject", {}, staff.env, staff.cookie);
+    expect((await rejected.json()).status).toBe("rejected");
+    const gone = await get(staff.env, staff.cookie, "/proposals/quiet-craft");
+    expect(gone.status).toBe(404);
+  });
+});
