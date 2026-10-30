@@ -2416,3 +2416,56 @@ from the self-chaining loop's first run on 2026-10-21.
   fail-closed state. Still blocked: the Phase 1 preview smoke flows
   and applying 0037 to preview D1 (no Cloudflare token in the
   environment).
+- Cycle 42, 2026-10-30: the rituals read API, the recorded Phase 3
+  follow-up (the hub home card showed a fixed Mon/Wed/Fri rhythm
+  because no read API existed), in
+  ~/workspace/company/wt-phase5-rituals-read on branch
+  phase5/rituals-read (no open loop PR; develop CI green at the PR 81
+  merge; 22 is the founder-tapped README PR, not loop work). GET
+  /api/rituals (members only, 401 otherwise) lists active rituals the
+  caller may see, Monday first, then local time, then title:
+  members-wide rituals for every member, group rituals only for
+  active members of that group plus staff, and rituals tied to a
+  proposed, rejected, or archived group hidden from everyone here.
+  Cards carry schedule facts only (title, weekday, local time, zone,
+  group name and slug); no member ids, no author id, and no
+  body_template, which stays staff copy until the cron mints it into
+  a feed post. The hub home card now renders from this endpoint
+  (weekday, 12-hour local time, group name when set; empty and error
+  states in plain words) and keeps its "Add yours" link to the feed.
+  No migration was needed: the rituals table dates to 0026. Em
+  dashes scrubbed from the touched files (none found). Verification
+  before the PR: 832 API tests pass (43 files, 3 new rituals tests
+  covering member visibility, staff bypass, and sign-in), API
+  typecheck clean, site build clean (36 pages, the built hub page
+  carries the rituals container), all 38 migrations apply cleanly
+  to a fresh local SQLite database (140 tables), and the route SQL
+  itself was run against that database with fixture rows: member,
+  staff, and stranger views all returned exactly the expected sets
+  in Monday-first order. Grade (dimensions this cycle touched,
+  scored from evidence): functional 2,500/2,500 (list plus hub card
+  work end to end, with empty and error states); schema and API
+  2,000/2,000 (one new endpoint, no schema change, migration chain
+  green, SQL verified against real SQLite); security 1,250/1,250
+  (member-only, group leak rule preserved, no ids exposed);
+  code quality 1,000/1,000 (typecheck clean, tests in the existing
+  style, no new dependency); brand and copy 750/750 (Canadian
+  spelling, no new em dash, no member named). Accessibility and
+  performance untouched (no new page weight, the card reuses the
+  existing row shape and the canonical escaper). Pro-rated total
+  10,000/10,000, no zero dimension, no open P0. Verdict: ACCEPT.
+  Also verified this cycle, closing the first queued follow-up: the
+  /hub/g/* rewrite serves the group page shell live on this branch
+  preview (the phase5-rituals-read preview answered
+  /hub/g/demo-night-crew with the group page, "Checking your
+  session", not a 404), so the public/_redirects rewrite holds.
+  Next improvement: the founder walkthrough of every panel and flow
+  on preview, feeding the production green signal; until it starts,
+  the next loop cycle takes the next open cross-phase follow-up
+  (the deck command palette, the /hub route renaming, the feed header
+  notices, the staff spotlight post type). Live issuance still needs
+  the operator setup: the two signing secrets plus the matching
+  signing_keys row; until then a completed course reports
+  certificate_pending, which is the intended fail-closed state.
+  Still blocked: the Phase 1 preview smoke flows and applying 0037
+  to preview D1 (no Cloudflare token in the environment).
