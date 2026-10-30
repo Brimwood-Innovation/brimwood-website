@@ -24,6 +24,11 @@
  * The public site header and footer from Base stay above and below
  * the shell, as in the Phase 2 slices; the shell is the in-page
  * app frame, not a replacement layout.
+ * Phase 5 command palette: Ctrl K (or Cmd K) and the search pill open
+ * an in-page palette over the shell (people, feed posts, events,
+ * lessons, blog posts in one list, from the shipped /api/search and
+ * /api/people endpoints). The pill stays a plain link to /search, so
+ * without JavaScript it still reaches the full search page.
  */
 interface Props {
   /* Deck place shown as current in the sidebar or tabs, or
@@ -150,6 +155,28 @@ const isCurrent = (key: string) => (current === key ? "page" : undefined);
       </details>
     </nav>
   </div>
+
+  <div class="hub-palette" id="hubPalette" hidden>
+    <div class="hub-palette-backdrop" data-palette-close></div>
+    <div class="hub-palette-box" role="dialog" aria-modal="true" aria-label="Quick search">
+      <label class="hub-palette-label" for="hubPaletteInput">Search the hub</label>
+      <input
+        id="hubPaletteInput"
+        class="hub-palette-input"
+        type="search"
+        placeholder="People, posts, events, lessons"
+        autocomplete="off"
+        maxlength="100"
+      />
+      <p class="hub-palette-status" id="hubPaletteStatus" role="status">Type at least two characters to search.</p>
+      <div class="hub-palette-results" id="hubPaletteResults"></div>
+      <p class="hub-palette-foot">
+        Arrow keys move, Enter opens, Esc closes.
+        <a href="/search">Full search page</a>
+      </p>
+    </div>
+  </div>
 </div>
 
 <script is:inline src="/js/hub-shell.js"></script>
+<script is:inline src="/js/command-palette.js"></script>

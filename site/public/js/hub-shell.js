@@ -60,6 +60,9 @@
       var t = e.target;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
       e.preventDefault();
-      window.location.href = "/search";
+      // The command palette (command-palette.js) owns Ctrl K when it
+      // loaded; without it, the shortcut still reaches /search.
+      if (window.BrimwoodCommandPalette) window.BrimwoodCommandPalette.open();
+      else window.location.href = "/search";
     });
   })();

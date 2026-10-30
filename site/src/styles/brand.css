@@ -599,6 +599,74 @@ a.profile-link:hover { text-decoration: underline; }
 .hub-menu a[aria-current="page"] { background: var(--mint); font-weight: 700; }
 .hub-menu-soon { color: var(--stone); opacity: 0.7; cursor: default; }
 .hub-body { min-width: 0; padding: 20px; }
+/* Command palette (Phase 5 follow-up, deck section 07). A fixed
+ * overlay above the shell; hidden until Ctrl K or the search pill
+ * opens it. Rows are plain links with 44px minimum targets. */
+.hub-palette[hidden] { display: none; }
+.hub-palette {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+.hub-palette-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 61, 43, 0.45);
+}
+.hub-palette-box {
+  position: relative;
+  width: min(640px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  margin: 24px auto;
+  padding: 16px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid rgba(18, 26, 22, 0.12);
+  border-radius: 16px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.24);
+}
+.hub-palette-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--stone);
+}
+.hub-palette-input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid rgba(18, 26, 22, 0.2);
+  border-radius: 12px;
+}
+.hub-palette-status { margin-top: 12px; font-size: 14px; color: var(--stone); }
+.hub-palette-results { margin-top: 8px; }
+.hub-palette-group { margin-top: 16px; }
+.hub-palette-group-title {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--stone);
+}
+.hub-palette-list { list-style: none; }
+.hub-palette-row {
+  display: block;
+  min-height: 44px;
+  padding: 8px 10px;
+  color: var(--ink);
+  border-radius: 8px;
+  text-decoration: none;
+}
+.hub-palette-row:hover, .hub-palette-row:focus-visible { background: var(--mint); }
+.hub-palette-row-title { display: block; font-weight: 600; }
+.hub-palette-row-sub { display: block; font-size: 13px; color: var(--stone); }
+.hub-palette-foot { margin-top: 16px; font-size: 13px; color: var(--stone); }
 .hub-tabs { display: none; }
 @container (max-width: 640px) {
   .hub-frame { display: flex; flex-direction: column; }

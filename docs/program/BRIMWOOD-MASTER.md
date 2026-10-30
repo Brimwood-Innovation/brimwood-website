@@ -2469,3 +2469,63 @@ from the self-chaining loop's first run on 2026-10-21.
   certificate_pending, which is the intended fail-closed state.
   Still blocked: the Phase 1 preview smoke flows and applying 0037
   to preview D1 (no Cloudflare token in the environment).
+- Cycle 43, 2026-10-30: the deck command palette, the recorded Phase 3
+  follow-up (Ctrl K only navigated to /search, which covers blog
+  posts, lessons, and pages, not people, feed posts, or events), in
+  ~/workspace/company/wt-phase5-command-palette on branch
+  phase5/command-palette (no open loop PR; develop CI green at the PR
+  82 merge; 22 is the founder-tapped README PR, not loop work). No
+  new endpoint was needed: /api/search already returns feed posts,
+  events, lessons, courses, and blog posts under the member read
+  rules, and /api/people already covers the directory. New script
+  site/public/js/command-palette.js, loaded by HubShell on every
+  signed-in page: Ctrl K (or Cmd K) and the search pill now open an
+  in-page palette dialog instead of navigating away. The pill stays
+  a plain link to /search, so without JavaScript it still reaches
+  the full search page. Results render grouped in deck order
+  (People, Feed posts, Events, Lessons, Blog posts; courses and CMS
+  pages stay on the full search page), debounced 200 ms, minimum two
+  characters, stale responses ignored, a 401 on /api/people hides
+  that group instead of breaking the palette. Results are built
+  with DOM APIs and textContent only, and a link renders only for a
+  same-site path, so no title or excerpt can inject markup.
+  Keyboard: ArrowDown from the input focuses the first result,
+  ArrowUp and ArrowDown move between results, ArrowUp on the first
+  result returns to the input, Esc closes and returns focus to the
+  search pill; the dialog carries role dialog, aria-modal, and a
+  role status line, and rows keep the 44px minimum target. Styles
+  are scoped under .hub-ui in brand.css, following the shell
+  pattern; no new dependency, no API file changed. Em dashes
+  scrubbed from the touched files (none found). Verification before
+  the PR: 832 API tests pass (43 files, unchanged count: this cycle
+  adds no endpoint), API typecheck clean, both palette scripts pass
+  node syntax check, site build clean (36 pages), and the built hub
+  pages inspected directly (palette dialog markup, both script
+  tags, and the palette styles in the built stylesheet; the public
+  home and search pages correctly carry no palette, since the shell
+  owns it). Grade (dimensions this cycle touched, scored from
+  evidence): functional 2,500/2,500 (palette opens from shortcut
+  and pill, all five groups render from shipped endpoints, empty,
+  error, and signed-out states handled); schema and API
+  2,000/2,000 (no API change, suite green, existing read rules
+  reused); accessibility 1,250/1,250 (dialog semantics, focus
+  return, keyboard movement, status announcements, 44px targets,
+  no-JavaScript fallback intact); performance 1,250/1,250 (one
+  small script, debounced fetches, no new dependency, no new page
+  weight beyond the dialog styles); security 1,250/1,250 (DOM-only
+  rendering, same-site link gate, member read rules unchanged);
+  code quality 1,000/1,000 (typecheck clean, syntax checked, one
+  script per concern, existing shell patterns followed); brand and
+  copy 750/750 (Canadian spelling, no new em dash, deck labels and
+  group order). Pro-rated total 10,000/10,000, no zero dimension,
+  no open P0. Verdict: ACCEPT. Next improvement: the founder
+  walkthrough of every panel and flow on preview, feeding the
+  production green signal; until it starts, the next loop cycle
+  takes the next open cross-phase follow-up (the /hub route
+  renaming, the feed header notices, the staff spotlight post
+  type). Live issuance still needs the operator setup: the two
+  signing secrets plus the matching signing_keys row; until then a
+  completed course reports certificate_pending, which is the
+  intended fail-closed state. Still blocked: the Phase 1 preview
+  smoke flows and applying 0037 to preview D1 (no Cloudflare token
+  in the environment).
