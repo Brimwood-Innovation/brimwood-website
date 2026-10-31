@@ -60,6 +60,8 @@ import StoriesTray from "../../components/StoriesTray.astro";
           <button type="button" class="btn btn-ghost btn-sm intent-chip" data-intent="question" aria-pressed="false">Ask a question</button>
           <button type="button" class="btn btn-ghost btn-sm intent-chip" data-intent="feedback" aria-pressed="false">Ask for feedback</button>
           <button type="button" class="btn btn-ghost btn-sm intent-chip" data-intent="resource" aria-pressed="false">Share a resource</button>
+          <!-- Staff only: revealed when the viewer's own profile says admin. The API still enforces it. -->
+          <button type="button" class="btn btn-ghost btn-sm intent-chip" id="spotlight-chip" data-intent="spotlight" aria-pressed="false" hidden>Spotlight a member</button>
         </div>
         <div style="display:flex;gap:10px;">
           <span id="composer-avatar" class="feed-avatar">·</span>
@@ -126,7 +128,7 @@ import StoriesTray from "../../components/StoriesTray.astro";
   <style>
     .feed-post { background: #fff; border: 1px solid rgba(18,26,22,0.08); border-radius: 16px; padding: 18px; }
     .feed-post .meta { font-size: 12.5px; color: var(--stone); }
-    .staff-badge { font-size: 11px; font-weight: 700; color: var(--emerald-deep); background: var(--mint); border-radius: 999px; padding: 2px 8px; margin-left: 4px; }
+    .staff-badge, .spotlight-badge { font-size: 11px; font-weight: 700; color: var(--emerald-deep); background: var(--mint); border-radius: 999px; padding: 2px 8px; margin-left: 4px; }
     .intent-chip[aria-pressed="true"] { background: var(--mint); color: var(--emerald-deep); font-weight: 700; }
     .feed-body { font-size: 15px; line-height: 1.6; margin: 8px 0 0; white-space: pre-wrap; word-wrap: break-word; }
     .media-grid { display: grid; gap: 8px; margin-top: 10px; }
@@ -254,10 +256,11 @@ import StoriesTray from "../../components/StoriesTray.astro";
       // Only me, or Members; staff authors carry a Staff badge.
       const audienceLabel = p.group ? esc(p.group.name) : (p.audience === "only_me" ? "Only me" : "Members");
       const staffBadge = p.author && p.author.is_staff ? ` <span class="staff-badge">Staff</span>` : "";
+      const spotlightBadge = p.intent === "spotlight" ? ` <span class="spotlight-badge">Spotlight</span>` : "";
       return `<article class="feed-post" id="post-${esc(p.id)}">
         <div style="display:flex;gap:10px;align-items:center;">
           <a href="${esc(p.author.profile_url || "/members")}" style="display:inline-flex;flex:none;text-decoration:none;" aria-label="${esc(p.author.display)}'s profile">${avatarHtml(p.author)}</a>
-          <div><a href="${esc(p.author.profile_url || "/members")}" style="font-size:14px;font-weight:700;color:inherit;text-decoration:none;">${esc(p.author.display)}</a>${staffBadge}<br /><span class="meta">${relTime(p.created_at)} · ${audienceLabel}</span></div>
+          <div><a href="${esc(p.author.profile_url || "/members")}" style="font-size:14px;font-weight:700;color:inherit;text-decoration:none;">${esc(p.author.display)}</a>${staffBadge}${spotlightBadge}<br /><span class="meta">${relTime(p.created_at)} · ${audienceLabel}</span></div>
           <button type="button" class="btn btn-ghost btn-sm" data-save="${esc(p.id)}" style="margin-left:auto;" aria-label="Save post" aria-pressed="false">Save</button>
           <button type="button" class="btn btn-ghost btn-sm" data-share="${esc(p.id)}" data-share-author="${esc(p.author.display)}" aria-label="Share post">↗</button>
         </div>
@@ -596,6 +599,7 @@ import StoriesTray from "../../components/StoriesTray.astro";
       question: "Ask the room a question…",
       feedback: "What do you want feedback on…",
       resource: "Share a link, tool, or reading…",
+      spotlight: "Shine a light on a member, build, or win…",
     };
     document.querySelectorAll(".intent-chip").forEach((btn) =>
       btn.addEventListener("click", () => {
@@ -648,6 +652,8 @@ import StoriesTray from "../../components/StoriesTray.astro";
               '<span id="composer-avatar" style="display:inline-flex;flex:none;">' +
               brimwoodAvatar({ src: me.user.avatar_url, name: me.user.display_name, size: 40 }) +
               "</span>";
+            // Staff only, presentation only: the API enforces the gate.
+            if (me.user.role === "admin") $("spotlight-chip").hidden = false;
           }
         } catch {}
         $("feed-loading").style.display = "none";

@@ -6,8 +6,9 @@
  *                                 → { key, url, kind: photo|video|reel, duration_s }
  *   POST /api/posts               member post: text + media refs + optional poll,
  *                                 plus the deck composer fields: intent (one of the
- *                                 four member intents) and audience (members,
- *                                 only_me, or group with group_id)
+ *                                 four member intents, or spotlight for staff only)
+ *                                 and audience (members, only_me, or group
+ *                                 with group_id)
  *   GET  /api/groups/mine         the caller's active groups, for the composer
  *                                 audience picker
  *   GET  /api/feed?limit=&cursor= chronological feed, embeds media + poll state
@@ -25,7 +26,7 @@
  */
 import { Hono } from "hono";
 import type { Bindings } from "../index";
-import { getUserId } from "../lib/auth";
+import { getUserId, isAdminUser } from "../lib/auth";
 import { cleanStr, clientIp } from "../lib/validate";
 import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 import { initialsFor } from "./profiles";
@@ -57,9 +58,12 @@ const POLL_DURATIONS: Record<string, number> = {
 
 /* Phase 3 slice 4, deck feed screen: the member composer offers exactly
  * these four intents (the deck's intent chips). Staff post types
- * (announcement, spotlight, ritual, event_recap, intro) are not member
- * composer values; they arrive through the Studio slice instead. */
+ * (announcement, ritual, event_recap, intro) are not member composer
+ * values; ritual arrives through the cron publish queue. Phase 5
+ * cycle 46 closes the last one: spotlight is a staff-only composer
+ * value, gated on the live admin role below, never on the session. */
 const MEMBER_INTENTS = ["progress", "question", "feedback", "resource"] as const;
+const STAFF_INTENTS = ["spotlight"] as const;
 
 /** Require a signed-in member; returns the user id, or null. */
 async function needUser(c: any): Promise<string | null> {
@@ -234,7 +238,14 @@ app.post("/posts", async (c) => {
   // defaults (intent progress, audience members) apply when omitted, so old
   // clients keep posting exactly as before.
   const intent = typeof data.intent === "string" && data.intent ? data.intent : "progress";
-  if (!(MEMBER_INTENTS as readonly string[]).includes(intent)) {
+  if ((STAFF_INTENTS as readonly string[]).includes(intent)) {
+    // Staff spotlight: the role is re-read from D1 on every call, so a
+    // demoted admin loses this on the next request. Members asking for
+    // a spotlight get 403 (forbidden), not 400 (unknown type).
+    if (!(await isAdminUser(c, userId))) {
+      return c.json({ ok: false, error: "Spotlight posts are staff only." }, 403);
+    }
+  } else if (!(MEMBER_INTENTS as readonly string[]).includes(intent)) {
     return c.json({ ok: false, error: "Pick one of the four post types: progress, question, feedback, or resource." }, 400);
   }
   const audience = typeof data.audience === "string" && data.audience ? data.audience : "members";

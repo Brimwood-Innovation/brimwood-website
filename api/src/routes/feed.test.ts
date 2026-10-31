@@ -1,7 +1,7 @@
 /* Route tests: feed - posts, media posts, polls, reels, voting, results. */
 import { describe, it, expect } from "vitest";
 import app from "./feed";
-import { mockEnv, memberSession, postJSON, type MockEnv } from "../test/helpers";
+import { mockEnv, memberSession, adminSession, postJSON, type MockEnv } from "../test/helpers";
 
 function envWithMedia(r2: Record<string, { contentType: string }> = {}): MockEnv {
   const env = mockEnv();
@@ -716,6 +716,37 @@ describe("POST /posts deck composer fields (Phase 3 slice 4)", () => {
       h
     );
     expect(res.status).toBe(400);
+    expect(env.DB.inserts.get("feed_posts")).toBeUndefined();
+  });
+
+  it("stores a spotlight post for staff", async () => {
+    const env = envWithMedia();
+    const h = adminSession(env);
+    const res = await postJSON(
+      app,
+      "/posts",
+      { body: "Member build of the week: a scheduler that retries.", intent: "spotlight" },
+      env,
+      h
+    );
+    expect(res.status).toBe(200);
+    const ins = env.DB.inserts.get("feed_posts");
+    expect(ins?.length).toBe(1);
+    expect(ins?.[0].intent).toBe("spotlight");
+    expect(ins?.[0].audience).toBe("members");
+  });
+
+  it("rejects a spotlight post from a non-staff member with 403", async () => {
+    const env = envWithMedia();
+    const h = memberSession(env);
+    const res = await postJSON(
+      app,
+      "/posts",
+      { body: "Member build of the week.", intent: "spotlight" },
+      env,
+      h
+    );
+    expect(res.status).toBe(403);
     expect(env.DB.inserts.get("feed_posts")).toBeUndefined();
   });
 
