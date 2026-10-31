@@ -2639,3 +2639,50 @@ from the self-chaining loop's first run on 2026-10-21.
   reports certificate_pending, which is the intended fail-closed
   state. Still blocked: the Phase 1 preview smoke flows and applying
   0037 to preview D1 (no Cloudflare token in the environment).
+- Cycle 46, 2026-10-31: the staff spotlight post type, the last open
+  cross-phase follow-up, in a worktree on branch phase5/spotlight (no
+  open loop PR; develop CI green at the PR 86 merge; 22 is the
+  founder-tapped README PR, not loop work). The gap was a type with no
+  creation path: the 0022 feed_posts CHECK already allowed spotlight,
+  but the member composer rejected it and no endpoint created one.
+  POST /api/posts now accepts intent spotlight for staff only, with
+  the admin role re-read from D1 on every call (isAdminUser), so a
+  demoted admin loses it on the next request; non-staff asking for a
+  spotlight get 403, and every other non-member intent still gets
+  400. No migration, no new dependency, no API change beyond the one
+  intent value. The feed composer gains a Spotlight chip, hidden by
+  default and revealed only when the viewer's own profile says admin
+  (presentation only; the API gate is the authority). The feed list
+  and the single post page render a Spotlight badge on spotlight
+  posts beside the existing Staff badge. Em dashes scrubbed from the
+  touched files (none found; diff grep zero). Verification on the
+  worktree before the PR: 839 API tests pass (43 files, up 2 from
+  837, the new tests covering staff spotlight storage and the member
+  403 with no insert), API typecheck clean, site build clean (36
+  pages, unchanged), and the built feed and post pages carry the
+  Spotlight chip and badge. Shipped in PR #87 (merged to develop;
+  build, secrets, audit, analyze, lighthouse, CodeQL, and Cloudflare
+  Pages all green). Grade (dimensions this cycle touched, scored
+  from evidence): functional 2,500/2,500 (staff can create, members
+  cannot, and the type renders labelled in both feed views);
+  schema and API 2,000/2,000 (existing tables only, suite green, no
+  migration needed); accessibility 1,250/1,250 (labelled chip group
+  and badge markup unchanged in shape, Lighthouse gate passed);
+  performance 1,250/1,250 (one extra role lookup per spotlight
+  attempt only, no new dependency, page count unchanged); security
+  1,250/1,250 (live role re-read, 403 for members, escaped output,
+  CI and CodeQL green); code quality 1,000/1,000 (typecheck clean,
+  tests in the existing style, shared fragments untouched); brand
+  and copy 750/750 (Canadian spelling, no new em dash, no member
+  named). Pro-rated total 10,000/10,000, no zero dimension, no open
+  P0. Verdict: ACCEPT. Next improvement: the founder walkthrough of
+  every panel and flow on preview, feeding the production green
+  signal; with the spotlight type shipped, no recorded cross-phase
+  follow-up remains open, so until the walkthrough starts the next
+  loop cycle runs a fresh full grading run over cycles 41 to 46, the
+  same slice 8 pattern as cycle 40. Live
+  issuance still needs the operator setup: the two signing secrets
+  plus the matching signing_keys row; until then a completed course
+  reports certificate_pending, which is the intended fail-closed
+  state. Still blocked: the Phase 1 preview smoke flows and applying
+  0037 to preview D1 (no Cloudflare token in the environment).
