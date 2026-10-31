@@ -11,6 +11,8 @@
  *   GET  /api/groups/mine         the caller's active groups, for the composer
  *                                 audience picker
  *   GET  /api/feed?limit=&cursor= chronological feed, embeds media + poll state
+ *   GET  /api/feed/notices     member-only header notices: next demo night
+ *                                 plus up to 3 open (unanswered) questions
  *   POST /api/polls/:id/vote      { option_id } - one vote per member, changeable
  *                                 until the poll closes
  *   GET  /api/polls/:id/results   counts always; voter list only when the poll's
@@ -556,6 +558,71 @@ app.get("/posts/:id", async (c) => {
   if (!row) return c.json({ ok: false, error: "Not found." }, 404);
   const posts = await enrichPosts(c, userId, [row]);
   return c.json({ ok: true, post: posts[0] });
+});
+
+/* --- Member: feed header notices (Phase 5 follow-up) ---
+ * next_demo: the earliest upcoming published demo night, or null.
+ * open_questions: up to 3 visible question posts with zero published,
+ * non-deleted comments, newest first. Reuses FEED_VISIBILITY, so blocked
+ * authors, other members only_me posts, and non-member groups never
+ * appear here, exactly as in the feed list. */
+
+app.get("/feed/notices", async (c) => {
+  const userId = await needUser(c);
+  if (!userId) return c.json({ ok: false, error: "Sign in required." }, 401);
+
+  const { DB } = c.env;
+  const now = nowIso();
+
+  const demo: any = await DB.prepare(
+    `SELECT e.id, e.slug, e.title, e.starts_at, e.ends_at, e.location,
+            (SELECT COUNT(*) FROM demo_slots d
+              WHERE d.event_id = e.id AND d.status = 'open') AS demo_slots_open
+     FROM events e
+     WHERE e.status = 'published' AND e.kind = 'demo_night' AND e.starts_at >= ?
+     ORDER BY e.starts_at ASC LIMIT 1`
+  )
+    .bind(now)
+    .first();
+
+  const questionRows = await DB.prepare(
+    `SELECT p.id, p.body, p.created_at,
+            u.id AS author_id, u.name AS author_name, u.display_name, u.username AS author_username,
+            u.avatar_key, u.avatar_r2_key, u.role AS author_role
+     FROM feed_posts p
+     JOIN users u ON u.id = p.author_id
+     WHERE p.intent = 'question'
+     AND NOT EXISTS (SELECT 1 FROM feed_comments fc
+       WHERE fc.post_id = p.id AND fc.status = 'published' AND fc.deleted_at IS NULL)
+     ${FEED_VISIBILITY}
+     ORDER BY p.created_at DESC LIMIT 3`
+  )
+    .bind(userId, userId, userId)
+    .all();
+
+  return c.json({
+    ok: true,
+    next_demo: demo
+      ? {
+          id: demo.id,
+          slug: demo.slug,
+          title: demo.title,
+          starts_at: demo.starts_at,
+          ends_at: demo.ends_at,
+          location: demo.location,
+          demo_slots_open: Number(demo.demo_slots_open) || 0,
+        }
+      : null,
+    open_questions: (questionRows.results as any[]).map((q) => ({
+      id: q.id,
+      body: q.body,
+      created_at: q.created_at,
+      author: publicAuthor(
+        { id: q.author_id, name: q.author_name, display_name: q.display_name, author_username: q.author_username, avatar_key: q.avatar_key, avatar_r2_key: q.avatar_r2_key, author_role: q.author_role },
+        c
+      ),
+    })),
+  });
 });
 
 /* --- Member: chronological feed --- */
