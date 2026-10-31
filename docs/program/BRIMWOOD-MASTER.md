@@ -2686,3 +2686,46 @@ from the self-chaining loop's first run on 2026-10-21.
   reports certificate_pending, which is the intended fail-closed
   state. Still blocked: the Phase 1 preview smoke flows and applying
   0037 to preview D1 (no Cloudflare token in the environment).
+- Cycle 47, 2026-10-31: a fresh full grading run over cycles 41 to 46,
+  the same slice 8 pattern as cycle 40, in
+  ~/workspace/company/wt-cycle47-grading on branch
+  phase5/grading-cycle47 (no open loop PR; develop CI green at the PR
+  88 merge; 22 is the founder-tapped README PR, not loop work). Full
+  report: docs/program/PHASE5-GRADING-CYCLE47.md. Evidence, all
+  against develop HEAD ebbb92b: 839 API tests pass (43 files, 0
+  failures) with the default command after the fix below, API
+  typecheck clean, site build clean (36 pages, 9.99 seconds), all 38
+  migrations apply cleanly to a fresh local SQLite database (140
+  tables, 116 triggers), em dash count zero in shipped code (only the
+  vendor Decap bundle and the tasks working notes still carry it, both
+  excluded by design), no TODO or FIXME in source, no console.log in
+  site/src, every public JS file passes node syntax check, the single
+  canonical escaper holds, and all six cycles 41 to 46 features were
+  verified in place (group proposals, rituals read API, command
+  palette, /hub routes with 301 redirects, feed notices, spotlight).
+  One gap found and fixed in this cycle: the password login tests
+  failed 3 of 839 under the default full-suite run because the
+  rate-limits test, which runs 11 sequential 600k PBKDF2 verifies,
+  runs past the 5 second default timeout under parallel load, and its
+  orphaned verifies then pollute the two dummy-verify deriveBits
+  counts. Product code was not at fault (isolated file passes 32 of
+  32, full suite passes 839 of 839 with a 60 second timeout flag, CI
+  green). Fix: that one test now carries an explicit 30 second
+  timeout, harness only, with the F8 CPU budget test untouched; no
+  product code, route, or assertion changed. Grade (all dimensions
+  scored from evidence): functional 2,500/2,500; schema and API
+  2,000/2,000; accessibility 1,250/1,250; performance 1,250/1,250;
+  security 1,250/1,250; code quality 1,000/1,000; brand and copy
+  750/750. Pro-rated total 10,000/10,000, no zero dimension, no open
+  P0. Verdict: ACCEPT. Next improvement: the founder walkthrough of
+  every panel and flow on preview, feeding the production green
+  signal; with the spotlight type shipped and this grading run clean,
+  no recorded cross-phase follow-up remains open, so until the
+  walkthrough starts the next loop cycle has no named improvement
+  left in this slice and either re-runs a grading pass or waits on
+  the walkthrough. Live issuance still needs the operator setup: the
+  two signing secrets plus the matching signing_keys row; until then
+  a completed course reports certificate_pending, which is the
+  intended fail-closed state. Still blocked: the Phase 1 preview
+  smoke flows and applying 0037 to preview D1 (no Cloudflare token
+  in the environment).

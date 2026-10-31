@@ -185,6 +185,11 @@ describe("POST /login", () => {
     expect((await res.json()).error).toBe("Invalid email or password.");
   });
 
+  // 30s timeout, not the 5s default: this test runs 11 sequential logins,
+  // each doing a real 600k PBKDF2 verify, so under a parallel full-suite
+  // run it runs past the default timeout and its orphaned verifies then
+  // pollute the deriveBits counts in the two dummy-verify tests below.
+  // The timeout is harness only; the F8 CPU budget test is untouched.
   it("rate-limits by IP", async () => {
     await seedUser({ withPassword: true });
     // Exhaust the 10/15min IP bucket.
@@ -193,7 +198,7 @@ describe("POST /login", () => {
     }
     const res = await postJSON(app, "/login", { email: "user@example.com", password: "CorrectHorse12" }, env);
     expect(res.status).toBe(429);
-  });
+  }, 30000);
 
   it("burns a dummy PBKDF2 verify for unknown emails (no timing oracle)", async () => {
     await seedUser({ withPassword: true });
