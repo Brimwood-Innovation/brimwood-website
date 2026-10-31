@@ -47,6 +47,11 @@ import StoriesTray from "../../components/StoriesTray.astro";
         <div id="reels-list" style="display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;"></div>
       </div>
 
+      <!-- Feed notices: next demo night plus open questions, above the composer -->
+      <section id="feed-notices" class="feed-post" aria-label="Feed notices" style="display:none;margin-bottom:18px;">
+        <div id="feed-notices-body"></div>
+      </section>
+
       <!-- Composer -->
       <div class="card" id="composer" style="margin-bottom:18px;">
         <!-- Intent chips (deck feed screen): each chip sets the placeholder -->
@@ -283,6 +288,43 @@ import StoriesTray from "../../components/StoriesTray.astro";
         card.addEventListener("mouseleave", () => card.querySelector("video").pause());
         el.appendChild(card);
       });
+    }
+
+    /* Feed notices: next demo night and open questions. Never blocks the
+     * feed: any failure leaves the region hidden and the feed working. */
+    async function loadNotices() {
+      try {
+        const r = await api("/api/feed/notices");
+        if (!r.ok) return;
+        const d = await r.json();
+        if (!d.ok) return;
+        const demo = d.next_demo;
+        const questions = d.open_questions || [];
+        if (!demo && !questions.length) return;
+        const parts = [];
+        if (demo) {
+          const slots = demo.demo_slots_open
+            ? ` · ${demo.demo_slots_open} demo slot${demo.demo_slots_open === 1 ? "" : "s"} open`
+            : "";
+          parts.push(
+            `<p class="feed-body" style="margin:0 0 10px;"><a href="/events/${esc(demo.slug)}">Next demo night: ${esc(demo.title)}</a>` +
+            `<br /><span class="meta">${esc(new Date(demo.starts_at).toLocaleDateString("en-CA", { weekday: "long", month: "long", day: "numeric" }))}${esc(slots)}</span></p>`
+          );
+        }
+        if (questions.length) {
+          parts.push(
+            `<p class="meta" style="margin:0 0 6px;">Open questions waiting for an answer</p>` +
+            `<ul style="margin:0;padding-left:18px;display:grid;gap:6px;">` +
+            questions.map((q) =>
+              `<li><a href="/hub/post/?id=${esc(q.id)}">${esc(q.body ? q.body.slice(0, 120) : "Open question")}</a>` +
+              ` <span class="meta">by ${esc(q.author.display)}</span></li>`
+            ).join("") +
+            `</ul>`
+          );
+        }
+        $("feed-notices-body").innerHTML = parts.join("");
+        $("feed-notices").style.display = "block";
+      } catch { /* region stays hidden; the feed still loads */ }
     }
 
     async function loadFeed(more) {
@@ -597,6 +639,7 @@ import StoriesTray from "../../components/StoriesTray.astro";
 
     (async () => {
       try {
+        loadNotices();
         await loadFeed(false);
         try {
           const me = await (await api("/api/profiles/me")).json();

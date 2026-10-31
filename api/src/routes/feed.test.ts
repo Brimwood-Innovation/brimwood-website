@@ -803,3 +803,119 @@ describe("GET /groups/mine (Phase 3 slice 4)", () => {
     expect(d.groups[0].slug).toBe("forge-talk");
   });
 });
+
+describe("GET /feed/notices (Phase 5 feed header notices)", () => {
+  const EVENTS = [
+    { id: "e-past", slug: "demo-past", title: "Past demo", starts_at: "2020-01-03T18:00:00.000Z", ends_at: null, location: "Hub", status: "published", kind: "demo_night", demo_slots_open: 0 },
+    { id: "e-draft", slug: "demo-draft", title: "Draft demo", starts_at: "2999-01-03T18:00:00.000Z", ends_at: null, location: "Hub", status: "draft", kind: "demo_night", demo_slots_open: 2 },
+    { id: "e-other", slug: "workshop", title: "Workshop", starts_at: "2999-01-02T18:00:00.000Z", ends_at: null, location: "Hub", status: "published", kind: "other", demo_slots_open: 0 },
+    { id: "e-later", slug: "demo-later", title: "Later demo", starts_at: "2999-01-10T18:00:00.000Z", ends_at: "2999-01-10T20:00:00.000Z", location: "Hub", status: "published", kind: "demo_night", demo_slots_open: 1 },
+    { id: "e-next", slug: "demo-next", title: "Next demo", starts_at: "2999-01-08T18:00:00.000Z", ends_at: "2999-01-08T20:00:00.000Z", location: "Hub", status: "published", kind: "demo_night", demo_slots_open: 3 },
+  ];
+  const COMMENTS: Record<string, { status: string; deleted_at: string | null }[]> = {
+    "q-answered": [{ status: "published", deleted_at: null }],
+    "q-held": [{ status: "held", deleted_at: null }, { status: "published", deleted_at: "2026-10-01T00:00:00.000Z" }],
+  };
+  const QUESTIONS = [
+    { id: "q-blocked", body: "Blocked question", created_at: "2026-10-10T10:00:00.000Z", author_id: "member-blocked", author_name: "Blocked", display_name: "Blocked B", author_username: "blockedb", avatar_key: null, avatar_r2_key: null, author_role: "member", audience: "members" },
+    { id: "q-held", body: "Held comment only", created_at: "2026-10-09T10:00:00.000Z", author_id: "member-2", author_name: "Kara", display_name: "Kara K", author_username: "karak", avatar_key: null, avatar_r2_key: null, author_role: "member", audience: "members" },
+    { id: "q-open", body: "Open question", created_at: "2026-10-08T10:00:00.000Z", author_id: "member-2", author_name: "Kara", display_name: "Kara K", author_username: "karak", avatar_key: null, avatar_r2_key: null, author_role: "admin", audience: "members" },
+    { id: "q-onlyme", body: "Someone elses private question", created_at: "2026-10-07T10:00:00.000Z", author_id: "member-3", author_name: "Sam", display_name: "Sam S", author_username: "sams", avatar_key: null, avatar_r2_key: null, author_role: "member", audience: "only_me" },
+    { id: "q-answered", body: "Answered question", created_at: "2026-10-06T10:00:00.000Z", author_id: "member-2", author_name: "Kara", display_name: "Kara K", author_username: "karak", avatar_key: null, avatar_r2_key: null, author_role: "member", audience: "members" },
+  ];
+
+  function noticesEnv() {
+    const env = envWithMedia();
+    env.DB.handler = (sql, params) => {
+      if (/from\s+events\s+e/i.test(sql)) {
+        const now = String(params[0]);
+        const upcoming = EVENTS.filter(
+          (e) => e.status === "published" && e.kind === "demo_night" && e.starts_at >= now
+        ).sort((a, b) => (a.starts_at < b.starts_at ? -1 : 1));
+        return { results: upcoming };
+      }
+      if (/from\s+feed_posts\s+p/i.test(sql)) {
+        const visible = QUESTIONS.filter((q) => {
+          if (q.author_id === "member-blocked") return false;
+          if (q.audience === "only_me" && q.author_id !== "member-1") return false;
+          const comments = COMMENTS[q.id] || [];
+          return !comments.some((cm) => cm.status === "published" && cm.deleted_at === null);
+        }).sort((a, b) => (a.created_at > b.created_at ? -1 : 1));
+        return { results: visible.slice(0, 3) };
+      }
+      return { results: [] };
+    };
+    return env;
+  }
+
+  it("requires sign in", async () => {
+    const env = envWithMedia();
+    const res = await app.request("/feed/notices", { headers: {} }, env);
+    expect(res.status).toBe(401);
+  });
+
+  it("returns the earliest upcoming published demo night, not past, draft, or non-demo events", async () => {
+    const env = noticesEnv();
+    const h = memberSession(env);
+    const res = await app.request("/feed/notices", { headers: h }, env);
+    expect(res.status).toBe(200);
+    const d: any = await res.json();
+    expect(d.ok).toBe(true);
+    expect(d.next_demo.id).toBe("e-next");
+    expect(d.next_demo.slug).toBe("demo-next");
+    expect(d.next_demo.title).toBe("Next demo");
+    expect(d.next_demo.demo_slots_open).toBe(3);
+    expect(d.next_demo.location).toBe("Hub");
+  });
+
+  it("lists open questions newest first, excluding answered, blocked, and other members only_me posts", async () => {
+    const env = noticesEnv();
+    const h = memberSession(env);
+    const res = await app.request("/feed/notices", { headers: h }, env);
+    expect(res.status).toBe(200);
+    const d: any = await res.json();
+    expect(d.open_questions.map((q: any) => q.id)).toEqual(["q-held", "q-open"]);
+    const q = d.open_questions[1];
+    expect(q.body).toBe("Open question");
+    expect(q.author.display).toBe("Kara K");
+    expect(q.author.profile_url).toBe("/@karak");
+    expect(q.author.is_staff).toBe(true);
+    expect(q.author.email).toBeUndefined();
+    expect(q.author.name).toBeUndefined();
+  });
+
+  it("queries the demo and question filters the endpoint promises", async () => {
+    const env = noticesEnv();
+    const h = memberSession(env);
+    const res = await app.request("/feed/notices", { headers: h }, env);
+    expect(res.status).toBe(200);
+    const demoCall = env.DB.calls.find((c) => /FROM events e/i.test(c.sql));
+    expect(demoCall).toBeTruthy();
+    expect(demoCall!.sql).toMatch(/e\.status = 'published'/);
+    expect(demoCall!.sql).toMatch(/e\.kind = 'demo_night'/);
+    expect(demoCall!.sql).toMatch(/e\.starts_at >= \?/);
+    expect(demoCall!.sql).toMatch(/ORDER BY e\.starts_at ASC LIMIT 1/);
+    expect(demoCall!.sql).toMatch(/demo_slots d/);
+    expect(demoCall!.sql).toMatch(/d\.status = 'open'/);
+    const qCall = env.DB.calls.find((c) => /FROM feed_posts p/i.test(c.sql));
+    expect(qCall).toBeTruthy();
+    expect(qCall!.sql).toMatch(/p\.intent = 'question'/);
+    expect(qCall!.sql).toMatch(/feed_comments fc/);
+    expect(qCall!.sql).toMatch(/fc\.status = 'published' AND fc\.deleted_at IS NULL/);
+    expect(qCall!.sql).toMatch(/p\.status = 'published'/);
+    expect(qCall!.sql).toMatch(/NOT EXISTS \(SELECT 1 FROM block_pairs WHERE a = \? AND b = p\.author_id\)/);
+    expect(qCall!.sql).toMatch(/ORDER BY p\.created_at DESC LIMIT 3/);
+    expect(qCall!.params.filter((p) => p === "member-1").length).toBe(3);
+  });
+
+  it("returns an empty state when there is no demo and no open question", async () => {
+    const env = envWithMedia();
+    env.DB.handler = () => ({ results: [] });
+    const h = memberSession(env);
+    const res = await app.request("/feed/notices", { headers: h }, env);
+    expect(res.status).toBe(200);
+    const d: any = await res.json();
+    expect(d.next_demo).toBeNull();
+    expect(d.open_questions).toEqual([]);
+  });
+});
