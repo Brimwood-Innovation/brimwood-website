@@ -2591,3 +2591,51 @@ from the self-chaining loop's first run on 2026-10-21.
   certificate_pending, which is the intended fail-closed state.
   Still blocked: the Phase 1 preview smoke flows and applying
   0037 to preview D1 (no Cloudflare token in the environment).
+- Cycle 45, 2026-10-31: the feed header notices, the first of the two
+  remaining open cross-phase follow-ups, in a worktree on branch
+  phase5/feed-notices (no open loop PR; develop CI green at the PR 84
+  merge; 22 is the founder-tapped README PR, not loop work). New
+  member-only endpoint GET /api/feed/notices: next_demo is the earliest
+  upcoming published demo night (kind demo_night, starts_at at or after
+  now, with the open demo slot count), or null; open_questions lists up
+  to 3 visible question posts with zero published, non-deleted
+  feed_comments, newest first, reusing the FEED_VISIBILITY fragment so
+  blocked authors, other members only_me posts, and non-member groups
+  never appear, exactly as in the feed list. The /hub/feed page gains a
+  notices region above the composer (aria-labelled, hidden when both
+  parts are empty, hidden on any fetch failure so a notices failure
+  never blocks the feed): the demo notice links to the event page with
+  a Canadian date and the open slot count, and each open question
+  links to its post page with an author display name, never an email
+  or real name. No migration, no new dependency, no API change beyond
+  the one endpoint. Em dashes scrubbed from the touched files (none
+  found; diff grep zero). Verification independently repeated on the
+  merged develop head: 837 API tests pass (43 files, up 5 from 832,
+  the 5 new notices tests covering sign-in, the earliest-demo rule,
+  the open-question filters, the promised query shapes, and the empty
+  state), API typecheck clean, site build clean (36 pages, unchanged),
+  and the built feed page carries the notices region. Shipped in
+  PR #85 (merged to develop; build, secrets, audit, analyze,
+  lighthouse, CodeQL, and Cloudflare Pages all green). Grade
+  (dimensions this cycle touched, scored from evidence): functional
+  2,500/2,500 (both notice kinds render from live data, empty and
+  failure states leave the feed standing); schema and API
+  2,000/2,000 (existing tables only, suite green, no migration
+  needed); accessibility 1,250/1,250 (labelled region, list markup,
+  no-JavaScript feed intact); performance 1,250/1,250 (two small
+  queries on feed load only, no new dependency, page count
+  unchanged); security 1,250/1,250 (member-only endpoint, feed
+  visibility enforced server-side, escaped output, CI and CodeQL
+  green); code quality 1,000/1,000 (typecheck clean, tests in the
+  existing style, shared fragments untouched); brand and copy
+  750/750 (Canadian spelling and date, no new em dash, no member
+  named). Pro-rated total 10,000/10,000, no zero dimension, no open
+  P0. Verdict: ACCEPT. Next improvement: the founder walkthrough of
+  every panel and flow on preview, feeding the production green
+  signal; until it starts, the next loop cycle takes the last open
+  cross-phase follow-up (the staff spotlight post type). Live
+  issuance still needs the operator setup: the two signing secrets
+  plus the matching signing_keys row; until then a completed course
+  reports certificate_pending, which is the intended fail-closed
+  state. Still blocked: the Phase 1 preview smoke flows and applying
+  0037 to preview D1 (no Cloudflare token in the environment).
