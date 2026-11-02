@@ -216,7 +216,10 @@ describe("POST /login", () => {
     } finally {
       spy.mockRestore();
     }
-  });
+    // 30s timeout, not the 5s default: seed plus two real 600k PBKDF2
+    // verifies, so under a parallel full-suite run this passes the
+    // default timeout on a loaded machine. Harness only.
+  }, 30000);
 
   it("burns a dummy verify for suspended and password-less users too", async () => {
     await seedUser({ withPassword: true, status: "suspended" });
@@ -318,7 +321,10 @@ describe("POST /password/change", () => {
     const keys = [...env.DB.sessionStore.keys()];
     expect(keys).toHaveLength(1);
     expect(keys[0]).toBe("sess:1f01ccd79fa83611b7efefef57e9f6fca2f70f5fa6f3fb943c6bf7733dccaea4");
-  });
+    // 30s timeout, not the 5s default: seed hash plus two real 600k
+    // PBKDF2 verifies, so under a parallel full-suite run this passes
+    // the default timeout on a loaded machine. Harness only.
+  }, 30000);
 });
 
 describe("POST /password/reset/request", () => {
