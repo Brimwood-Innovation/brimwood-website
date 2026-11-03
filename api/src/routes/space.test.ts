@@ -36,6 +36,34 @@ const DESKS_TUE_2PM = {
   id: "bk-desks", user_id: "member-9", starts_at: "2026-10-13T18:00:00.000Z",
   ends_at: "2026-10-13T20:00:00.000Z", party_size: 11,
 };
+/* Booking dates must stay in the future: the route rejects past slots
+ * with 400, so a fixed booking date ages out (2026-11-03 did exactly
+ * that on 2026-11-03). These helpers always pick a Tuesday at least
+ * eight days out and convert its Toronto wall hour to UTC with Intl,
+ * independent of the route's own converter. */
+const TORONTO_FMT = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Toronto", year: "numeric", month: "2-digit",
+  day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+});
+function futureTuesday(): string {
+  const d = new Date(Date.now() + 8 * 86400000);
+  while (d.getUTCDay() !== 2) d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+function torontoOffsetAt(instant: Date): number {
+  const parts = TORONTO_FMT.formatToParts(instant);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value || 0);
+  const asUtc = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"));
+  return Math.round((asUtc - instant.getTime()) / 60000);
+}
+function bookingUtc(dateStr: string, hour: number): string {
+  const [y, m, day] = dateStr.split("-").map(Number);
+  const wallAsUtc = Date.UTC(y, m - 1, day, hour, 0, 0);
+  const first = wallAsUtc - torontoOffsetAt(new Date(wallAsUtc)) * 60000;
+  const second = wallAsUtc - torontoOffsetAt(new Date(first)) * 60000;
+  return new Date(second).toISOString();
+}
+const BOOKING_DAY = futureTuesday();
 
 function slotOf(grid: any, dayDate: string, startHour: number) {
   const day = grid.days.find((d: any) => d.date === dayDate);
@@ -180,12 +208,12 @@ describe("bookings", () => {
   it("books a 2-hour slot on an even hour", async () => {
     const { env, cookie } = spaceEnv();
     const res = await postJSON(app, "/bookings", {
-      resource_slug: "forge-room", date: "2026-11-03", start_hour: 10, party_size: 3, purpose: "Build session",
+      resource_slug: "forge-room", date: BOOKING_DAY, start_hour: 10, party_size: 3, purpose: "Build session",
     }, env, cookie);
     const body: any = await res.json();
     expect(res.status).toBe(200);
-    expect(body.booking.starts_at).toBe("2026-11-03T15:00:00.000Z");
-    expect(body.booking.ends_at).toBe("2026-11-03T17:00:00.000Z");
+    expect(body.booking.starts_at).toBe(bookingUtc(BOOKING_DAY, 10));
+    expect(body.booking.ends_at).toBe(bookingUtc(BOOKING_DAY, 12));
     const row = env.DB.inserts.get("space_bookings")?.[0];
     expect(row?.party_size).toBe(3);
     expect(row?.status).toBe("confirmed");
@@ -194,18 +222,18 @@ describe("bookings", () => {
   it("rejects an odd hour, an oversized party and a second slot that day", async () => {
     const { env, cookie } = spaceEnv();
     const odd = await postJSON(app, "/bookings", {
-      resource_slug: "forge-room", date: "2026-11-03", start_hour: 11,
+      resource_slug: "forge-room", date: BOOKING_DAY, start_hour: 11,
     }, env, cookie);
     expect(odd.status).toBe(400);
     const big = await postJSON(app, "/bookings", {
-      resource_slug: "call-booth", date: "2026-11-03", start_hour: 10, party_size: 2,
+      resource_slug: "call-booth", date: BOOKING_DAY, start_hour: 10, party_size: 2,
     }, env, cookie);
     expect(big.status).toBe(409);
     const { env: env2, cookie: cookie2 } = spaceEnv({
-      mineStarts: [{ starts_at: "2026-11-03T15:00:00.000Z" }],
+      mineStarts: [{ starts_at: bookingUtc(BOOKING_DAY, 10) }],
     });
     const second = await postJSON(app, "/bookings", {
-      resource_slug: "forge-room", date: "2026-11-03", start_hour: 14,
+      resource_slug: "forge-room", date: BOOKING_DAY, start_hour: 14,
     }, env2, cookie2);
     expect(second.status).toBe(409);
     expect((await second.json()).error).toMatch(/already hold a slot/);
@@ -214,7 +242,7 @@ describe("bookings", () => {
   it("maps a trigger overlap to the deck message", async () => {
     const { env, cookie } = spaceEnv({ throwOnInsert: "booking overlaps another booking" });
     const res = await postJSON(app, "/bookings", {
-      resource_slug: "forge-room", date: "2026-11-03", start_hour: 10,
+      resource_slug: "forge-room", date: BOOKING_DAY, start_hour: 10,
     }, env, cookie);
     expect(res.status).toBe(409);
     expect((await res.json()).error).toBe("Someone just booked that slot. Pick another time.");
