@@ -2,13 +2,19 @@
  * Asserts the exact Set-Cookie header on every session-issuing endpoint:
  * `__Host-brimwood-sess=<token>; Path=/; HttpOnly; Secure; SameSite=Lax`.
  * Also asserts the deferred F4 item is gone: no SameSite=None anywhere. */
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import passwordApp from "./password";
 import authApp from "./auth";
 import fullApp from "../index";
 import { COOKIE, SESSION_COOKIE_ATTRS } from "../lib/auth";
 import { mockEnv, postJSON, type MockEnv } from "../test/helpers";
 import { hashPassword } from "../lib/password";
+
+/* File-level 30s test timeout, not the 5s default: the login test runs two
+ * real 600k PBKDF2 operations (seed plus route verify), and under a
+ * parallel full-suite run on a loaded machine those can take seconds, so
+ * the 5s default flakes (cycle 76). Harness only; no production code. */
+vi.setConfig({ testTimeout: 30_000 });
 
 /** Call the worker entrypoint so the global CORS middleware runs. */
 function fullReq(path: string, env: unknown, init: RequestInit = {}) {

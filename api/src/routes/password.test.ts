@@ -15,6 +15,16 @@ import {
 /* Faster PBKDF2 for unit tests (routes use the 600k default). */
 const TEST_ITERS = 5000;
 
+/* File-level 30s test timeout, not the 5s default: most tests in this file
+ * run one to three real 600k PBKDF2 operations via seedUser or the route
+ * handlers, and under a parallel full-suite run on a loaded machine a
+ * single op can take seconds, so the 5s default flakes (cycle 76: 2, then
+ * 11, then 10 failures across runs, all 5s timeouts in this file and
+ * session-cookie.test.ts). The timeout is harness only; the F8 CPU budget
+ * test below still guards the real cost, now measured in CPU time. The
+ * three tests that already carry their own explicit 30s timeout keep it. */
+vi.setConfig({ testTimeout: 30_000 });
+
 let env: MockEnv;
 let restoreFetch: (() => void) | null = null;
 
@@ -108,18 +118,25 @@ describe("password policy (Canadian spelling)", () => {
   it("hashing stays within the CPU budget (F8)", async () => {
     // The Workers Free plan has a tight CPU limit per request. This test
     // fails if the PBKDF2 cost grows past the budget, so an iteration bump
-    // cannot slip through CI unnoticed. Budget is wall-clock and generous;
-    // it catches order-of-magnitude regressions, not edge limits.
+    // cannot slip through CI unnoticed. The budget is measured in CPU time
+    // (process.cpuUsage), not wall clock: wall clock grows with scheduler
+    // contention under a parallel full-suite run while the PBKDF2 cost
+    // itself is unchanged, so a wall-clock budget flakes on a loaded
+    // machine (cycle 76). CPU time is also the quantity the Workers limit
+    // actually constrains. Wall clock is logged for context only.
     vi.useRealTimers();
     try {
       const budgetMs = 5000;
-      const start = Date.now();
+      const wallStart = Date.now();
+      const cpuStart = process.cpuUsage();
       const { hash, salt } = await hashPassword("CorrectHorse12");
       const ok = await verifyPassword("CorrectHorse12", salt, hash);
-      const elapsed = Date.now() - start;
-      console.log(`hash+verify: ${elapsed}ms (budget ${budgetMs}ms)`);
+      const cpu = process.cpuUsage(cpuStart);
+      const cpuMs = (cpu.user + cpu.system) / 1000;
+      const wallMs = Date.now() - wallStart;
+      console.log(`hash+verify: ${cpuMs.toFixed(0)}ms CPU, ${wallMs}ms wall (budget ${budgetMs}ms CPU)`);
       expect(ok).toBe(true);
-      expect(elapsed).toBeLessThan(budgetMs);
+      expect(cpuMs).toBeLessThan(budgetMs);
     } finally {
       vi.useFakeTimers();
     }
