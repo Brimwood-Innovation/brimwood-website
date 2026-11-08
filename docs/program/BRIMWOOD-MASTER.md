@@ -3586,3 +3586,13 @@ from the self-chaining loop's first run on 2026-10-21.
   variable, no ~/.wrangler, no api/.dev.vars, never asked for in chat,
   never stored), so the chain pauses here until the walkthrough starts or a
   token becomes available; the 6-hour safety schedule remains the retry path.
+  Post-merge note, same day: develop CI on the merge commit (14bb785) went
+  red on the secrets job only, three runs in a row, and CodeQL once: the
+  gitleaks release tarball and the CodeQL bundle downloads from github.com
+  returned HTTP 504 (verified from this VM: the gitleaks URL returns 504
+  with an HTML error page, which is what tar chokes on). CodeQL recovered on
+  rerun; the secrets job had not recovered after three attempts. This is a
+  GitHub-side release-download outage, not a code failure: PR #120's own CI
+  run was fully green before merge, and the merged change is test-harness
+  only. The next cycle's sync should re-check develop CI before treating
+  it as a loop failure.
