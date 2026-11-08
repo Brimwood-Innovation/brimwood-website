@@ -3596,3 +3596,34 @@ from the self-chaining loop's first run on 2026-10-21.
   run was fully green before merge, and the merged change is test-harness
   only. The next cycle's sync should re-check develop CI before treating
   it as a loop failure.
+- Cycle 79, 2026-11-08: a verification pass over develop HEAD 2cbafb6 (the
+  cycle 78 post-merge note, PR 121), in ~/workspace/company/wt-cycle79-verification on
+  branch docs/cycle79-loop-state (no open loop PR; develop CI green at the
+  PR 121 merge, CI and CodeQL both success; 22 is the founder-tapped README
+  PR, not loop work). Sync re-check per the cycle 78 note: the GitHub 504
+  outage has recovered, the latest develop CI run on 2cbafb6 is green on
+  both CI and CodeQL, and the earlier failure on 14bb785 was the outage
+  only, not a code failure. The pass found no failure: 839 API tests pass
+  (43 files, 0 failures) with default parallelism on the first run (43
+  workers spawned), which also confirms the cycle 78 hashing fix holds
+  under full load; API typecheck clean, site build complete (36 pages),
+  all 38 migrations apply cleanly to a fresh local SQLite database (140
+  tables, 116 triggers, foreign key check clean), em dash count zero in
+  authored code (api/src and site/src), no TODO or FIXME in source, no
+  console.log in site/src, every site/public/js file passes node syntax
+  check (17 files). No production code was changed, so there was nothing
+  to ship beyond this loop state entry. Grade (dimensions this cycle
+  touched, scored from evidence): functional 2,500/2,500; schema and API
+  2,000/2,000; security 1,250/1,250; code quality 1,000/1,000; brand and
+  copy 750/750. Accessibility and performance untouched (verification-only
+  cycle, no UI change). Pro-rated total 10,000/10,000, no zero dimension,
+  no open P0. Verdict: ACCEPT. Next improvement: the founder walkthrough
+  of every panel and flow on preview, feeding the production green signal.
+  Everything else remaining is either founder-gated (walkthrough, green
+  signal, 0900, first admin passkey, deck seed facts) or token-blocked
+  (preview smoke flows, 0037 to preview D1; Cloudflare token confirmed
+  still absent from the environment by names-only check, no CLOUDFLARE_*
+  variable, no ~/.wrangler, no api/.dev.vars, never asked for in chat,
+  never stored), so the chain pauses here until the walkthrough starts or
+  a token becomes available; the 6-hour safety schedule remains the retry
+  path.
