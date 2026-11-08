@@ -3545,3 +3545,44 @@ from the self-chaining loop's first run on 2026-10-21.
   api/.dev.vars, never asked for in chat, never stored), so the chain pauses
   here until the walkthrough starts or a token becomes available; the 6-hour
   safety schedule remains the retry path.
+- Cycle 78, 2026-11-08: the hashing-test load-tolerance follow-up named in
+  cycles 76 and 77, in ~/workspace/company/wt-cycle78-hashing on branch
+  fix/cycle78-hashing-tests (no open loop PR; develop CI green at the PR 119
+  merge, CI and CodeQL both success; 22 is the founder-tapped README PR, not
+  loop work). Cycle 76 saw the full suite fail 2, then 11, then 10 tests
+  across three runs, all 5s timeouts in password.test.ts and
+  session-cookie.test.ts under default parallelism (43 workers on this
+  4-CPU VM); this cycle's own pre-fix full run passed 839/839, so the flake
+  is load-dependent, not a code regression. Fix, harness only, no production
+  code touched: both files now set a file-level 30s test timeout via
+  vi.setConfig (the three tests that already carried their own explicit 30s
+  timeout keep it), because most tests in password.test.ts run one to three
+  real 600k PBKDF2 operations and the login test in session-cookie.test.ts
+  runs two. The F8 CPU budget test now measures CPU time with
+  process.cpuUsage instead of wall clock: wall clock grows with scheduler
+  contention under a parallel run while the PBKDF2 cost is unchanged, and
+  CPU time is the quantity the Workers limit actually constrains; wall clock
+  is still logged for context (299ms CPU, 681ms wall in the full run, budget
+  5000ms CPU). A standalone check confirmed CPU time tracks the real cost
+  (307ms CPU for two derives unloaded). Verification before the PR: 839 API
+  tests pass (43 files, 0 failures) with default parallelism on three
+  consecutive full runs (one pre-fix, two post-fix), the two touched files
+  pass 37/37 in isolation, API typecheck clean, site build complete (36
+  pages), all 38 migrations apply cleanly to a fresh local SQLite database
+  (140 tables, 116 triggers, foreign key check clean), em dash count zero in
+  authored code (api/src and site/src), no TODO or FIXME in source, no
+  console.log in site/src, every site/public/js file passes node syntax
+  check (17 files). Grade (dimensions this cycle touched, scored from
+  evidence): functional 2,500/2,500; schema and API 2,000/2,000; security
+  1,250/1,250; code quality 1,000/1,000; brand and copy 750/750.
+  Accessibility and performance untouched (test-harness cycle, no UI or
+  production change). Pro-rated total 10,000/10,000, no zero dimension, no
+  open P0. Verdict: ACCEPT. Next improvement: the founder walkthrough of
+  every panel and flow on preview, feeding the production green signal.
+  Everything else remaining is either founder-gated (walkthrough, green
+  signal, 0900, first admin passkey, deck seed facts) or token-blocked
+  (preview smoke flows, 0037 to preview D1; Cloudflare token confirmed
+  still absent from the environment by names-only check, no CLOUDFLARE_*
+  variable, no ~/.wrangler, no api/.dev.vars, never asked for in chat,
+  never stored), so the chain pauses here until the walkthrough starts or a
+  token becomes available; the 6-hour safety schedule remains the retry path.
