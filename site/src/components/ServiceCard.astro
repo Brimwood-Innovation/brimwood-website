@@ -1,0 +1,22 @@
+---
+/* Service card (redesign T9). One card component reused on the index,
+ * pillar pages, lead spotlight, and related rows, so a service reads
+ * the same way everywhere it appears. The title level is set by the
+ * caller to keep each page's heading outline free of skips. */
+import { servicePath, serviceSlug } from "../lib/services";
+
+interface Props {
+  entry: any;
+  headingLevel?: "h2" | "h3" | "h4";
+}
+const { entry, headingLevel = "h3" } = Astro.props;
+const Heading = headingLevel;
+const href = servicePath(entry.data.pillar, serviceSlug(entry.id));
+---
+
+<a class="card card-link svc-card" href={href}>
+  <div class="n">{entry.data.tier.code} - {entry.data.tier.label}</div>
+  <Heading class="card-title">{entry.data.name}</Heading>
+  <p>{entry.data.seoDescription}</p>
+  <p class="card-meta">{entry.data.deliverables.length} deliverables</p>
+</a>

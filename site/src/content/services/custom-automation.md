@@ -28,6 +28,16 @@ steps:
   - title: "Handover and training"
     text: "You get the runbook and a training session. Monitoring and small improvements continue after launch."
 entryOffer: "Starts with an Automation Audit: one workflow mapped end to end, a shortlist of what to automate first, and a fixed build roadmap. From there, the first build is one workflow, done properly."
+ladder:
+  - name: "Automation Audit"
+    text: "One painful workflow mapped end to end, a shortlist of what to automate first in order of return, and a fixed build roadmap."
+  - name: "First Workflow Build"
+    text: "The first flow, built properly: one workflow on the automation stack, with human review points where judgement matters, tested with your real data."
+  - name: "Custom Automation Flows"
+    text: "Further flows added in stages, each scoped in writing and approved at its gate, until the repetitive work runs as one system."
+  - name: "Automation Care Retainer"
+    text: "Monitoring, fixes, and small improvements after launch, so the system keeps running and keeps improving."
+    ongoing: true
 related:
   - "conversational-ai-agents"
   - "website-lead-engine"
@@ -48,10 +58,3 @@ seoDescription: "Business automation built with AI and workflow tooling: AI agen
 Most businesses lose hours every week to work a machine should be doing: copying between tools, chasing follow-ups, re-typing the same document in a second format. Custom automation connects that work and runs it reliably.
 
 We start by mapping one painful workflow, not by selling a platform. The flow is then built with AI and workflow tooling, with a human gate wherever judgement matters, tested against your real work, and handed over with a runbook your team can follow.
-
-## The ladder
-
-- **Automation Audit**: One painful workflow mapped end to end, a shortlist of what to automate first in order of return, and a fixed build roadmap.
-- **First Workflow Build**: The first flow, built properly: one workflow on the automation stack, with human review points where judgement matters, tested with your real data.
-- **Custom Automation Flows**: Further flows added in stages, each scoped in writing and approved at its gate, until the repetitive work runs as one system.
-- **Automation Care Retainer** (the ongoing step): Monitoring, fixes, and small improvements after launch, so the system keeps running and keeps improving.

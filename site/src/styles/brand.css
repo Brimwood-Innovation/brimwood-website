@@ -782,3 +782,57 @@ a.profile-link:hover { text-decoration: underline; }
   .hub-nav, .hub-top, .hub-tabs { display: none !important; }
   .hub-frame { border: 0; }
 }
+
+/* ---- services pages (redesign T9) ----
+ * Scoped under .services-ui, plus the services hero variant. All
+ * colours resolve to kit tokens. Hero text sits on the corrected
+ * gradient only (Forest to Deep Emerald, spec 5.2): Signal Green is
+ * used for the ladder flag underline treatment and small markers,
+ * never as a background behind text. The swarm canvas keeps the
+ * shared .hero .dots cap of 0.22 opacity; under the spec 5.3 model
+ * the facts-style pairing (full-opacity white over Deep Emerald
+ * with the swarm at cap) is a computed bound of 4.59 to 1. */
+.svc-hero { margin-bottom: var(--brimwood-space-2); }
+.cards-2 { grid-template-columns: repeat(2, 1fr); }
+.services-ui .crumbs { font-size: 14px; color: var(--stone); margin-bottom: var(--brimwood-space-4); }
+.services-ui .crumbs ol { display: flex; flex-wrap: wrap; gap: var(--brimwood-space-2); list-style: none; margin: 0; padding: 0; }
+.services-ui .crumbs li + li::before { content: "/"; margin-right: var(--brimwood-space-2); color: var(--stone); }
+.services-ui .crumbs a { color: var(--emerald-deep); }
+.services-ui .svc-tier { margin-top: var(--brimwood-space-7); }
+.services-ui .svc-tier-title {
+  font-size: var(--brimwood-text-h3); font-weight: 700; color: var(--forest);
+  margin-bottom: var(--brimwood-space-4);
+}
+.svc-card .card-title { color: var(--ink); }
+.svc-overview p { color: var(--stone); font-size: 16.5px; margin-bottom: var(--brimwood-space-4); max-width: 62ch; }
+.svc-deliverables { list-style: none; margin: 0; padding: 0; max-width: 720px; }
+.svc-deliverables li {
+  padding: var(--brimwood-space-3) 0 var(--brimwood-space-3) var(--brimwood-space-5);
+  border-top: 1px solid rgba(18, 26, 22, 0.08); position: relative; font-size: 15.5px;
+}
+.svc-deliverables li::before {
+  content: ""; position: absolute; left: 0; top: 1.15em;
+  width: 10px; height: 10px; border-radius: 50%; background: var(--emerald);
+}
+.svc-steps { list-style: none; margin: 0; padding: 0; }
+.svc-ladder { list-style: none; margin: 0; padding: 0; counter-reset: ladder; max-width: 720px; }
+.svc-ladder-step {
+  background: #fff; border: 1px solid rgba(18, 26, 22, 0.08);
+  border-left: 4px solid var(--emerald-deep); border-radius: var(--brimwood-radius-md);
+  padding: var(--brimwood-space-5); margin-bottom: var(--brimwood-space-4);
+}
+.svc-ladder-step h3 { font-size: var(--brimwood-text-h3); font-weight: 700; margin-bottom: var(--brimwood-space-2); }
+.svc-ladder-step p { color: var(--stone); font-size: 15px; margin: 0; }
+.svc-ladder-flag {
+  display: inline-block; margin-left: var(--brimwood-space-3); vertical-align: 2px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--emerald-deep); background: var(--mint); border-radius: 999px;
+  padding: 3px 9px;
+}
+.svc-faqs { max-width: 720px; }
+.svc-faq { border-top: 1px solid rgba(18, 26, 22, 0.08); padding: var(--brimwood-space-5) 0; }
+.svc-faq h3 { font-size: var(--brimwood-text-h3); font-weight: 600; margin-bottom: var(--brimwood-space-2); }
+.svc-faq p { color: var(--stone); margin: 0; }
+@media (max-width: 560px) {
+  .services-ui .cards { grid-template-columns: 1fr; }
+}

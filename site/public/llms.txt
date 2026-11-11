@@ -17,6 +17,29 @@ referral only. Standard: "Elite by effort, not by background."
 - Newsletter: https://brimwoodinnovation.com/newsletter/: signup (double opt-in), email-exclusive archive
 - Privacy: https://brimwoodinnovation.com/privacy/
 - Terms: https://brimwoodinnovation.com/terms/
+- Services: https://brimwoodinnovation.com/services/: all 17 services across five pillars (Build, Automate, Grow, Create, Guide). Lead services: Custom automation and Website plus lead engine. Every engagement starts with an introduction; scope and price are agreed in writing before work starts. No public price list.
+- Build pillar: https://brimwoodinnovation.com/services/build/: websites and lead engines, web development, custom software and tools
+- Automate pillar: https://brimwoodinnovation.com/services/automate/: custom automation, conversational AI agents
+- Grow pillar: https://brimwoodinnovation.com/services/grow/: search and AI visibility, paid ads management and creative, warm-lead capture, local community growth
+- Create pillar: https://brimwoodinnovation.com/services/create/: social media support (VSMM), brand film, TVC and broadcast commercials, 2D and 3D animation and explainer videos, graphic design, content day retainer
+- Guide pillar: https://brimwoodinnovation.com/services/guide/: founder consultancy and planning, design, build, and strategy
+- Website plus lead engine: https://brimwoodinnovation.com/services/build/website-lead-engine/
+- Web development: https://brimwoodinnovation.com/services/build/web-development/
+- Custom software and tools: https://brimwoodinnovation.com/services/build/custom-software-tools/
+- Custom automation: https://brimwoodinnovation.com/services/automate/custom-automation/ (bought in stages: Automation Audit, First Workflow Build, Custom Automation Flows, then an Automation Care Retainer)
+- Conversational AI agents: https://brimwoodinnovation.com/services/automate/conversational-ai-agents/
+- Search and AI visibility: https://brimwoodinnovation.com/services/grow/search-ai-visibility/
+- Paid ads management and creative: https://brimwoodinnovation.com/services/grow/paid-ads-creative/
+- Warm-lead capture: https://brimwoodinnovation.com/services/grow/warm-lead-capture/
+- Local community growth: https://brimwoodinnovation.com/services/grow/local-community-growth/
+- Social media support (VSMM): https://brimwoodinnovation.com/services/create/social-media-vsmm/
+- Brand film: https://brimwoodinnovation.com/services/create/brand-film/
+- TVC and broadcast commercials: https://brimwoodinnovation.com/services/create/tvc-broadcast/
+- 2D and 3D animation and explainer videos: https://brimwoodinnovation.com/services/create/animation-explainers/
+- Graphic design: https://brimwoodinnovation.com/services/create/graphic-design/
+- Content day retainer: https://brimwoodinnovation.com/services/create/content-day-retainer/ (quarterly shoot, monthly content)
+- Founder consultancy and planning: https://brimwoodinnovation.com/services/guide/founder-consultancy/
+- Design, build, and strategy: https://brimwoodinnovation.com/services/guide/design-build-strategy/
 - RSS: https://brimwoodinnovation.com/rss.xml
 - Sitemap: https://brimwoodinnovation.com/sitemap.xml
 

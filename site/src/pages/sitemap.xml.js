@@ -14,6 +14,18 @@ export async function GET() {
   const staticRoutes = ["", "/about", "/blog", "/newsletter", "/academy", "/privacy", "/terms", "/events", "/invite", "/search"];
   const posts = await getCollection("blog", ({ data }) => !data.draft);
 
+  // Services routes (redesign T9, spec 4.1 and F4): the index, the
+  // five pillar pages, and one detail page per services collection
+  // entry, each under its true pillar only.
+  const serviceEntries = await getCollection("services");
+  const serviceRoutes = [
+    "/services",
+    ...["build", "automate", "grow", "create", "guide"].map((p) => `/services/${p}`),
+    ...serviceEntries.map(
+      (s) => `/services/${s.data.pillar}/${s.id.replace(/\.md$/, "")}`,
+    ),
+  ];
+
   // Event detail URLs: fetched at build time; the sitemap must never fail
   // the build if the API is unreachable.
   let eventSlugs = [];
@@ -51,6 +63,7 @@ export async function GET() {
 
   const urls = [
     ...staticRoutes.map((r) => url(`${SITE}${r || "/"}`, today)),
+    ...serviceRoutes.map((r) => url(`${SITE}${r}/`, today)),
     ...posts.map((p) =>
       url(`${SITE}/blog/${p.id.replace(/\.md$/, "")}/`, p.data.publishDate.toISOString().slice(0, 10))
     ),

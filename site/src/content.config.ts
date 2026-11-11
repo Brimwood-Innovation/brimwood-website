@@ -48,7 +48,7 @@ const pages = defineCollection({
  * public service line, 17 lines. The markdown body is the overview field.
  * Wording mirrors Service Catalogue 23.09.01 v1.2 (2026-11-10, FINAL);
  * the catalogue is the source of truth and site files are its mirror.
- * Nothing renders these entries yet; routes land in task T9. */
+ * Rendered by the services routes from task T9. */
 const services = defineCollection({
   loader: glob({ pattern: "**/*.md", base: "./src/content/services" }),
   schema: z.object({
@@ -70,6 +70,20 @@ const services = defineCollection({
       )
       .length(5),
     entryOffer: z.string(),
+    /* The CV-1 ladder (redesign T9): promoted from body text to a
+     * structured field so the Custom automation page renders it as a
+     * distinct named ladder. Only that entry carries it; the build
+     * steps come first and the ongoing step is flagged. */
+    ladder: z
+      .array(
+        z.object({
+          name: z.string(),
+          text: z.string(),
+          ongoing: z.boolean().default(false),
+        }),
+      )
+      .length(4)
+      .optional(),
     related: z.array(z.string()).min(2).max(3),
     faqs: z
       .array(
