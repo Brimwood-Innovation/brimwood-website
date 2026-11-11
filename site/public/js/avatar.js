@@ -5,7 +5,7 @@
 (function () {
   "use strict";
   var SIZES = { sm: 32, md: 48, lg: 96, xl: 128 };
-  var BG = ["#0C9463", "#075E40", "#0A3D2B"]; // Emerald, Deep Emerald, Forest
+  var BG = ["#075E40", "#0A3D2B"]; // Deep Emerald, Forest. Emerald excluded: Paper on Emerald is 3.62:1, below 4.5:1 at small sizes.
   var FG = "#F6F8F7"; // Paper
 
   // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
