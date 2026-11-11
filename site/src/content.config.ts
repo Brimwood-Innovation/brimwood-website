@@ -44,4 +44,44 @@ const pages = defineCollection({
   }),
 });
 
-export const collections = { blog, testimonials, pages };
+/* Services collection (redesign spec section 6, task T7). One file per
+ * public service line, 17 lines. The markdown body is the overview field.
+ * Wording mirrors Service Catalogue 23.09.01 v1.2 (2026-11-10, FINAL);
+ * the catalogue is the source of truth and site files are its mirror.
+ * Nothing renders these entries yet; routes land in task T9. */
+const services = defineCollection({
+  loader: glob({ pattern: "**/*.md", base: "./src/content/services" }),
+  schema: z.object({
+    name: z.string(),
+    pillar: z.enum(["build", "automate", "grow", "create", "guide"]),
+    tier: z.object({
+      code: z.string(),
+      label: z.string(),
+    }),
+    order: z.number().int().positive(),
+    lead: z.boolean().default(false),
+    deliverables: z.array(z.string()).min(1),
+    steps: z
+      .array(
+        z.object({
+          title: z.string(),
+          text: z.string(),
+        }),
+      )
+      .length(5),
+    entryOffer: z.string(),
+    related: z.array(z.string()).min(2).max(3),
+    faqs: z
+      .array(
+        z.object({
+          question: z.string(),
+          answer: z.string(),
+        }),
+      )
+      .min(3),
+    seoTitle: z.string(),
+    seoDescription: z.string(),
+  }),
+});
+
+export const collections = { blog, testimonials, pages, services };
