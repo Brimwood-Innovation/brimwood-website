@@ -87,7 +87,7 @@ import HubShell from "../../components/HubShell.astro";
     function avatar(p) {
       const src = safeMedia(p.avatar_url);
       if (src) return `<img src="${esc(src)}" alt="${esc(p.display_name)}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;flex:none;" />`;
-      return `<span role="img" aria-label="${esc(p.display_name)}" style="width:64px;height:64px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex:none;background:#0C9463;color:#F6F8F7;font-weight:700;font-size:24px;">${esc(initials(p.display_name))}</span>`;
+      return `<span role="img" aria-label="${esc(p.display_name)}" style="width:64px;height:64px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex:none;background:#075E40;color:#F6F8F7;font-weight:700;font-size:24px;">${esc(initials(p.display_name))}</span>`;
     }
 
     function fieldLine(label, value) {

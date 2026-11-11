@@ -633,7 +633,7 @@ a.profile-link:hover { text-decoration: underline; }
   font-size: 14px;
   font-weight: 700;
   color: #fff;
-  background: var(--emerald);
+  background: var(--emerald-deep);
   border-radius: 999px;
   cursor: pointer;
   list-style: none;

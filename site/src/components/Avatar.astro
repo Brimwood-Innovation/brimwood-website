@@ -23,8 +23,11 @@ function initials(n: string): string {
   return (parts[0][0] + (parts[1]?.[0] || "")).toUpperCase();
 }
 
-/* Deterministic brand-colour background from the name hash. */
-const BRAND_BG = ["#0C9463", "#075E40", "#0A3D2B"];
+/* Deterministic brand-colour background from the name hash. Emerald is
+ * excluded: Paper on Emerald is 3.62:1, below 4.5:1 at the small sizes
+ * this fallback renders at. Deep Emerald (7.34:1) and Forest (11.48:1)
+ * both pass at every size. */
+const BRAND_BG = ["#075E40", "#0A3D2B"];
 let hash = 0;
 for (const ch of name) hash = (hash * 31 + (ch.codePointAt(0) || 0)) >>> 0;
 const bg = BRAND_BG[hash % BRAND_BG.length];
