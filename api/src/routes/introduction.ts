@@ -29,7 +29,7 @@ const SERVICE_NAMES: Record<string, string> = {
   "paid-ads-creative": "Paid ads management and creative",
   "search-ai-visibility": "Search and AI visibility",
   "social-media-vsmm": "Social media support (VSMM)",
-  "tvc-broadcast": "TVC and broadcast commercials",
+  "tvc-broadcast": "TVC and broadcast commercial production",
   "warm-lead-capture": "Warm-lead capture",
   "web-development": "Web development",
   "website-lead-engine": "Website plus lead engine",

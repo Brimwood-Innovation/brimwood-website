@@ -22,7 +22,7 @@ steps:
     text: "The follow-up sequence is written, built, and tested with you."
   - title: "Live and visible"
     text: "Enquiries flow into the pipeline, and you can see every one of them."
-entryOffer: "Starts with a free pipeline check: we trace how a lead reaches you today. Then the Lead Engine setup: the magnet, the form, the pipeline, and the follow-up, built as one layer."
+entryOffer: "Starts with an introduction and a conversation: we trace how a lead reaches you today. Then the Lead Engine setup: the magnet, the form, the pipeline, and the follow-up, built as one layer."
 related:
   - "website-lead-engine"
   - "paid-ads-creative"
