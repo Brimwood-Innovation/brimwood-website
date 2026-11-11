@@ -7,7 +7,7 @@
  * JSON-LD. The body stays client-rendered from GET /api/events/SLUG,
  * the same source as before, and the client script still refreshes the
  * title and meta after load. */
-import Base from "../../layouts/Base.astro";
+import Public from "../../layouts/Public.astro";
 
 const { slug } = Astro.params;
 const apiBase = import.meta.env.PUBLIC_API_BASE || "";
@@ -63,13 +63,13 @@ const jsonld = event
   : undefined;
 ---
 
-<Base title={pageTitle} description={pageDescription} path={`/events/${slug}`} turnstile jsonld={jsonld}>
+<Public title={pageTitle} description={pageDescription} path={`/events/${slug}`} turnstile jsonld={jsonld}>
   <section class="block events-ui" id="eventWrap" data-slug={slug} data-api-base={apiBase}>
     <p class="sec-lede" id="eventLoading">Loading…</p>
-    <div id="eventBody" style="display:none;"></div>
+    <div id="eventBody" class="is-hidden"></div>
   </section>
 
-  <section class="block" id="rsvpSection" style="display:none;">
+  <section class="block is-hidden" id="rsvpSection">
     <div class="cta" id="rsvp">
       <h2>Save your spot.</h2>
       <p>Tell us who is coming. One RSVP per email. Update it anytime by submitting again.</p>
@@ -80,14 +80,14 @@ const jsonld = event
         <input id="rEmail" type="email" name="email" placeholder="you@example.com" required />
         <label for="rGuests">Guests (including you)</label>
         <input id="rGuests" type="number" name="guests" min="1" max="10" value="1" required />
-        <input type="text" name="website" id="rSite" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true" />
-        <div class="cf-turnstile" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx" style="margin:16px 0;"></div>
+        <input type="text" name="website" id="rSite" tabindex="-1" autocomplete="off" class="honeypot" aria-hidden="true" />
+        <div class="cf-turnstile turnstile-box" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx"></div>
         <button class="btn" type="submit" id="rsvpBtn">RSVP</button>
-        <p class="form-err" id="rsvpErr" role="status" style="display:none"></p>
+        <p class="form-err is-hidden" id="rsvpErr" role="status"></p>
       </form>
       <div class="thanks" id="rsvpThanks" role="status">You are on the list. Check your inbox for confirmation. We will send a reminder 24 hours before it starts.</div>
     </div>
   </section>
 
   <script is:inline src="/js/event-rsvp.js"></script>
-</Base>
+</Public>

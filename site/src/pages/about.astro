@@ -5,10 +5,10 @@
  * covers About lightly: the core line as the headline, one plain line
  * under it, the Build / Show / Learn trio, and the intro button at the
  * end. The approved body sections below the trio are unchanged. */
-import Base from "../layouts/Base.astro";
+import Public from "../layouts/Public.astro";
 ---
 
-<Base
+<Public
   title="About - Brimwood Innovation"
   description="Brimwood Innovation is a builder community in a real room in Toronto. Invitation only, free, calm. Elite by effort, not by background."
   path="/about"
@@ -23,7 +23,7 @@ import Base from "../layouts/Base.astro";
 >
   <section class="block">
     <div class="kicker">About</div>
-    <h1 class="sec" style="font-size:clamp(34px,5.4vw,56px);margin-bottom:18px;">Build a business.<br /><em>Build yourself.</em></h1>
+    <h1 class="sec page-title">Build a business.<br /><em>Build yourself.</em></h1>
     <p class="sec-lede">
       A builder community in a real room in Toronto. Invitation only, free, calm.
     </p>
@@ -109,4 +109,4 @@ import Base from "../layouts/Base.astro";
       <a class="btn" href="/#introduce">Request an introduction</a>
     </div>
   </section>
-</Base>
+</Public>
