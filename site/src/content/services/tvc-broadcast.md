@@ -1,5 +1,5 @@
 ---
-name: "TVC and broadcast commercials"
+name: "TVC and broadcast commercial production"
 pillar: "create"
 tier:
   code: "C2"
@@ -36,7 +36,7 @@ faqs:
     answer: "Broadcast and streaming placements. The final is delivered to the placement's exact technical spec."
   - question: "Is licensing handled?"
     answer: "Yes. Licensing is handled inside the scoped project."
-seoTitle: "TVC and broadcast commercials - Brimwood Innovation"
+seoTitle: "TVC and broadcast commercial production - Brimwood Innovation"
 seoDescription: "Commercial production for broadcast and streaming placements, with creative direction and quality control at every stage."
 ---
 
