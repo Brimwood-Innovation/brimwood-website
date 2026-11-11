@@ -11,7 +11,7 @@
  * shown as static cards with the deck copy, skipped if a published
  * course ever carries the same title. Visitors see the same cards;
  * members-only lessons keep their notes and the calm sign-in gate. */
-import Base from "../../layouts/Base.astro";
+import Public from "../../layouts/Public.astro";
 const apiBase = import.meta.env.PUBLIC_API_BASE || "";
 let courses: any[] = [];
 try {
@@ -50,7 +50,7 @@ const laterCourses = [
 ].filter((l) => !courses.some((c) => c.title.toLowerCase() === l.title.toLowerCase()));
 ---
 
-<Base
+<Public
   title="Academy - Brimwood Innovation"
   description="Courses built from what the hub ships. Free for members."
   path="/academy"
@@ -65,7 +65,7 @@ const laterCourses = [
 >
   <section class="block academy-ui">
     <div class="kicker">Academy</div>
-    <h1 class="sec" style="font-size:clamp(34px,5.4vw,56px);margin-bottom:18px;">Academy</h1>
+    <h1 class="sec page-title">Academy</h1>
     <p class="sec-lede">Courses built from what the hub ships. Free for members.</p>
 
     {courses.length === 0 && (
@@ -75,18 +75,18 @@ const laterCourses = [
       {courses.map((c) => (
         <article class="card">
           <span class="badge badge-open">Open</span>
-          <h3>{c.title}</h3>
+          <h2 class="card-title">{c.title}</h2>
           <p>{c.tagline}{c.counts ? ` ${c.counts}` : ""}</p>
-          <p style="margin-top:16px;"><a class="btn btn-ghost small" href={`/academy/${c.slug}`}>View course</a></p>
+          <p class="mt-16"><a class="btn btn-ghost small" href={`/academy/${c.slug}`}>View course</a></p>
         </article>
       ))}
       {laterCourses.map((l) => (
         <article class="card">
           <span class="badge badge-later">Later</span>
-          <h3>{l.title}</h3>
+          <h2 class="card-title">{l.title}</h2>
           <p>{l.copy}</p>
         </article>
       ))}
     </div>
   </section>
-</Base>
+</Public>

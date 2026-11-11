@@ -7,7 +7,7 @@
  * members) with a Sign in to enrol link beside it. Lesson titles stay
  * links inside the table, so previews, lesson navigation, and the
  * progress checkmarks from academy-course.js keep working. */
-import Base from "../../layouts/Base.astro";
+import Public from "../../layouts/Public.astro";
 
 export async function getStaticPaths() {
   const apiBase = import.meta.env.PUBLIC_API_BASE || "";
@@ -44,7 +44,7 @@ if (modules.length) {
 const sub = [counts, course.tagline].filter(Boolean).join(" ");
 ---
 
-<Base
+<Public
   title={`${course.title} - Academy - Brimwood Innovation`}
   description={course.tagline}
   path={`/academy/${slug}`}
@@ -76,13 +76,13 @@ const sub = [counts, course.tagline].filter(Boolean).join(" ");
       </ol>
     </nav>
     <div class="kicker">{course.level}</div>
-    <h1 class="sec" style="font-size:clamp(34px,5.4vw,56px);margin-bottom:18px;">{course.title}</h1>
+    <h1 class="sec page-title">{course.title}</h1>
     <p class="sec-lede">{sub}</p>
 
     <div class="enrol-row" id="enrolWrap" data-slug={slug} data-api-base={apiBase}>
       <button class="btn" id="enrolBtn">Enrol (free for members)</button>
       <a class="btn btn-ghost" id="enrolSignin" href="/members">Sign in to enrol</a>
-      <p id="enrolMsg" style="display:none;font-weight:600;color:var(--emerald-deep);"></p>
+      <p id="enrolMsg" class="enrol-msg is-hidden"></p>
     </div>
 
     <div class="table-wrap">
@@ -97,7 +97,7 @@ const sub = [counts, course.tagline].filter(Boolean).join(" ");
                 {m.lessons.map((l: any, li: number) => (
                   <>
                     {li > 0 && ", "}
-                    <a href={`/academy/${course.slug}/${l.id}`} data-lesson-id={l.id} class="lesson-link"><span class="done-mark" style="display:none;color:var(--emerald-deep);">✓ </span>{l.title}</a>{l.is_preview && <span class="preview-tag"> (preview)</span>}
+                    <a href={`/academy/${course.slug}/${l.id}`} data-lesson-id={l.id} class="lesson-link"><span class="done-mark is-hidden">✓ </span>{l.title}</a>{l.is_preview && <span class="preview-tag"> (preview)</span>}
                   </>
                 ))}
               </td>
@@ -109,4 +109,4 @@ const sub = [counts, course.tagline].filter(Boolean).join(" ");
   </section>
 
   <script is:inline src="/js/academy-course.js"></script>
-</Base>
+</Public>

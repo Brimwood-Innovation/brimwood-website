@@ -6,7 +6,7 @@
  * for the Journal is the what, never the who, so cards carry no author
  * and no date. Posts still come from the blog content collection (Git via
  * Decap), and card links are unchanged. */
-import Base from "../../layouts/Base.astro";
+import Public from "../../layouts/Public.astro";
 import { getCollection } from "astro:content";
 
 const posts = (await getCollection("blog", ({ data }) => !data.draft)).sort(
@@ -28,7 +28,7 @@ const readMinutes = (body: string | undefined) => {
 };
 ---
 
-<Base
+<Public
   title="Journal - Brimwood Innovation"
   description="What the hub learns, written down. Notes on micro business, AI in practice, and the owner mindset."
   path="/blog"
@@ -44,15 +44,15 @@ const readMinutes = (body: string | undefined) => {
 >
   <section class="block">
     <div class="kicker">Journal</div>
-    <h1 class="sec" style="font-size:clamp(34px,5.4vw,56px);margin-bottom:18px;">Journal</h1>
+    <h1 class="sec page-title">Journal</h1>
     <p class="sec-lede">What the hub learns, written down.</p>
     {posts.length > 0 ? (
       <div class="cards cards-3">
         {posts.map((post) => (
-          <a class="card" href={`/blog/${post.id.replace(/\.md$/, "")}/`} style="text-decoration:none;color:inherit;">
+          <a class="card card-link" href={`/blog/${post.id.replace(/\.md$/, "")}/`}>
             <div class="n">{pillars[post.data.pillar]}</div>
-            <h3>{post.data.title}</h3>
-            <p style="margin-top:12px;font-size:13px;">{readMinutes(post.body)} min read</p>
+            <h2 class="card-title">{post.data.title}</h2>
+            <p class="card-meta">{readMinutes(post.body)} min read</p>
           </a>
         ))}
       </div>
@@ -60,4 +60,4 @@ const readMinutes = (body: string | undefined) => {
       <p class="sec-lede">No posts yet. What the hub learns will be written down here.</p>
     )}
   </section>
-</Base>
+</Public>

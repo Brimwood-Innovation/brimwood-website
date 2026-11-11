@@ -11,7 +11,7 @@
   var slug = wrap.dataset.slug || "";
   var API_BASE = wrap.dataset.apiBase || "";
 
-  // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
+  // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by the layout before this script.
   var esc = window.Brimwood.escapeHtml;
   /* Deck format (prototype section 06): "Wed, Oct 14, 6:30 p.m.".
    * Times show in America/Toronto, the stored zone (R5). */
@@ -83,27 +83,29 @@
         seats =
           '<p aria-live="polite"><b>' + e.rsvp_count + " of " + e.capacity + " seats taken.</b> " + left + " left." +
           (full ? ' <span class="full-badge">Full</span>' : "") + "</p>" +
-          '<div class="event-progress" aria-hidden="true"><i style="width:' + pct + '%"></i></div>';
+          '<div class="event-progress" aria-hidden="true"><i></i></div>';
       } else {
         seats = '<p aria-live="polite"><b>' + e.rsvp_count + " going.</b></p>";
       }
       body.innerHTML =
         '<nav class="crumbs" aria-label="Breadcrumb"><a href="/events">Events</a>' +
         ' <span aria-hidden="true">/</span> <span aria-current="page">' + esc(e.title) + "</span></nav>" +
-        '<h1 class="sec" style="font-size:clamp(34px,5.4vw,56px);margin-bottom:14px;">' + esc(e.title) + "</h1>" +
+        '<h1 class="sec page-title">' + esc(e.title) + "</h1>" +
         '<p class="event-sub">' + esc(fmt(e.starts_at)) + (e.location ? " · " + esc(e.location) : "") + "</p>" +
-        (e.description_md ? '<div class="prose" style="padding:0;max-width:none;"><p style="white-space:pre-wrap;">' + esc(e.description_md) + "</p></div>" : "") +
+        (e.description_md ? '<div class="prose prose-flush"><p class="pre-wrap">' + esc(e.description_md) + "</p></div>" : "") +
         '<div class="event-seats">' + seats + "</div>" +
         '<div class="event-actions">' +
         (full ? "" : '<a class="btn" href="#rsvp">RSVP</a>') +
         '<button type="button" class="btn btn-ghost" id="icsBtn">Add to calendar</button></div>' +
-        '<p class="admin-muted" style="margin-top:16px;">Visitors come with a guest pass from a member host. Access details are on the house info page.</p>' +
-        '<p style="margin-top:12px;"><a href="/events" style="font-size:14px;">← All events</a></p>';
+        '<p class="admin-muted mt-16">Visitors come with a guest pass from a member host. Access details are on the house info page.</p>' +
+        '<p class="mt-12"><a href="/events" class="small-link">← All events</a></p>';
       if (!full) {
         document.getElementById("rsvpSection").style.display = "block";
       } else {
-        body.innerHTML += '<p class="sec-lede" style="margin-top:24px;font-weight:600;">This event is full.</p>';
+        body.innerHTML += '<p class="sec-lede event-full-note">This event is full.</p>';
       }
+      var bar = body.querySelector(".event-progress i");
+      if (bar) bar.style.width = pct + "%";
       document.getElementById("icsBtn").addEventListener("click", function () { downloadIcs(e); });
     } catch (err) {
       document.getElementById("eventLoading").textContent = "Event not found.";

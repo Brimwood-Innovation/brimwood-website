@@ -8,7 +8,7 @@
   var apiBase = section.dataset.apiBase || "";
 
   var listEl = document.getElementById("commentList");
-  // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
+  // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by the layout before this script.
   var esc = window.Brimwood.escapeHtml;
   var fmtDate = function (iso) {
     try { return new Date(iso).toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric" }); }
@@ -31,10 +31,10 @@
         ? "<p class='sec-lede'>No comments yet, be the first.</p>"
         : comments.map(function (cm) {
             var anchor = cm.id ? " id=\"comment-" + esc(cm.id) + "\"" : "";
-            return "\n            <div class=\"admin-card\"" + anchor + " style=\"margin-bottom:12px;\">" +
-              "\n              <p style=\"margin:0 0 8px;\"><strong>" + esc(cm.name) + "</strong>" +
+            return "\n            <div class=\"admin-card\"" + anchor + ">" +
+              "\n              <p class=\"comment-head\"><strong>" + esc(cm.name) + "</strong>" +
               "\n                <span class=\"admin-muted\"> · " + esc(fmtDate(cm.created_at)) + "</span></p>" +
-              "\n              <p style=\"margin:0;white-space:pre-wrap;\">" + renderMentions(cm.body) + "</p>" +
+              "\n              <p class=\"comment-body\">" + renderMentions(cm.body) + "</p>" +
               "\n            </div>";
           }).join("");
     } catch (e) {

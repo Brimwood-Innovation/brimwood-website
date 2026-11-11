@@ -10,7 +10,7 @@
  * keep their place after them, and the page closes with the intro
  * action every public page ends with (deck section 05). Post bodies
  * are author content and render exactly as before. */
-import Base from "../../layouts/Base.astro";
+import Public from "../../layouts/Public.astro";
 import { getCollection, render } from "astro:content";
 
 export async function getStaticPaths() {
@@ -66,7 +66,7 @@ const related = (await getCollection("blog", ({ data }) => !data.draft))
   .slice(0, 3);
 ---
 
-<Base
+<Public
   title={`${post.data.title} - Brimwood Innovation`}
   description={post.data.description}
   path={`/blog/${slug}/`}
@@ -124,9 +124,6 @@ const related = (await getCollection("blog", ({ data }) => !data.draft))
         Copy link
       </button>
       <span class="copy-status" id="copyStatus" role="status"></span>
-      <button class="btn btn-ghost" id="sharePostBtn" type="button" data-share-title={post.data.title} data-share-url={`https://brimwoodinnovation.com/blog/${slug}`}>
-        Share to DM →
-      </button>
     </p>
   </article>
 
@@ -137,10 +134,10 @@ const related = (await getCollection("blog", ({ data }) => !data.draft))
       <form class="intro" id="jNewsForm">
         <label for="jEmail">Email</label>
         <input id="jEmail" type="email" name="email" placeholder="you@example.com" required />
-        <input type="text" name="website" id="jSite" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true" />
-        <div class="cf-turnstile" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx" style="margin:16px 0;"></div>
+        <input type="text" name="website" id="jSite" tabindex="-1" autocomplete="off" class="honeypot" aria-hidden="true" />
+        <div class="cf-turnstile turnstile-box" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx"></div>
         <button class="btn" type="submit">Subscribe</button>
-        <p class="form-err" id="jNewsErr" style="display:none">Something went wrong on our end. Please email <a href="mailto:info@brimwoodinnovation.com" style="color:#fff;text-decoration:underline">info@brimwoodinnovation.com</a> directly.</p>
+        <p class="form-err is-hidden" id="jNewsErr">Something went wrong on our end. Please email <a href="mailto:info@brimwoodinnovation.com">info@brimwoodinnovation.com</a> directly.</p>
       </form>
       <div class="thanks" id="jNewsThanks">Check your inbox. We sent a confirmation link. Click it and you are in.</div>
     </div>
@@ -149,36 +146,36 @@ const related = (await getCollection("blog", ({ data }) => !data.draft))
   {related.length > 0 && (
     <section class="block journal-ui">
       <div class="kicker">Journal</div>
-      <h2 class="sec" style="font-size:clamp(26px,3.6vw,36px);margin-bottom:18px;">Related posts</h2>
+      <h2 class="sec sec-h2">Related posts</h2>
       <div class="cards cards-3">
         {related.map((p) => (
-          <a class="card" href={`/blog/${p.id.replace(/\.md$/, "")}/`} style="text-decoration:none;color:inherit;">
+          <a class="card card-link" href={`/blog/${p.id.replace(/\.md$/, "")}/`}>
             <div class="n">{pillars[p.data.pillar]}</div>
             <h3>{p.data.title}</h3>
-            <p style="margin-top:12px;font-size:13px;">{readMinutes(p.body)} min read</p>
+            <p class="card-meta">{readMinutes(p.body)} min read</p>
           </a>
         ))}
       </div>
     </section>
   )}
 
-  <section id="comments" style="margin-top:4rem;max-width:720px;" data-slug={slug} data-api-base={apiBase}>
-    <h2 class="sec" style="font-size:clamp(22px,3vw,30px);margin-bottom:8px;">Comments</h2>
+  <section id="comments" class="comments-wrap" data-slug={slug} data-api-base={apiBase}>
+    <h2 class="sec sec-h2-sm">Comments</h2>
     <div id="commentList"><p class="sec-lede">Loading comments…</p></div>
 
-    <div class="cta" style="margin-top:2rem;">
-      <h3 style="margin-bottom:8px;">Join the conversation</h3>
-      <p style="margin-bottom:16px;">Comments are moderated, be kind and on topic.</p>
+    <div class="cta cta-gap">
+      <h3 class="mb-8">Join the conversation</h3>
+      <p class="cta-sub">Comments are moderated, be kind and on topic.</p>
       <form id="commentForm">
         <label for="cName">Your name</label>
         <input id="cName" type="text" name="name" placeholder="Jane Appleseed" required />
-        <label for="cEmail">Email <span style="font-weight:400;">(never published)</span></label>
+        <label for="cEmail">Email <span class="label-note">(never published)</span></label>
         <input id="cEmail" type="email" name="email" placeholder="you@example.com" required />
         <label for="cBody">Comment</label>
         <textarea id="cBody" name="body" rows="4" placeholder="Share your thoughts…" required minlength="10" maxlength="2000"></textarea>
-        <div class="cf-turnstile" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx" style="margin:16px 0;"></div>
+        <div class="cf-turnstile turnstile-box" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx"></div>
         <button class="btn" type="submit" id="commentBtn">Post comment</button>
-        <p class="form-err" id="commentErr" style="display:none;" role="status"></p>
+        <p class="form-err is-hidden" id="commentErr" role="status"></p>
       </form>
       <div class="thanks" id="commentThanks" role="status">Thanks, your comment is awaiting moderation.</div>
     </div>
@@ -193,21 +190,6 @@ const related = (await getCollection("blog", ({ data }) => !data.draft))
   </section>
 
   <script is:inline src="/js/blog-comments.js"></script>
-  <script>
-    // Share-to-DM (audit/social/wiring): paper-plane pattern for blog posts.
-    (function () {
-      var btn = document.getElementById("sharePostBtn");
-      if (!btn || !window.Brimwood || !window.Brimwood.shareToDM) return;
-      btn.addEventListener("click", function () {
-        window.Brimwood.shareToDM({
-          title: btn.getAttribute("data-share-title") || document.title,
-          url: btn.getAttribute("data-share-url") || location.href,
-          targetType: "blog_post",
-          targetId: btn.getAttribute("data-share-url") || location.href,
-        });
-      });
-    })();
-  </script>
   <script>
     // Copy link (v5 deck, Article view): copies the canonical post URL and
     // confirms in a status line. Falls back to a prompt-free textarea copy
@@ -275,4 +257,4 @@ const related = (await getCollection("blog", ({ data }) => !data.draft))
       }
     });
   </script>
-</Base>
+</Public>
