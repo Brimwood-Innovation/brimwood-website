@@ -170,6 +170,100 @@ describe("POST /api/introduction", () => {
     }
   });
 
+  it("service tag: a valid slug is stored with the request (T11)", async () => {
+    const env = mockEnv();
+    const sent: { to: string; subject: string }[] = [];
+    const r = mailStub(sent);
+    try {
+      const res = await postJSON(introApp, "/", { ...introBody, service: "custom-automation" }, env);
+      expect(res.status).toBe(200);
+      const rows = env.DB.inserts.get("introduction_requests")!;
+      expect(rows).toHaveLength(1);
+      expect(rows[0].service).toBe("custom-automation");
+    } finally {
+      r();
+    }
+  });
+
+  it("service tag: every public service slug is accepted (T11)", async () => {
+    const slugs = [
+      "animation-explainers", "brand-film", "content-day-retainer",
+      "conversational-ai-agents", "custom-automation", "custom-software-tools",
+      "design-build-strategy", "founder-consultancy", "graphic-design",
+      "local-community-growth", "paid-ads-creative", "search-ai-visibility",
+      "social-media-vsmm", "tvc-broadcast", "warm-lead-capture",
+      "web-development", "website-lead-engine",
+    ];
+    const sent: { to: string; subject: string }[] = [];
+    const r = mailStub(sent);
+    try {
+      for (const slug of slugs) {
+        const env = mockEnv(); // fresh env per slug: the rate limit is per env
+        const res = await postJSON(introApp, "/", { ...introBody, service: slug }, env);
+        expect(res.status, slug).toBe(200);
+        expect(env.DB.inserts.get("introduction_requests")![0].service, slug).toBe(slug);
+      }
+    } finally {
+      r();
+    }
+  });
+
+  it("service tag: missing or empty stores NULL, exactly as before (T11)", async () => {
+    const r = mailStub([]);
+    try {
+      for (const body of [introBody, { ...introBody, service: "" }]) {
+        const env = mockEnv();
+        const res = await postJSON(introApp, "/", body, env);
+        expect(res.status).toBe(200);
+        const rows = env.DB.inserts.get("introduction_requests")!;
+        expect(rows).toHaveLength(1);
+        expect(rows[0].service).toBeNull();
+      }
+    } finally {
+      r();
+    }
+  });
+
+  it("service tag: an unknown slug is rejected with 400 and stores nothing (T11)", async () => {
+    const env = mockEnv();
+    const r = mailStub([]);
+    try {
+      const res = await postJSON(introApp, "/", { ...introBody, service: "not-a-service" }, env);
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as any).error).toMatch(/choose a service/i);
+      expect(env.DB.inserts.get("introduction_requests")).toBeUndefined();
+    } finally {
+      r();
+    }
+  });
+
+  it("service tag: retries without the column when migration 0039 is not applied yet (T11)", async () => {
+    const env = mockEnv();
+    const prev = env.DB.handler;
+    env.DB.handler = (sql, params) => {
+      if (/insert\s+into\s+introduction_requests/i.test(sql) && /\bservice\b/i.test(sql)) {
+        throw new Error("table introduction_requests has no column named service");
+      }
+      return prev?.(sql, params);
+    };
+    const r = mailStub([]);
+    try {
+      const res = await postJSON(introApp, "/", { ...introBody, service: "brand-film" }, env);
+      expect(res.status).toBe(200);
+      // The mock records an insert before the handler throws, so assert on
+      // the call log instead: a first insert carrying the service column,
+      // then the degraded retry without it. The request is not lost.
+      const inserts = env.DB.calls.filter((call) =>
+        /insert\s+into\s+introduction_requests/i.test(call.sql)
+      );
+      expect(inserts.length).toBeGreaterThanOrEqual(2);
+      expect(inserts[0].sql).toMatch(/\bservice\b/i);
+      expect(inserts[inserts.length - 1].sql).not.toMatch(/\bservice\b/i);
+    } finally {
+      r();
+    }
+  });
+
   it("email outage: request still stored, still returns ok (best-effort)", async () => {
     const env = mockEnv();
     const r1 = await turnstileStub(true);
