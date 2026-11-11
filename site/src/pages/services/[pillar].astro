@@ -6,6 +6,7 @@
 import Public from "../../layouts/Public.astro";
 import Breadcrumbs from "../../components/Breadcrumbs.astro";
 import ServiceCard from "../../components/ServiceCard.astro";
+import RevealMotion from "../../components/RevealMotion.astro";
 import { getCollection } from "astro:content";
 import {
   PILLARS,
@@ -63,7 +64,7 @@ const jsonld = {
     {tiers.map((tier) => (
       <div class="svc-tier">
         <h2 class="svc-tier-title">{tier.code} - {tier.label}</h2>
-        <div class="cards cards-3">
+        <div class="cards cards-3" data-reveal-group>
           {tier.entries.map((entry) => <ServiceCard entry={entry} headingLevel="h3" />)}
         </div>
       </div>
@@ -72,9 +73,9 @@ const jsonld = {
 
   <section class="block services-ui">
     <h2 class="sec">Other pillars</h2>
-    <div class="cards cards-2">
+    <div class="cards cards-2" data-reveal-group>
       {others.map((other) => (
-        <a class="card card-link svc-card" href={`/services/${other.slug}/`}>
+        <a class="card card-link svc-card" href={`/services/${other.slug}/`} data-reveal>
           <h3 class="card-title">{other.name}</h3>
           <p>{other.lede}</p>
         </a>
@@ -89,4 +90,5 @@ const jsonld = {
       <a class="btn" href="/#introduce">Request an introduction</a>
     </div>
   </section>
+  <RevealMotion />
 </Public>

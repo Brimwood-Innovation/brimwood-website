@@ -49,13 +49,25 @@ const {
 } = Astro.props;
 const canonical = `https://brimwoodinnovation.com${canonicalPath || path}`;
 const ogImage = image || "https://brimwoodinnovation.com/img/brimwood-og.png";
-// Same header rule as Base for now (four links plus the CTA); the
-// five-link services navigation is redesign T10, not this task.
-const headerLinks = (navigation.header_links || []).slice(0, 4);
+// Primary navigation (redesign T10, spec 4.4): five links, Services
+// first, plus the single introduction CTA. The list is fixed here for
+// the public shell; the CMS navigation file keeps driving the member
+// shell (Base.astro), whose navigation this task does not change.
+const headerLinks = [
+  { label: "Services", url: "/services/" },
+  { label: "About", url: "/about" },
+  { label: "Journal", url: "/blog" },
+  { label: "Academy", url: "/academy" },
+  { label: "Events", url: "/events" },
+];
 const footerLinks = navigation.footer_links || [];
 const footerTagline = (navigation as any).footer_tagline || "";
 const ctaText = siteSettings.cta_text || "Request an introduction";
 const ctaLink = siteSettings.cta_link || "#introduce";
+// The introduction form lives on the home page; a fragment-only CTA
+// link resolves there from every other public page.
+const headerCtaLink =
+  ctaLink.startsWith("#") && path !== "/" ? `/${ctaLink}` : ctaLink;
 const announcement = (siteSettings.announcement_bar || "").trim();
 const siteTitle = siteSettings.site_title || "Brimwood Innovation";
 ---
@@ -118,6 +130,7 @@ const siteTitle = siteSettings.site_title || "Brimwood Innovation";
         slogan: "Build a business. Build yourself.",
         address: {
           "@type": "PostalAddress",
+          streetAddress: "1365 Gerrard St E, Unit 2",
           addressLocality: "Toronto",
           addressRegion: "ON",
           addressCountry: "CA",
@@ -188,16 +201,13 @@ const siteTitle = siteSettings.site_title || "Brimwood Innovation";
     <script is:inline src="/js/escape.js"></script>
     <script is:inline src="/js/safe-url.js"></script>
     <a class="skip-link" href="#main">Skip to content</a>
-    <header class="site">
+    <header class="site public-header">
       <a href="/" aria-label="Brimwood Innovation home">
         <img class="logo" src="/img/brimwood-logo-colour.svg" alt="Brimwood Innovation" />
       </a>
       <nav aria-label="Primary" class="main-nav">
         {headerLinks.map((l) => <a href={l.url}>{l.label}</a>)}
-        <a href="/search" aria-label="Search the site">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
-        </a>
-        <a class="btn small" href={ctaLink}>{ctaText}</a>
+        <a class="btn small" href={headerCtaLink}>{ctaText}</a>
       </nav>
     </header>
     {announcement && (

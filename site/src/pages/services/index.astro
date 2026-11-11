@@ -9,6 +9,7 @@ import Public from "../../layouts/Public.astro";
 import HeroDots from "../../components/HeroDots.astro";
 import Breadcrumbs from "../../components/Breadcrumbs.astro";
 import ServiceCard from "../../components/ServiceCard.astro";
+import RevealMotion from "../../components/RevealMotion.astro";
 import { getCollection } from "astro:content";
 import {
   PILLARS,
@@ -75,7 +76,7 @@ const jsonld = {
       Two services sell first: custom automation, and a website built as a
       lead engine. Everything else supports them.
     </p>
-    <div class="cards cards-2">
+    <div class="cards cards-2" data-reveal-group>
       {leads.map((entry) => <ServiceCard entry={entry} headingLevel="h3" />)}
     </div>
   </section>
@@ -88,7 +89,7 @@ const jsonld = {
       {tiers.map((tier) => (
         <div class="svc-tier">
           <h3 class="svc-tier-title">{tier.code} - {tier.label}</h3>
-          <div class="cards cards-3">
+          <div class="cards cards-3" data-reveal-group>
             {tier.entries.map((entry) => <ServiceCard entry={entry} headingLevel="h4" />)}
           </div>
         </div>
@@ -103,4 +104,5 @@ const jsonld = {
       <a class="btn" href="/#introduce">Request an introduction</a>
     </div>
   </section>
+  <RevealMotion />
 </Public>
