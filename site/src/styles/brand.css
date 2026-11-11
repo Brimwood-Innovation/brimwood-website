@@ -267,6 +267,16 @@ p.sec-lede { color: var(--stone); max-width: 62ch; margin-bottom: 40px; font-siz
 }
 .home-intro form.intro input::placeholder, .home-intro form.intro textarea::placeholder { color: var(--stone); }
 .home-intro form.intro input:focus, .home-intro form.intro textarea:focus { border-color: var(--emerald-deep); }
+/* Service field (redesign T11): the select matches the home form's
+ * input treatment so the enquiry variant reads as the same form. */
+.home-intro form.intro select {
+  width: 100%; padding: 14px 16px; border-radius: 10px;
+  border: 1px solid rgba(18, 26, 22, 0.18);
+  background: #fff; color: var(--ink);
+  font-family: var(--brand); font-size: 15px; outline: none;
+  min-height: var(--brimwood-touch-min);
+}
+.home-intro form.intro select:focus { border-color: var(--emerald-deep); }
 .home-intro .field-hint { font-size: 13.5px; color: var(--stone); margin-top: 8px; }
 .home-intro form.intro .btn { background: var(--emerald-deep); color: #fff; }
 .home-intro form.intro .btn:hover { background: var(--forest); color: #fff; }

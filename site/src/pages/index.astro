@@ -14,7 +14,11 @@
  * headings from homepage.json, as before; both files were updated
  * to the agency wording in this task. The introduction form keeps
  * its fields, submit target, honeypot, and lazy Turnstile exactly
- * as before (the service variant of the form is T11).
+ * as before. Redesign T11 adds the enquiry path on top of it: one
+ * optional service field (a plain select, rendered below), a
+ * service variant of the opening question, and the service slug
+ * sent with the submission. The design record for the form is in
+ * the T11 PR and the cycle 93 loop state entry.
  *
  * Member journeys: the home page no longer carries the member shell
  * or its chrome (that is the public shell split, F3). Members reach
@@ -253,7 +257,18 @@ const whyPoints = [
         <input id="fEmail" type="email" name="email" autocomplete="email" placeholder="you@example.com" required />
         <label for="fRef">Who referred you? <span class="label-note">(optional)</span></label>
         <input id="fRef" type="text" name="referral" placeholder="A member's name, or how you heard of us" />
-        <label for="fMsg">What are you building?</label>
+        <label for="fService">Which service is this about? <span class="label-note">(optional)</span></label>
+        <select id="fService" name="service">
+          <option value="">Not sure yet</option>
+          {byPillar.map(({ pillar, entries }) => (
+            <optgroup label={pillar.name}>
+              {entries.map((entry) => (
+                <option value={serviceSlug(entry.id)}>{entry.data.name}</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+        <label for="fMsg" id="fMsgLabel">What are you building?</label>
         <textarea id="fMsg" name="message" rows="3" aria-describedby="fMsgHint"></textarea>
         <p class="field-hint" id="fMsgHint">Tell us in one line. For example: a booking tool for small clinics.</p>
         <input type="text" name="website" id="fSite" tabindex="-1" autocomplete="off" class="honeypot" aria-hidden="true" />
@@ -304,6 +319,34 @@ const API_BASE = import.meta.env.PUBLIC_API_BASE || '';
 })();
 
 // --- introduction form (POSTs to /api/introduction; Worker sends via Resend) ---
+// Service enquiry variant (redesign T11): a service detail page links
+// here as /?service=<slug>#introduce. The select is a plain form
+// control rendered in the static HTML; this script only pre-selects
+// the value from the query string and swaps the opening question to
+// its service variant. Neither is required for the form to submit:
+// with no JavaScript the field is set by hand and defaults to the
+// general option, and an unknown slug is ignored.
+const serviceSelect = document.getElementById('fService');
+const msgLabel = document.getElementById('fMsgLabel');
+const msgHint = document.getElementById('fMsgHint');
+if (serviceSelect && msgLabel && msgHint) {
+  const hubQuestion = msgLabel.textContent;
+  const hubHint = msgHint.textContent;
+  const applyServiceQuestion = () => {
+    const chosen = !!serviceSelect.value;
+    msgLabel.textContent = chosen ? 'Tell us about the work' : hubQuestion;
+    msgHint.textContent = chosen
+      ? 'Tell us in one line. What is slow, manual, or missing today?'
+      : hubHint;
+  };
+  const wanted = new URLSearchParams(window.location.search).get('service');
+  if (wanted && [...serviceSelect.options].some((o) => o.value === wanted)) {
+    serviceSelect.value = wanted;
+  }
+  applyServiceQuestion();
+  serviceSelect.addEventListener('change', applyServiceQuestion);
+}
+
 const introFormEl = document.getElementById('introForm');
 if (introFormEl) introFormEl.addEventListener('submit', async function(e){
   e.preventDefault();
@@ -331,6 +374,7 @@ if (introFormEl) introFormEl.addEventListener('submit', async function(e){
       body: JSON.stringify({
         name: v('fName'), email: v('fEmail'),
         referral: v('fRef'), message: v('fMsg'),
+        service: v('fService'),
         website: '',
         'cf-turnstile-response': (document.querySelector('[name="cf-turnstile-response"]') || {}).value || ''
       })

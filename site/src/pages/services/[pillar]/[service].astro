@@ -12,6 +12,13 @@
  * with its own pillar only, so a URL naming the wrong pillar is
  * never generated and cannot render a duplicate.
  *
+ * Enquiry path (redesign T11): both introduction CTAs carry this
+ * page's service slug as /?service=<slug>#introduce, so the home
+ * introduction form opens with this service pre-selected and the
+ * service variant of its opening question. Without JavaScript the
+ * link still lands on the form, where the service field is a plain
+ * select the visitor can set by hand.
+ *
  * The CV-1 ladder on Custom automation renders from the entry's
  * structured ladder field (added in this task) as a distinct
  * section, not from body text. */
@@ -95,7 +102,7 @@ const jsonld = {
     <p class="eyebrow">{pillar.name} - {entry.data.tier.code} {entry.data.tier.label}</p>
     <h1>{entry.data.name}</h1>
     <p class="lede">{entry.data.seoDescription}</p>
-    <a class="btn" href="/#introduce">Request an introduction</a>
+    <a class="btn" href={`/?service=${slug}#introduce`}>Request an introduction</a>
   </div>
 
   <section class="block services-ui">
@@ -155,7 +162,7 @@ const jsonld = {
     <h2 class="sec">Where it starts</h2>
     <p class="sec-lede">{entry.data.entryOffer}</p>
     <p>
-      <a class="btn btn-primary" href="/#introduce">Request an introduction</a>
+      <a class="btn btn-primary" href={`/?service=${slug}#introduce`}>Request an introduction</a>
     </p>
   </section>
 

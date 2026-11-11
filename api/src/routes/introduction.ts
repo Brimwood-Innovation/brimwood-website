@@ -1,6 +1,8 @@
 /* POST /api/introduction (T16): D1-backed, behaviour parity with the live worker.
  * Validates → writes introduction_requests → sends owner notify + submitter
- * confirm via Resend → logs to email_log. Honeypot + rate limit preserved. */
+ * confirm via Resend → logs to email_log. Honeypot + rate limit preserved.
+ * Redesign T11 adds one optional field, service: a public service slug
+ * stored with the request (migration 0039) and named in the notify email. */
 import { Hono } from "hono";
 import type { Bindings } from "../index";
 import { sendEmail, shell, fieldRow, esc, INBOX } from "../lib/email";
@@ -8,6 +10,30 @@ import { cleanStr, isEmail, isRecord, clientIp, sha256Hex } from "../lib/validat
 import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 
 import { verifyTurnstile } from "../lib/turnstile";
+
+/* The 17 public service slugs (redesign T11, spec sections 3 and 4.1),
+ * matching the site services collection file names exactly. A submitted
+ * service tag is accepted only when it is one of these slugs; the map
+ * value is the public line name, used in the owner notify email. */
+const SERVICE_NAMES: Record<string, string> = {
+  "animation-explainers": "2D and 3D animation and explainer videos",
+  "brand-film": "Brand film",
+  "content-day-retainer": "Content day retainer",
+  "conversational-ai-agents": "Conversational AI agents",
+  "custom-automation": "Custom automation",
+  "custom-software-tools": "Custom software and tools",
+  "design-build-strategy": "Design, build, and strategy",
+  "founder-consultancy": "Founder consultancy and planning",
+  "graphic-design": "Graphic design",
+  "local-community-growth": "Local community growth",
+  "paid-ads-creative": "Paid ads management and creative",
+  "search-ai-visibility": "Search and AI visibility",
+  "social-media-vsmm": "Social media support (VSMM)",
+  "tvc-broadcast": "TVC and broadcast commercials",
+  "warm-lead-capture": "Warm-lead capture",
+  "web-development": "Web development",
+  "website-lead-engine": "Website plus lead engine",
+};
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -51,6 +77,19 @@ app.post("/", async (c) => {
     return c.json({ ok: false, error: "Please include your name and a valid email address." }, 400);
   }
 
+  // Optional service tag (T11): absent or empty means a hub introduction
+  // and stores NULL, exactly as before. A present value must be one of
+  // the known public service slugs; anything else is rejected in the
+  // same validation style as the name and email check above.
+  const serviceRaw = cleanStr(data.service, 100);
+  let service: string | null = null;
+  if (serviceRaw) {
+    if (!Object.prototype.hasOwnProperty.call(SERVICE_NAMES, serviceRaw)) {
+      return c.json({ ok: false, error: "Please choose a service from the list, or leave it as not sure yet." }, 400);
+    }
+    service = serviceRaw;
+  }
+
   // Idempotency: a client-supplied key makes retries safe, a duplicate key
   // returns success without re-inserting or re-sending. The UNIQUE index on
   // introduction_requests.idempotency_key (migration 0012) is the arbiter.
@@ -69,33 +108,54 @@ app.post("/", async (c) => {
   const ipHash = await sha256Hex(clientIp(c.req.raw));
   const userAgent = (c.req.header("user-agent") || "").slice(0, 300);
 
-  const row = [id, name, email, referral || null, message || null, ipHash, userAgent || null, idemKey || null] as const;
-  try {
-    await DB.prepare(
-      `INSERT INTO introduction_requests
-         (id, name, email, referral, message, ip_hash, user_agent, status, idempotency_key)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?)`
-    )
-      .bind(...row)
-      .run();
-  } catch (e) {
-    const msg = String((e as Error)?.message || e);
-    if (idemKey && /UNIQUE/i.test(msg)) {
-      return c.json({ ok: true }); // lost the race with our own retry, already stored
+  /* Insert, degrading gracefully when a migration has not been applied
+   * yet: the full form carries idempotency_key (migration 0012) and
+   * service (migration 0039); a "no such column" failure retries
+   * without the missing column, down to the original keyless,
+   * untagged insert, so a stored request is never lost to schema lag. */
+  const baseCols = ["id", "name", "email", "referral", "message", "ip_hash", "user_agent", "status"];
+  const baseVals = [id, name, email, referral || null, message || null, ipHash, userAgent || null];
+  const mkVariant = (withIdem: boolean, withService: boolean) => {
+    const cols = [...baseCols];
+    const vals: unknown[] = [...baseVals];
+    if (withIdem) {
+      cols.push("idempotency_key");
+      vals.push(idemKey || null);
     }
-    if (idemKey && /no such column/i.test(msg)) {
-      // Migration 0012 not applied yet, degrade gracefully to a keyless insert.
+    if (withService) {
+      cols.push("service");
+      vals.push(service);
+    }
+    return { cols, vals };
+  };
+  const variants = [mkVariant(true, true), mkVariant(true, false), mkVariant(false, true), mkVariant(false, false)];
+  let stored = false;
+  let lastError: unknown = null;
+  for (const variant of variants) {
+    const marks = variant.cols.map((col) => (col === "status" ? "'new'" : "?")).join(", ");
+    try {
       await DB.prepare(
-        `INSERT INTO introduction_requests
-           (id, name, email, referral, message, ip_hash, user_agent, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'new')`
+        `INSERT INTO introduction_requests (${variant.cols.join(", ")}) VALUES (${marks})`
       )
-        .bind(id, name, email, referral || null, message || null, ipHash, userAgent || null)
+        .bind(...variant.vals)
         .run();
-    } else {
+      stored = true;
+      break;
+    } catch (e) {
+      const msg = String((e as Error)?.message || e);
+      if (idemKey && /UNIQUE/i.test(msg)) {
+        return c.json({ ok: true }); // lost the race with our own retry, already stored
+      }
+      if (/no such column|has no column/i.test(msg)) {
+        // Both wordings occur: "no such column" (older SQLite and D1)
+        // and "has no column named" (newer SQLite).
+        lastError = e;
+        continue; // try the next, narrower insert
+      }
       throw e;
     }
   }
+  if (!stored) throw lastError;
 
   const notifyHtml = shell(
     "New introduction request",
@@ -104,6 +164,7 @@ app.post("/", async (c) => {
       fieldRow("Name", name) +
       fieldRow("Email", email) +
       fieldRow("Referred by", referral) +
+      (service ? fieldRow("Service", SERVICE_NAMES[service]) : "") +
       fieldRow("What they are building", message) +
       "</table>" +
       '<p style="font-size:13px;color:#5B6862;margin:24px 0 0;">Reply directly to this email to reach ' + esc(name) + ".</p>"
@@ -124,6 +185,7 @@ app.post("/", async (c) => {
       text:
         "New introduction request - brimwoodinnovation.com\n\nName: " + name +
         "\nEmail: " + email + "\nReferred by: " + (referral || "-") +
+        (service ? "\nService: " + SERVICE_NAMES[service] : "") +
         "\n\nWhat they are building:\n" + (message || "-"),
       replyTo: email,
     });
