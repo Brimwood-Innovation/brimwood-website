@@ -14,7 +14,7 @@ const Heading = headingLevel;
 const href = servicePath(entry.data.pillar, serviceSlug(entry.id));
 ---
 
-<a class="card card-link svc-card" href={href}>
+<a class="card card-link svc-card" href={href} data-reveal>
   <div class="n">{entry.data.tier.code} - {entry.data.tier.label}</div>
   <Heading class="card-title">{entry.data.name}</Heading>
   <p>{entry.data.seoDescription}</p>

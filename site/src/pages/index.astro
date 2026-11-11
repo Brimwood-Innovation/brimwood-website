@@ -1,72 +1,221 @@
 ---
-/* Home (Phase 2): public sections rebuilt from prototype section 05
- * (v5 UX deck). Vanilla JS only.
- * Site integration: hero copy from CMS settings.json; section visibility
- * from homepage.json enabled flags. The introduction form keeps its
- * fields, submit target, honeypot, and lazy Turnstile exactly as before. */
-import Base from "../layouts/Base.astro";
+/* Home (redesign T10, spec 4.5): repositioned as the agency front
+ * door on the lean public shell (T8). Structure, in the approved
+ * prototype v3 order: agency hero with the swarm and the three-fact
+ * strip, lead services spotlight, pillar preview, how an engagement
+ * works, hub band, why Brimwood, the introduction form, and the
+ * final CTA. Every service named on this page renders from the T7
+ * services collection through the T9 helpers, so the home page can
+ * never drift from the services index (review finding P1-1: the
+ * pillar preview lists every public service by name under its
+ * pillar, with true counts, and no board-only names).
+ *
+ * Content model: hero copy comes from settings.json and the section
+ * headings from homepage.json, as before; both files were updated
+ * to the agency wording in this task. The introduction form keeps
+ * its fields, submit target, honeypot, and lazy Turnstile exactly
+ * as before (the service variant of the form is T11).
+ *
+ * Member journeys: the home page no longer carries the member shell
+ * or its chrome (that is the public shell split, F3). Members reach
+ * the hub at /hub, which keeps Base.astro and its chrome unchanged.
+ * The old home's member-facing pieces were placed as follows: the
+ * four-fact community strip is replaced by the spec 4.5 three-fact
+ * strip in the hero; "How the hub works" is replaced by the
+ * engagement steps, with the hub story kept as the hub band; the
+ * belief line ("Elite by effort, not by background.") is kept as
+ * the standard line under Why Brimwood; the Next at Brimwood panel
+ * is kept under the hub band with its events fetch, so demo nights
+ * stay visible from the front door. */
+import Public from "../layouts/Public.astro";
 import HeroDots from "../components/HeroDots.astro";
+import ServiceCard from "../components/ServiceCard.astro";
+import RevealMotion from "../components/RevealMotion.astro";
 import siteSettings from "../content/settings.json";
 import homepage from "../content/homepage.json";
+import { getCollection } from "astro:content";
+import { PILLARS, groupByTier, serviceSlug } from "../lib/services";
 
-const heroHeadline = siteSettings.hero_headline || "Build a business. Build yourself.";
+const heroHeadline =
+  siteSettings.hero_headline || "We build the technology your business runs on.";
 const heroSubtext = siteSettings.hero_subtext || "";
 const ctaText = siteSettings.cta_text || "Request an introduction";
 const ctaLink = siteSettings.cta_link || "#introduce";
-const sectionOn = (type: string) =>
-  (homepage.sections || []).some((s: any) => s.type === type && s.enabled);
-const showLoop = sectionOn("features");
+const section = (type: string) =>
+  (homepage.sections || []).find((s: any) => s.type === type);
+const sectionOn = (type: string) => {
+  const s = section(type);
+  return !!s && !!s.enabled;
+};
+const heading = (type: string, fallback: string) =>
+  (section(type) || {}).heading || fallback;
+const subheading = (type: string, fallback: string) =>
+  (section(type) || {}).subheading || fallback;
+const showLead = sectionOn("lead");
+const showPillars = sectionOn("pillars");
+const showSteps = sectionOn("steps");
+const showHub = sectionOn("hub");
+const showWhy = sectionOn("why");
 const showCta = sectionOn("cta");
-// Split hero headline on ". " for the two-line display treatment; the
-// closing line takes the prototype's italic accent.
-const heroLines = heroHeadline.split(/\.\s*/).filter(Boolean);
+
+/* The closing words of the hero headline take the prototype's
+ * Signal Green underline accent (a highlight, never behind text). */
+const accent = "runs on.";
+const heroHasAccent = heroHeadline.endsWith(accent);
+const heroLead = heroHasAccent
+  ? heroHeadline.slice(0, -accent.length)
+  : heroHeadline;
+
+const services = await getCollection("services");
+const leads = services
+  .filter((s) => s.data.lead)
+  .sort((a, b) => (a.data.pillar === "automate" ? 0 : 1) - (b.data.pillar === "automate" ? 0 : 1));
+const byPillar = PILLARS.map((pillar) => ({
+  pillar,
+  entries: groupByTier(
+    services.filter((s) => s.data.pillar === pillar.slug),
+  ).flatMap((tier) => tier.entries),
+}));
+
+const engagementSteps = [
+  {
+    title: "Start with a conversation",
+    text: "Every engagement starts with an introduction and a conversation about the problem: what is slow, what is manual, what is missing.",
+  },
+  {
+    title: "Scope and price in writing",
+    text: "Scope and price are agreed in writing, in an engagement letter, before work starts. Prices are set per engagement, because the work is custom.",
+  },
+  {
+    title: "Built in stages",
+    text: "The work is designed and built in stages you can follow, with progress you can see rather than status reports you have to trust.",
+  },
+  {
+    title: "Your approval at each gate",
+    text: "Nothing moves to the next stage without your approval at the stage gate. If it is not right, it does not ship.",
+  },
+];
+
+const whyPoints = [
+  {
+    title: "A small, senior team",
+    text: "You work with the people who do the work. No hand-offs down a chain.",
+  },
+  {
+    title: "Engineered for speed",
+    text: "Lightweight builds that load fast, stay fast, and are made to be found.",
+  },
+  {
+    title: "Staged delivery",
+    text: "Work arrives in stages, with your approval at each gate before the next begins.",
+  },
+  {
+    title: "No hype",
+    text: "Straight claims, honest timelines, and a written scope before anything starts.",
+  },
+];
 ---
 
-<Base
+<Public
   title="Brimwood Innovation - Build a business. Build yourself."
-  description="Brimwood Innovation is a calm builder community and hub at 1365 Gerrard St E, Toronto. Work side by side, show your work at demo nights, learn in the Academy."
+  description="Brimwood Innovation is a Toronto agency and builder hub: custom automation, websites with lead engines, and custom software for businesses, built at 1365 Gerrard St E, Unit 2, Toronto."
   path="/"
   turnstile
 >
-  <div class="hero">
+  <div class="hero home-hero">
     <HeroDots />
-    <img class="lockup" src="/img/brimwood-logo-reversed.svg" alt="Brimwood Innovation logo" />
-    <h1>{heroLines.map((line, i) => i === heroLines.length - 1 && heroLines.length > 1
-      ? <em>{line}.</em>
-      : <>{line}.{i < heroLines.length - 1 && <br />}</>)}</h1>
-    <p class="lede">
-      {heroSubtext}
-    </p>
-    <a class="btn" href={ctaLink}>{ctaText}</a>
+    <p class="eyebrow">Brimwood Innovation - Agency - Toronto</p>
+    <h1>{heroLead}{heroHasAccent && <span class="hero-accent">{accent}</span>}</h1>
+    <p class="lede">{heroSubtext}</p>
+    <div class="hero-ctas">
+      <a class="btn" href={ctaLink}>{ctaText}</a>
+      <a class="btn btn-ghost-dark" href="/services/">See the services</a>
+    </div>
+    <div class="hero-facts">
+      <div class="hero-fact">
+        <b>1365 Gerrard St E</b>
+        <span>A working hub in Toronto, Unit 2</span>
+      </div>
+      <div class="hero-fact">
+        <b>Starts with a conversation</b>
+        <span>Every engagement, no checkout page</span>
+      </div>
+      <div class="hero-fact">
+        <b>Agreed in writing first</b>
+        <span>Scope and price settled before work starts</span>
+      </div>
+    </div>
   </div>
 
-  <div class="facts-strip">
-    <ul class="facts" aria-label="Facts">
-      <li><b>1365 Gerrard St E</b><span>Toronto, second floor</span></li>
-      <li><b>Demo nights</b><span>Wednesdays, 6:30 p.m.</span></li>
-      <li><b>Membership is free</b><span>By invitation</span></li>
-      <li><b>Anonymous by default</b><span>We share the what, never the who</span></li>
-    </ul>
-  </div>
-
-  <div class="belief">
-    <p>Elite by effort, not by background.</p>
-  </div>
-
-  {showLoop && (
-  <section class="block">
-    <h2 class="sec">How the hub works</h2>
-    <p class="sec-lede">One loop, every week.</p>
-    <div class="cards cards-3">
-      <div class="card"><h3>Build</h3><p>Work sessions at the hub, side by side.</p></div>
-      <div class="card"><h3>Show</h3><p>Five-minute demos. Written feedback, no scores.</p></div>
-      <div class="card"><h3>Learn</h3><p>Foundations: 3 modules, 9 lessons.</p></div>
+  {showLead && (
+  <section class="block home-ui">
+    <div class="kicker">Lead services</div>
+    <h2 class="sec">{heading("lead", "The two services most clients need first.")}</h2>
+    <p class="sec-lede">{subheading("lead", "")}</p>
+    <div class="cards cards-2" data-reveal-group>
+      {leads.map((entry) => <ServiceCard entry={entry} headingLevel="h3" />)}
     </div>
   </section>
   )}
 
-  <section class="block">
-    <div class="next-panel">
+  {showPillars && (
+  <section class="block home-ui">
+    <div class="kicker">All services</div>
+    <h2 class="sec">{heading("pillars", "Five pillars. Seventeen services.")}</h2>
+    <p class="sec-lede">{subheading("pillars", "")} <a href="/services/">Open the full services index</a>.</p>
+    <div class="cards cards-3" data-reveal-group>
+      {byPillar.map(({ pillar, entries }) => (
+        <article class="card pillar-card" data-reveal>
+          <h3 class="card-title"><a href={`/services/${pillar.slug}/`}>{pillar.name}</a></h3>
+          <p class="pillar-lede">{pillar.lede}</p>
+          <p class="pillar-count">{entries.length} services</p>
+          <ul class="pillar-list">
+            {entries.map((entry) => (
+              <li><a href={`/services/${entry.data.pillar}/${serviceSlug(entry.id)}/`}>{entry.data.name}</a></li>
+            ))}
+          </ul>
+        </article>
+      ))}
+    </div>
+  </section>
+  )}
+
+  {showSteps && (
+  <section class="block home-ui">
+    <div class="kicker">How it works</div>
+    <h2 class="sec">{heading("steps", "How an engagement works.")}</h2>
+    <p class="sec-lede">{subheading("steps", "")}</p>
+    <div class="steps steps-4" data-reveal-group>
+      {engagementSteps.map((step, i) => (
+        <article class="step" data-reveal>
+          <div class="num" aria-hidden="true">{i + 1}</div>
+          <h3>{step.title}</h3>
+          <p>{step.text}</p>
+        </article>
+      ))}
+    </div>
+  </section>
+  )}
+
+  {showHub && (
+  <section class="block home-ui">
+    <div class="hub-band" data-reveal>
+      <div>
+        <div class="kicker kicker-light">The hub</div>
+        <h2>{heading("hub", "An agency inside a working builder hub.")}</h2>
+        <p>{subheading("hub", "")}</p>
+        <div class="hub-rhythm">
+          <span>Mon: Commit</span>
+          <span>Wed: Forge</span>
+          <span>Fri: Demo</span>
+        </div>
+      </div>
+      <div class="hub-quote">
+        <p class="hub-quote-core">&ldquo;Build a business. Build yourself.&rdquo;</p>
+        <p>The hub&rsquo;s core idea, and the standard the agency works to: the people who build for you are building themselves, too.</p>
+      </div>
+    </div>
+    <div class="next-panel home-next">
       <div>
         <h2>Next at Brimwood</h2>
         <p id="nextEventLine">Demo nights run Wednesdays at 6:30 p.m. at 1365 Gerrard St E.</p>
@@ -74,26 +223,43 @@ const heroLines = heroHeadline.split(/\.\s*/).filter(Boolean);
       <a class="btn small" id="nextEventLink" href="/events">See upcoming events</a>
     </div>
   </section>
+  )}
+
+  {showWhy && (
+  <section class="block home-ui">
+    <div class="kicker">Why Brimwood</div>
+    <h2 class="sec">{heading("why", "Small team. Written scope. Work that loads fast.")}</h2>
+    <div class="why-grid" data-reveal-group>
+      {whyPoints.map((point) => (
+        <article class="why" data-reveal>
+          <h3>{point.title}</h3>
+          <p>{point.text}</p>
+        </article>
+      ))}
+    </div>
+    <p class="standard">Our standard: <em>Elite by effort, not by background.</em></p>
+  </section>
+  )}
 
   {showCta && (
   <section class="block home-intro" id="introduce">
-    <h2 class="sec">Request an introduction</h2>
-    <p class="sec-lede">Membership is free and by invitation. We read every request and reply within 5 days.</p>
+    <h2 class="sec">{heading("cta", "Request an introduction")}</h2>
+    <p class="sec-lede">{subheading("cta", "")}</p>
     <div class="intro-card">
       <form class="intro" id="introForm">
         <label for="fName">Your name</label>
         <input id="fName" type="text" name="name" autocomplete="name" placeholder="Jane Appleseed" required />
         <label for="fEmail">Email</label>
         <input id="fEmail" type="email" name="email" autocomplete="email" placeholder="you@example.com" required />
-        <label for="fRef">Who referred you? <span style="text-transform:none;letter-spacing:0">(optional)</span></label>
+        <label for="fRef">Who referred you? <span class="label-note">(optional)</span></label>
         <input id="fRef" type="text" name="referral" placeholder="A member's name, or how you heard of us" />
         <label for="fMsg">What are you building?</label>
         <textarea id="fMsg" name="message" rows="3" aria-describedby="fMsgHint"></textarea>
         <p class="field-hint" id="fMsgHint">Tell us in one line. For example: a booking tool for small clinics.</p>
-        <input type="text" name="website" id="fSite" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true" />
-        <div class="cf-turnstile" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx" style="margin:16px 0;"></div>
+        <input type="text" name="website" id="fSite" tabindex="-1" autocomplete="off" class="honeypot" aria-hidden="true" />
+        <div class="cf-turnstile turnstile-box" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx"></div>
         <button class="btn btn-primary" type="submit">Send request</button>
-        <p class="form-err" id="formErr" role="status" style="display:none">Something went wrong on our end. Please email <a href="mailto:info@brimwoodinnovation.com" style="color:inherit;text-decoration:underline">info@brimwoodinnovation.com</a> directly and we will take it from there.</p>
+        <p class="form-err is-hidden" id="formErr" role="status">Something went wrong on our end. Please email <a href="mailto:info@brimwoodinnovation.com">info@brimwoodinnovation.com</a> directly and we will take it from there.</p>
       </form>
       <div class="thanks" id="thanksMsg" role="status">
         <span class="sent-badge">Sent</span>
@@ -102,7 +268,17 @@ const heroLines = heroHeadline.split(/\.\s*/).filter(Boolean);
       </div>
     </div>
   </section>
+
+  <section class="block home-ui">
+    <div class="cta" data-reveal>
+      <h2>Start with an introduction.</h2>
+      <p>Tell us the problem. We will tell you plainly whether we are the right team to build the fix, and what it would take.</p>
+      <a class="btn" href={ctaLink}>{ctaText}</a>
+    </div>
+  </section>
   )}
+
+  <RevealMotion />
 
   <script>
 
@@ -128,7 +304,8 @@ const API_BASE = import.meta.env.PUBLIC_API_BASE || '';
 })();
 
 // --- introduction form (POSTs to /api/introduction; Worker sends via Resend) ---
-document.getElementById('introForm').addEventListener('submit', async function(e){
+const introFormEl = document.getElementById('introForm');
+if (introFormEl) introFormEl.addEventListener('submit', async function(e){
   e.preventDefault();
   const v = id => document.getElementById(id).value.trim();
   const btn = this.querySelector('button[type=submit]');
@@ -169,4 +346,4 @@ document.getElementById('introForm').addEventListener('submit', async function(e
 });
 
   </script>
-</Base>
+</Public>

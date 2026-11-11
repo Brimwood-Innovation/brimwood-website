@@ -19,6 +19,7 @@ import Public from "../../../layouts/Public.astro";
 import HeroDots from "../../../components/HeroDots.astro";
 import Breadcrumbs from "../../../components/Breadcrumbs.astro";
 import ServiceCard from "../../../components/ServiceCard.astro";
+import RevealMotion from "../../../components/RevealMotion.astro";
 import { getCollection, render } from "astro:content";
 import {
   breadcrumbJsonLd,
@@ -173,9 +174,10 @@ const jsonld = {
   {related.length > 0 && (
     <section class="block services-ui">
       <h2 class="sec">Related services</h2>
-      <div class="cards cards-3">
+      <div class="cards cards-3" data-reveal-group>
         {related.map((rel) => <ServiceCard entry={rel} headingLevel="h3" />)}
       </div>
     </section>
   )}
+  <RevealMotion />
 </Public>
