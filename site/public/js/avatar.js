@@ -1,0 +1,53 @@
+/* Shared avatar renderer: client-side twin of site/src/components/Avatar.astro.
+ * Round everywhere, consistent sizes, initials fallback in brand colours.
+ * Brand Kit v1.0. Usage: brimwoodAvatar({ src, name, size }) -> HTML string.
+ * size: 'sm' | 'md' | 'lg' | 'xl' or a pixel number. */
+(function () {
+  "use strict";
+  var SIZES = { sm: 32, md: 48, lg: 96, xl: 128 };
+  var BG = ["#075E40", "#0A3D2B"]; // Deep Emerald, Forest. Emerald excluded: Paper on Emerald is 3.62:1, below 4.5:1 at small sizes.
+  var FG = "#F6F8F7"; // Paper
+
+  // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
+  var esc = window.Brimwood.escapeHtml;
+  // Canonical scheme allowlist: window.Brimwood.safeMediaUrl
+  // (site/public/js/safe-url.js), loaded by Base beside the escaper. A
+  // rejected avatar source falls back to initials, exactly as a missing
+  // source does, so a hostile API answer can never land in an img src.
+  var safeMedia = window.Brimwood.safeMediaUrl;
+
+  function initials(n) {
+    var parts = String(n || "").trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return "M";
+    return (parts[0][0] + (parts[1] ? parts[1][0] : "")).toUpperCase();
+  }
+
+  function bgFor(name) {
+    var h = 0;
+    var n = String(name || "");
+    for (var i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) >>> 0;
+    return BG[h % BG.length];
+  }
+
+  window.brimwoodAvatar = function (opts) {
+    opts = opts || {};
+    var px = typeof opts.size === "number" ? opts.size : (SIZES[opts.size] || SIZES.md);
+    var name = opts.name || "Member";
+    var label = esc(name) + "'s avatar";
+    var dim = "width:" + px + "px;height:" + px + "px;";
+    var src = opts.src ? safeMedia(opts.src, null) : null;
+    if (src) {
+      return (
+        '<img src="' + esc(src) + '" alt="' + label + '" loading="lazy" style="' +
+        dim + 'border-radius:50%;object-fit:cover;display:block;flex:none;" />'
+      );
+    }
+    var fs = Math.round(px * 0.38);
+    return (
+      '<span role="img" aria-label="' + label + '" style="' + dim +
+      "border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex:none;" +
+      "background:" + bgFor(name) + ";color:" + FG + ";font-weight:700;font-size:" + fs +
+      'px;letter-spacing:0.02em;">' + esc(initials(name)) + "</span>"
+    );
+  };
+})();

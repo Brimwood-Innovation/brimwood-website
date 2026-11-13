@@ -15,34 +15,18 @@
 import { Hono } from "hono";
 import type { Bindings } from "../index";
 import { sendEmail, shell, fieldRow, esc, INBOX } from "../lib/email";
-import { cleanStr, isEmail, clientIp } from "../lib/validate";
-import { checkRateLimit } from "../lib/ratelimit";
+import { cleanStr, isEmail, isRecord, clientIp } from "../lib/validate";
+import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 import { verifyTurnstile } from "../lib/turnstile";
+import { getAdminUser } from "../lib/auth";
 
 type Env = Bindings & { RESEND_API_KEY?: string; TURNSTILE_SECRET_KEY?: string };
 const app = new Hono<{ Bindings: Env }>();
-const COOKIE = "brimwood_sess";
 
 const FIELD_TYPES = ["text", "email", "textarea", "select", "checkbox"] as const;
 const STATUSES = ["draft", "published", "closed"] as const;
 
-async function requireAdmin(c: { env: Env; req: { header: (n: string) => string | undefined }; json: (o: object, s?: number) => Response }) {
-  const cookie = c.req.header("cookie") || "";
-  const m = cookie.match(new RegExp(COOKIE + "=([^;]+)"));
-  if (!m) return null;
-  const raw = await c.env.SESSIONS_KV.get("sess:" + m[1]);
-  if (!raw) return null;
-  try {
-    const s = JSON.parse(raw) as { userId: string; role: string };
-    if (s.role !== "admin") return null;
-    const user = await c.env.DB.prepare("SELECT id FROM users WHERE id = ? AND status = 'active'")
-      .bind(s.userId)
-      .first<{ id: string }>();
-    return user ? { id: user.id } : null;
-  } catch {
-    return null;
-  }
-}
+
 
 function slugify(v: string): string {
   return v.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
@@ -58,14 +42,26 @@ type Field = {
 };
 
 function parseFields(rows: any[]): Field[] {
-  return rows.map((r) => ({
-    id: r.id,
-    label: r.label,
-    field_type: r.field_type,
-    required: r.required,
-    options: r.options ? (JSON.parse(r.options) as string[]) : null,
-    position: r.position,
-  }));
+  return rows.map((r) => {
+    let options: string[] | null = null;
+    if (r.options) {
+      // Tolerate corrupt option JSON: a bad row must not 500 the public form.
+      try {
+        const parsed = JSON.parse(r.options);
+        options = Array.isArray(parsed) ? parsed.map((o) => String(o)) : null;
+      } catch {
+        options = null;
+      }
+    }
+    return {
+      id: r.id,
+      label: r.label,
+      field_type: r.field_type,
+      required: r.required,
+      options,
+      position: r.position,
+    };
+  });
 }
 
 /* ---------------- Admin ---------------- */
@@ -82,9 +78,9 @@ async function audit(DB: D1Database, actorId: string, action: string, detail: st
     .catch(() => {});
 }
 
-/** GET /admin — list forms with counts. */
+/** GET /admin: list forms with counts. */
 app.get("/admin", async (c) => {
-  const admin = await requireAdmin(c);
+  const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
   if (no) return no;
   const rows = await c.env.DB.prepare(
@@ -122,19 +118,23 @@ function validateFields(raw: unknown): { ok: boolean; error?: string; fields?: {
   return { ok: true, fields: out };
 }
 
-/** POST /admin — create form with fields. */
+/** POST /admin: create form with fields. */
 app.post("/admin", async (c) => {
-  const admin = await requireAdmin(c);
+  const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
   if (no) return no;
   const { DB } = c.env;
 
-  let body: Record<string, unknown>;
+  let raw: unknown;
   try {
-    body = await c.req.json();
+    raw = await c.req.json();
   } catch {
-    return c.json({ ok: false }, 400);
+    return c.json({ ok: false, error: "Invalid request." }, 400);
   }
+  if (!isRecord(raw)) {
+    return c.json({ ok: false, error: "Invalid request." }, 400);
+  }
+  const body = raw;
   const title = cleanStr(body.title, 200);
   const slug = slugify(cleanStr(body.slug || body.title, 120));
   const description = cleanStr(body.description, 2000) || null;
@@ -168,20 +168,24 @@ app.post("/admin", async (c) => {
   return c.json({ ok: true, id, slug });
 });
 
-/** PATCH /admin/:id — update form metadata (not fields; delete + recreate fields via POST for structural changes). */
+/** PATCH /admin/:id: update form metadata (not fields; delete + recreate fields via POST for structural changes). */
 app.patch("/admin/:id", async (c) => {
-  const admin = await requireAdmin(c);
+  const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
   if (no) return no;
   const { DB } = c.env;
   const id = c.req.param("id");
 
-  let body: Record<string, unknown>;
+  let raw: unknown;
   try {
-    body = await c.req.json();
+    raw = await c.req.json();
   } catch {
-    return c.json({ ok: false }, 400);
+    return c.json({ ok: false, error: "Invalid request." }, 400);
   }
+  if (!isRecord(raw)) {
+    return c.json({ ok: false, error: "Invalid request." }, 400);
+  }
+  const body = raw;
   const updates: string[] = [];
   const binds: unknown[] = [];
   if (body.title !== undefined) {
@@ -224,9 +228,9 @@ app.patch("/admin/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-/** DELETE /admin/:id — delete form (fields + submissions cascade). */
+/** DELETE /admin/:id: delete form (fields + submissions cascade). */
 app.delete("/admin/:id", async (c) => {
-  const admin = await requireAdmin(c);
+  const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
   if (no) return no;
   const { DB } = c.env;
@@ -237,9 +241,9 @@ app.delete("/admin/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-/** GET /admin/:id/submissions — list submissions for a form. */
+/** GET /admin/:id/submissions: list submissions for a form. */
 app.get("/admin/:id/submissions", async (c) => {
-  const admin = await requireAdmin(c);
+  const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
   if (no) return no;
   const { DB } = c.env;
@@ -261,18 +265,22 @@ app.get("/admin/:id/submissions", async (c) => {
     ok: true,
     form,
     fields: fields.results,
-    submissions: (subs.results as any[]).map((s) => ({
-      id: s.id,
-      submitted_at: s.submitted_at,
-      data: JSON.parse(s.data as string),
-    })),
+    submissions: (subs.results as any[]).map((s) => {
+      // Tolerate corrupt rows: one bad payload must not 500 the whole list.
+      let data: unknown = null;
+      try {
+        data = JSON.parse(s.data as string);
+      } catch {
+        data = null;
+      }
+      return { id: s.id, submitted_at: s.submitted_at, data };
+    }),
   });
 });
 
-export default app;
 /* ---------------- Public ---------------- */
 
-/** GET / — public directory of published forms (slug + title only).
+/** GET /: public directory of published forms (slug + title only).
  * Used by the site build to pre-render form pages. */
 app.get("/", async (c) => {
   const rows = await c.env.DB.prepare(
@@ -281,7 +289,7 @@ app.get("/", async (c) => {
   return c.json({ ok: true, forms: rows.results });
 });
 
-/** GET /:slug — published form definition. */
+/** GET /:slug: published form definition. */
 app.get("/:slug", async (c) => {
   const slug = slugify(c.req.param("slug"));
   const form = await c.env.DB.prepare(
@@ -298,9 +306,9 @@ app.get("/:slug", async (c) => {
   return c.json({ ok: true, form: { ...form, fields: parseFields(fields.results as any[]) } });
 });
 
-/** POST /:slug/submit — validate, Turnstile, store, notify. */
+/** POST /:slug/submit: validate, Turnstile, store, notify. */
 app.post("/:slug/submit", async (c) => {
-  const { DB, RATE_LIMIT_KV } = c.env;
+  const { DB } = c.env;
   const slug = slugify(c.req.param("slug"));
 
   const form = await DB.prepare(
@@ -310,15 +318,22 @@ app.post("/:slug/submit", async (c) => {
     .first<{ id: string; slug: string; title: string; notify_email: string | null }>();
   if (!form) return c.json({ ok: false, error: "Form not found" }, 404);
 
-  if (!(await checkRateLimit(RATE_LIMIT_KV, "form:" + slug + ":" + clientIp(c.req.raw), 5, 3600))) {
+  if (!(await checkRateLimitD1(DB, "form:" + slug + ":" + clientIp(c.req.raw), 5, 3600))) {
     return c.json({ ok: false, error: "Too many submissions. Please try again later." }, 429);
   }
 
-  let body: Record<string, unknown>;
+  let raw: unknown;
   try {
-    body = await c.req.json();
+    raw = await c.req.json();
   } catch {
-    return c.json({ ok: false }, 400);
+    return c.json({ ok: false, error: "Invalid request." }, 400);
+  }
+  if (!isRecord(raw)) {
+    return c.json({ ok: false, error: "Invalid request." }, 400);
+  }
+  const body = raw;
+  if (cleanStr(body.website, 200)) {
+    return c.json({ ok: true }); // honeypot: bot, pretend success, store nothing
   }
 
   // Turnstile bot check (fails closed).
@@ -335,16 +350,15 @@ app.post("/:slug/submit", async (c) => {
     .bind(form.id)
     .all();
   const parsed = parseFields(fields.results as any[]);
-  const responses = (body.responses || {}) as Record<string, unknown>;
+  const responses = isRecord(body.responses) ? body.responses : {};
 
   // Validate each field.
   const cleaned: Record<string, string | boolean> = {};
   for (const f of parsed) {
-    const raw = responses[f.id];
-    let value: string | boolean = typeof raw === "boolean" ? raw : cleanStr(raw, 5000);
+    const rawVal = responses[f.id];
 
     if (f.field_type === "checkbox") {
-      value = raw === true || raw === "true" || raw === "on";
+      const value = rawVal === true || rawVal === "true" || rawVal === "on";
       if (f.required && !value) {
         return c.json({ ok: false, error: `"${f.label}" is required.` }, 400);
       }
@@ -352,7 +366,12 @@ app.post("/:slug/submit", async (c) => {
       continue;
     }
 
-    const str = String(value).trim();
+    // Non-scalar payloads (objects/arrays) are rejected outright, coercing
+    // them would store "[object Object]" junk.
+    if (typeof rawVal === "object" && rawVal !== null) {
+      return c.json({ ok: false, error: `"${f.label}" has an invalid value.` }, 400);
+    }
+    const str = cleanStr(rawVal, 5000);
     if (f.required && !str) {
       return c.json({ ok: false, error: `"${f.label}" is required.` }, 400);
     }
@@ -365,9 +384,40 @@ app.post("/:slug/submit", async (c) => {
     cleaned[f.id] = str;
   }
 
-  await DB.prepare("INSERT INTO form_submissions (id, form_id, data) VALUES (?, ?, ?)")
-    .bind(crypto.randomUUID(), form.id, JSON.stringify(cleaned))
-    .run();
+  // Idempotency: same key → same logical submission. Duplicate delivery
+  // returns success without re-inserting or re-notifying.
+  const idemKey =
+    cleanStr(body.idempotency_key, 100) ||
+    (c.req.header("Idempotency-Key") || "").trim().slice(0, 100);
+  if (idemKey) {
+    const dup = await DB.prepare("SELECT id FROM form_submissions WHERE idempotency_key = ?")
+      .bind(idemKey)
+      .first<{ id: string }>()
+      .catch(() => null); // column missing (migration not applied yet) → skip
+    if (dup) return c.json({ ok: true });
+  }
+
+  const payload = JSON.stringify(cleaned);
+  try {
+    await DB.prepare(
+      "INSERT INTO form_submissions (id, form_id, data, idempotency_key) VALUES (?, ?, ?, ?)"
+    )
+      .bind(crypto.randomUUID(), form.id, payload, idemKey || null)
+      .run();
+  } catch (e) {
+    const msg = String((e as Error)?.message || e);
+    if (idemKey && /UNIQUE/i.test(msg)) {
+      return c.json({ ok: true }); // lost the race with our own retry, already stored
+    }
+    if (idemKey && /no such column/i.test(msg)) {
+      // Migration 0012 not applied yet, degrade gracefully to a keyless insert.
+      await DB.prepare("INSERT INTO form_submissions (id, form_id, data) VALUES (?, ?, ?)")
+        .bind(crypto.randomUUID(), form.id, payload)
+        .run();
+    } else {
+      throw e;
+    }
+  }
 
   // Notify.
   const resendKey = (c.env as Env).RESEND_API_KEY;
@@ -376,7 +426,7 @@ app.post("/:slug/submit", async (c) => {
     const rows = parsed
       .map((f) => {
         const v = cleaned[f.id];
-        const display = typeof v === "boolean" ? (v ? "Yes" : "No") : v || "—";
+        const display = typeof v === "boolean" ? (v ? "Yes" : "No") : v || "-";
         return fieldRow(f.label, String(display));
       })
       .join("");
@@ -386,14 +436,32 @@ app.post("/:slug/submit", async (c) => {
       `<p style="margin:0 0 16px;">New submission for <strong>${esc(form.title)}</strong>:</p>` +
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">' + rows + "</table>"
     );
-    await sendEmail(resendKey, {
-      to,
-      subject: `New submission — ${form.title}`,
-      html,
-      text: `New submission for "${form.title}":\n\n` + parsed.map((f) => `${f.label}: ${String(cleaned[f.id] ?? "—")}`).join("\n"),
-    }).catch(() => {});
+    const subject = `New submission - ${form.title}`;
+    try {
+      const providerId = await sendEmail(resendKey, {
+        to,
+        subject,
+        html,
+        text: `New submission for "${form.title}":\n\n` + parsed.map((f) => `${f.label}: ${String(cleaned[f.id] ?? "-")}`).join("\n"),
+      });
+      await DB.prepare(
+        "INSERT INTO email_log (id, kind, to_email, subject, status, provider_id) VALUES (?, 'form-notify', ?, ?, 'sent', ?)"
+      )
+        .bind(crypto.randomUUID(), to, subject, providerId || null)
+        .run();
+    } catch (e) {
+      // Best-effort notify: the submission is stored regardless; log the failure.
+      await DB.prepare(
+        "INSERT INTO email_log (id, kind, to_email, subject, status, error) VALUES (?, 'form-notify', ?, ?, 'failed', ?)"
+      )
+        .bind(crypto.randomUUID(), to, subject, String((e as Error)?.message || e).slice(0, 500))
+        .run()
+        .catch(() => {});
+    }
   }
 
   return c.json({ ok: true });
 });
 
+
+export default app;

@@ -1,0 +1,190 @@
+---
+/* Service detail page (redesign T9, spec 4.1, 4.2, 4.4, 8; fixes F1
+ * and F4; review must-change 5, 6, 7, 9). Rendered from the T7
+ * collection entry: breadcrumb, overview (the entry body), counted
+ * deliverables, the five delivery steps, the entry offer, related
+ * services, and the entry's own FAQs shown on the page. JSON-LD:
+ * Service plus FAQPage plus BreadcrumbList, with the FAQPage
+ * questions and answers taken from the same faqs field the visible
+ * section renders, so the two match exactly.
+ *
+ * Canonical URLs (must-change 7): getStaticPaths pairs each service
+ * with its own pillar only, so a URL naming the wrong pillar is
+ * never generated and cannot render a duplicate.
+ *
+ * Enquiry path (redesign T11): both introduction CTAs carry this
+ * page's service slug as /?service=<slug>#introduce, so the home
+ * introduction form opens with this service pre-selected and the
+ * service variant of its opening question. Without JavaScript the
+ * link still lands on the form, where the service field is a plain
+ * select the visitor can set by hand.
+ *
+ * The CV-1 ladder on Custom automation renders from the entry's
+ * structured ladder field (added in this task) as a distinct
+ * section, not from body text. */
+import Public from "../../../layouts/Public.astro";
+import HeroDots from "../../../components/HeroDots.astro";
+import Breadcrumbs from "../../../components/Breadcrumbs.astro";
+import ServiceCard from "../../../components/ServiceCard.astro";
+import RevealMotion from "../../../components/RevealMotion.astro";
+import { getCollection, render } from "astro:content";
+import {
+  breadcrumbJsonLd,
+  organizationRef,
+  pillarInfo,
+  servicePath,
+  serviceSlug,
+} from "../../../lib/services";
+
+export async function getStaticPaths() {
+  const { getCollection: collect } = await import("astro:content");
+  const { serviceSlug: slugOf } = await import("../../../lib/services");
+  const services = await collect("services");
+  return services.map((entry) => ({
+    params: { pillar: entry.data.pillar, service: slugOf(entry.id) },
+    props: { entry },
+  }));
+}
+
+const { entry } = Astro.props;
+const slug = serviceSlug(entry.id);
+const pillar = pillarInfo(entry.data.pillar);
+const { Content } = await render(entry);
+const ladder = (entry.data as any).ladder as
+  | { name: string; text: string; ongoing?: boolean }[]
+  | undefined;
+
+const all = await getCollection("services");
+const bySlug = new Map(all.map((s) => [serviceSlug(s.id), s]));
+const related = (entry.data.related as string[])
+  .map((relatedSlug) => bySlug.get(relatedSlug))
+  .filter(Boolean);
+
+const path = servicePath(entry.data.pillar, slug);
+const jsonld = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Service",
+      name: entry.data.name,
+      description: entry.data.seoDescription,
+      url: `https://brimwoodinnovation.com${path}`,
+      provider: organizationRef,
+      areaServed: "Toronto and the GTA",
+      serviceType: entry.data.name,
+    },
+    {
+      "@type": "FAQPage",
+      mainEntity: entry.data.faqs.map((faq) => ({
+        "@type": "Question",
+        name: faq.question,
+        acceptedAnswer: { "@type": "Answer", text: faq.answer },
+      })),
+    },
+    breadcrumbJsonLd([
+      { name: "Home", path: "/" },
+      { name: "Services", path: "/services/" },
+      { name: pillar.name, path: `/services/${pillar.slug}/` },
+      { name: entry.data.name, path },
+    ]),
+  ],
+};
+---
+
+<Public
+  title={entry.data.seoTitle}
+  description={entry.data.seoDescription}
+  path={path}
+  jsonld={jsonld}
+>
+  <div class="hero svc-hero svc-hero-detail">
+    <HeroDots />
+    <p class="eyebrow">{pillar.name} - {entry.data.tier.code} {entry.data.tier.label}</p>
+    <h1>{entry.data.name}</h1>
+    <p class="lede">{entry.data.seoDescription}</p>
+    <a class="btn" href={`/?service=${slug}#introduce`}>Request an introduction</a>
+  </div>
+
+  <section class="block services-ui">
+    <Breadcrumbs
+      items={[
+        { name: "Home", path: "/" },
+        { name: "Services", path: "/services/" },
+        { name: pillar.name, path: `/services/${pillar.slug}/` },
+        { name: entry.data.name },
+      ]}
+    />
+    <h2 class="sec">Overview</h2>
+    <div class="svc-overview">
+      <Content />
+    </div>
+  </section>
+
+  {ladder && (
+    <section class="block services-ui">
+      <h2 class="sec">The automation ladder</h2>
+      <p class="sec-lede">
+        One service, bought in stages. Each step is scoped in writing and
+        approved at its gate before the next begins.
+      </p>
+      <ol class="svc-ladder">
+        {ladder.map((step) => (
+          <li class="svc-ladder-step">
+            <h3>{step.name}{step.ongoing && <span class="svc-ladder-flag">The ongoing step</span>}</h3>
+            <p>{step.text}</p>
+          </li>
+        ))}
+      </ol>
+    </section>
+  )}
+
+  <section class="block services-ui">
+    <h2 class="sec">What is included ({entry.data.deliverables.length})</h2>
+    <ul class="svc-deliverables">
+      {entry.data.deliverables.map((item) => <li>{item}</li>)}
+    </ul>
+  </section>
+
+  <section class="block services-ui">
+    <h2 class="sec">How it runs</h2>
+    <ol class="steps svc-steps">
+      {entry.data.steps.map((step, i) => (
+        <li class="step">
+          <div class="num" aria-hidden="true">{i + 1}</div>
+          <h3>{step.title}</h3>
+          <p>{step.text}</p>
+        </li>
+      ))}
+    </ol>
+  </section>
+
+  <section class="block services-ui">
+    <h2 class="sec">Where it starts</h2>
+    <p class="sec-lede">{entry.data.entryOffer}</p>
+    <p>
+      <a class="btn btn-primary" href={`/?service=${slug}#introduce`}>Request an introduction</a>
+    </p>
+  </section>
+
+  <section class="block services-ui">
+    <h2 class="sec">Questions</h2>
+    <div class="svc-faqs">
+      {entry.data.faqs.map((faq) => (
+        <div class="svc-faq">
+          <h3>{faq.question}</h3>
+          <p>{faq.answer}</p>
+        </div>
+      ))}
+    </div>
+  </section>
+
+  {related.length > 0 && (
+    <section class="block services-ui">
+      <h2 class="sec">Related services</h2>
+      <div class="cards cards-3" data-reveal-group>
+        {related.map((rel) => <ServiceCard entry={rel} headingLevel="h3" />)}
+      </div>
+    </section>
+  )}
+  <RevealMotion />
+</Public>

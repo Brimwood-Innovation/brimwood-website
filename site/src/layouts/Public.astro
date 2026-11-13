@@ -1,0 +1,248 @@
+---
+/* Public layout (redesign T8, spec F3): the lean shell for public
+ * marketing and listing pages (about, blog, events, academy
+ * listings). Same head contract as Base.astro (SEO, OG, Twitter,
+ * canonical, Organization JSON-LD, self-hosted font preload, lazy
+ * Turnstile opt-in), same header and footer treatment, but WITHOUT
+ * the member-app chrome Base loads on every page: no notifications
+ * bell or panel, no share-to-DM, no mentions, no profile URL helper,
+ * and no footer auth-state fetch (about 17 KB of JS, audit G6).
+ * Hub and member pages keep Base.astro and its chrome, unchanged.
+ * The canonical escaper and scheme allowlist still load before the
+ * slot: they are shared security helpers the public pages' own
+ * scripts rely on (events list, blog comments, event RSVP), not
+ * member chrome. This layout adds zero inline style attributes. */
+import "../styles/brand.css";
+import siteSettings from "../content/settings.json";
+import navigation from "../content/navigation.json";
+
+interface ArticleMeta {
+  publishedTime: string;
+  author: string;
+  tags: string[];
+}
+interface Props {
+  title: string;
+  description: string;
+  path?: string;
+  image?: string;
+  turnstile?: boolean;
+  ogType?: string;
+  articleMeta?: ArticleMeta;
+  jsonld?: Record<string, unknown>;
+  canonicalPath?: string;
+  rssAlternate?: boolean;
+  noindex?: boolean;
+}
+const {
+  title,
+  description,
+  path = "/",
+  image,
+  turnstile = false,
+  ogType = "website",
+  articleMeta,
+  jsonld,
+  canonicalPath,
+  rssAlternate = false,
+  noindex = false,
+} = Astro.props;
+const canonical = `https://brimwoodinnovation.com${canonicalPath || path}`;
+const ogImage = image || "https://brimwoodinnovation.com/img/brimwood-og.png";
+// Primary navigation (redesign T10, spec 4.4): five links, Services
+// first, plus the single introduction CTA. The list is fixed here for
+// the public shell; the CMS navigation file keeps driving the member
+// shell (Base.astro), whose navigation this task does not change.
+const headerLinks = [
+  { label: "Services", url: "/services/" },
+  { label: "About", url: "/about" },
+  { label: "Journal", url: "/blog" },
+  { label: "Academy", url: "/academy" },
+  { label: "Events", url: "/events" },
+];
+const footerLinks = navigation.footer_links || [];
+const footerTagline = (navigation as any).footer_tagline || "";
+const ctaText = siteSettings.cta_text || "Request an introduction";
+const ctaLink = siteSettings.cta_link || "#introduce";
+// The introduction form lives on the home page; a fragment-only CTA
+// link resolves there from every other public page.
+const headerCtaLink =
+  ctaLink.startsWith("#") && path !== "/" ? `/${ctaLink}` : ctaLink;
+const announcement = (siteSettings.announcement_bar || "").trim();
+const siteTitle = siteSettings.site_title || "Brimwood Innovation";
+---
+<!doctype html>
+<html lang="en-CA">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0C9463" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    {rssAlternate && (
+      <link rel="alternate" type="application/rss+xml" title="Brimwood Innovation Journal" href="/rss.xml" />
+    )}
+    {noindex && <meta name="robots" content="noindex" />}
+
+    <meta property="og:type" content={ogType} />
+    <meta property="og:site_name" content={siteTitle} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Brimwood Innovation - Build a business. Build yourself." />
+    <meta property="og:locale" content="en_CA" />
+    {ogType === "article" && articleMeta && (
+      <>
+        <meta property="article:published_time" content={articleMeta.publishedTime} />
+        <meta property="article:author" content={articleMeta.author} />
+        {articleMeta.tags.map((t) => <meta property="article:tag" content={t} />)}
+      </>
+    )}
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+    <meta name="twitter:image:alt" content="Brimwood Innovation - Build a business. Build yourself." />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <link
+      rel="preload"
+      href="/fonts/plus-jakarta-sans-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+
+    <script type="application/ld+json" set:html={JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        name: siteTitle,
+        url: "https://brimwoodinnovation.com",
+        logo: "https://brimwoodinnovation.com/img/brimwood-logo-colour.svg",
+        slogan: "Build a business. Build yourself.",
+        address: {
+          "@type": "PostalAddress",
+          streetAddress: "1365 Gerrard St E, Unit 2",
+          addressLocality: "Toronto",
+          addressRegion: "ON",
+          addressCountry: "CA",
+        },
+      }).replace(/</g, "\\u003c")} />
+    {jsonld && (
+      <script type="application/ld+json" set:html={JSON.stringify(jsonld).replace(/</g, "\\u003c")} />
+    )}
+    {turnstile && (
+      <script is:inline>
+        /* Lazy Turnstile, same loader as Base.astro: api.js loads only
+           when a cf-turnstile widget is near the viewport, on first
+           form interaction, or when a widget is added to the DOM. */
+        (function () {
+          var loaded = false;
+          var io = null;
+          var mo = null;
+          function load() {
+            if (loaded) return;
+            loaded = true;
+            if (io) io.disconnect();
+            if (mo) mo.disconnect();
+            document.removeEventListener('focusin', onInteract, true);
+            document.removeEventListener('pointerdown', onInteract, true);
+            var s = document.createElement('script');
+            s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+            s.async = true;
+            s.defer = true;
+            document.head.appendChild(s);
+          }
+          function onInteract(e) {
+            var t = e.target;
+            var form = t && t.closest ? t.closest('form') : null;
+            if ((form && form.querySelector('.cf-turnstile')) || (t && t.closest && t.closest('.cf-turnstile'))) load();
+          }
+          function arm() {
+            var widgets = document.querySelectorAll('.cf-turnstile');
+            if (!widgets.length) return;
+            if (!('IntersectionObserver' in window)) { load(); return; }
+            io = new IntersectionObserver(function (entries) {
+              for (var i = 0; i < entries.length; i++) {
+                if (entries[i].isIntersecting) { load(); return; }
+              }
+            }, { rootMargin: '800px' });
+            widgets.forEach(function (w) { io.observe(w); });
+            document.addEventListener('focusin', onInteract, true);
+            document.addEventListener('pointerdown', onInteract, true);
+          }
+          function start() {
+            arm();
+            mo = new MutationObserver(function (mutations) {
+              for (var i = 0; i < mutations.length; i++) {
+                for (var j = 0; j < mutations[i].addedNodes.length; j++) {
+                  var n = mutations[i].addedNodes[j];
+                  if (n.nodeType === 1 && (n.classList.contains('cf-turnstile') || n.querySelector('.cf-turnstile'))) { load(); return; }
+                }
+              }
+            });
+            mo.observe(document.body, { childList: true, subtree: true });
+          }
+          if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+          else start();
+        })();
+      </script>
+    )}
+  </head>
+  <body>
+    <script is:inline src="/js/escape.js"></script>
+    <script is:inline src="/js/safe-url.js"></script>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site public-header">
+      <a href="/" aria-label="Brimwood Innovation home">
+        <img class="logo" src="/img/brimwood-logo-colour.svg" alt="Brimwood Innovation" />
+      </a>
+      <nav aria-label="Primary" class="main-nav">
+        {headerLinks.map((l) => <a href={l.url}>{l.label}</a>)}
+        <a class="btn small" href={headerCtaLink}>{ctaText}</a>
+      </nav>
+    </header>
+    {announcement && (
+      <div class="announcement-bar" role="note">
+        {announcement}
+      </div>
+    )}
+    <main id="main">
+      <slot />
+    </main>
+    <footer class="site">
+      <div class="foot-inner">
+        <div class="foot-top">
+          <div class="foot-brand">
+            <img src="/img/brimwood-logo-reversed.svg" alt="Brimwood Innovation" />
+            {footerTagline && <p class="foot-tagline">{footerTagline}</p>}
+          </div>
+          <div class="foot-links">
+            {footerLinks.map((l) => (
+              <a href={l.url}>{l.label}</a>
+            ))}
+          </div>
+          <div class="foot-links">
+            <a href="https://instagram.com/brimwoodinnovation" target="_blank" rel="noopener">Instagram</a>
+            <a href="https://www.threads.com/@brimwoodinnovation" target="_blank" rel="noopener">Threads</a>
+            <a href="https://facebook.com/brimwoodinnovation" target="_blank" rel="noopener">Facebook</a>
+            <a href="https://x.com/brimwoodai" target="_blank" rel="noopener">X</a>
+            <a href="https://www.linkedin.com/in/brimwoodinnovation/" target="_blank" rel="noopener">LinkedIn</a>
+          </div>
+        </div>
+        <div class="foot-bottom">
+          <span>&copy; 2026 {siteTitle}</span>
+          <span>1365 Gerrard St E Unit 2, Toronto</span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

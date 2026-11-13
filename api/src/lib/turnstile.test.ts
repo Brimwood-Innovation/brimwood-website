@@ -1,4 +1,4 @@
-/* Unit tests: src/lib/turnstile.ts — fails closed, never throws. */
+/* Unit tests: src/lib/turnstile.ts: fails closed, never throws. */
 import { describe, it, expect } from "vitest";
 import { verifyTurnstile } from "./turnstile";
 import { stubFetch } from "../test/helpers";
@@ -73,6 +73,20 @@ describe("verifyTurnstile", () => {
       expect(seen.secret).toBe("s3cret");
       expect(seen.response).toBe("tok123");
       expect(seen.remoteip).toBe("9.9.9.9");
+    } finally {
+      restore();
+    }
+  });
+
+  it("bounds the siteverify call with an abort timeout", async () => {
+    let signal: unknown;
+    const restore = stubFetch((_url, init) => {
+      signal = init?.signal;
+      return json({ success: true });
+    });
+    try {
+      await verifyTurnstile("tok", "secret");
+      expect(signal).toBeInstanceOf(AbortSignal);
     } finally {
       restore();
     }

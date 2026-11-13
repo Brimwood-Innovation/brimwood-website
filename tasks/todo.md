@@ -27,7 +27,7 @@ Legend — scope: XS ≤1 file, S 1–2, M 3–5, L 5–8.
 **Description:** `brimwood-coming-soon` → GitHub repo, production branch `main`, previews on branches.
 **Acceptance:** Pages dashboard shows Git connected; a test branch gets a preview URL.
 **Verification:** preview deployment succeeds and serves the site.
-**Dependencies:** none (infra-side). **Blocked:** owner sign-in (`adamsayani@outlook.com`) — parked browser task. **Scope:** XS (browser work).
+**Dependencies:** none (infra-side). **Blocked:** owner sign-in (`<CLOUDFLARE_ACCOUNT_EMAIL>`) — parked browser task. **Scope:** XS (browser work).
 
 ### T5: _headers, privacy + terms pages
 **Status:** DONE 2026-10-01 — _headers (security headers + asset caching), /privacy, /terms.

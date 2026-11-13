@@ -12,7 +12,7 @@ How Decap CMS course edits reach the live Academy.
    and POSTs it to the worker endpoint `POST /api/admin/sync/courses`.
 4. The worker upserts the content into the D1 Academy tables
    (`courses`, `modules`, `lessons`). The Academy reads from D1, so the site
-   updates on the next deploy — no developer needed.
+   updates on the next deploy, no developer needed.
 
 ## Sync semantics
 
@@ -29,7 +29,7 @@ How Decap CMS course edits reach the live Academy.
 ## Setup (one time)
 
 Two secrets must exist and **match**. The value itself is chosen by the
-founder — never commit it.
+founder, never commit it.
 
 1. **Worker secret** (so the endpoint accepts the sync):
    ```bash
@@ -68,7 +68,7 @@ node api/scripts/sync-courses.mjs --dry-run
 - **Action fails with 400**: a course is missing a slug/title, or a lesson is
   missing a title. The error names the offending entry.
 - **A lesson vanished**: its title (hence slug) was renamed in the CMS. The
-  old slug was deleted and the new one inserted — member progress on the old
+  old slug was deleted and the new one inserted, member progress on the old
   id is orphaned. Prefer editing lesson bodies over renaming titles.
 - **Nothing happens on push**: the Action only runs when files under
   `site/src/content/courses/` changed on `develop` or `main`.

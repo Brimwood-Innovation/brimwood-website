@@ -15,30 +15,20 @@
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import type { Bindings } from "../index";
+import { getAdminUser } from "../lib/auth";
 import { cleanStr, isEmail, clientIp } from "../lib/validate";
-import { checkRateLimit } from "../lib/ratelimit";
+import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 import { verifyTurnstile } from "../lib/turnstile";
+import {
+  emitNotification,
+  parseMentions,
+  resolveMentionedUsers,
+} from "./notifications";
 
 const app = new Hono<{ Bindings: Bindings }>();
-const COOKIE = "brimwood_sess";
 
 /* Admin helpers (same pattern as routes/admin.ts and routes/media.ts). */
-async function adminUser(c: any): Promise<{ id: string; email: string } | null> {
-  const token = getCookie(c, COOKIE);
-  if (!token) return null;
-  const raw = await c.env.SESSIONS_KV.get("sess:" + token);
-  if (!raw) return null;
-  try {
-    const s = JSON.parse(raw);
-    if (s.role !== "admin") return null;
-    const u: any = await c.env.DB.prepare("SELECT email FROM users WHERE id = ?")
-      .bind(s.userId)
-      .first();
-    return { id: s.userId, email: u?.email || "unknown" };
-  } catch {
-    return null;
-  }
-}
+
 
 function needAdmin(c: any, admin: any) {
   if (!admin) return c.json({ ok: false, error: "Admin only" }, 403);
@@ -50,7 +40,7 @@ function needAdmin(c: any, admin: any) {
 app.post("/comments", async (c) => {
   const { DB, RATE_LIMIT_KV } = c.env;
 
-  if (!(await checkRateLimit(RATE_LIMIT_KV, "comment:" + clientIp(c.req.raw), 5, 3600))) {
+  if (!(await checkRateLimitD1(DB, "comment:" + clientIp(c.req.raw), 5, 3600))) {
     return c.json({ ok: false, error: "Too many requests. Please try again later." }, 429);
   }
 
@@ -74,7 +64,7 @@ app.post("/comments", async (c) => {
     return c.json({ ok: false, error: "Please enter a valid email address." }, 400);
   }
   if (body.length < 10) {
-    return c.json({ ok: false, error: "Your comment is a little short — please write a bit more." }, 400);
+    return c.json({ ok: false, error: "Your comment is a little short, please write a bit more." }, 400);
   }
 
   // Turnstile bot check (fails closed).
@@ -94,7 +84,7 @@ app.post("/comments", async (c) => {
     .bind(crypto.randomUUID(), postSlug, name, email, body)
     .run();
 
-  // Always the same response — never reveal moderation state.
+  // Always the same response, never reveal moderation state.
   return c.json({ ok: true });
 });
 
@@ -106,7 +96,7 @@ app.get("/comments/:slug", async (c) => {
   if (!slug) return c.json({ ok: false }, 400);
 
   const rows = await DB.prepare(
-    `SELECT name, body, created_at FROM comments
+    `SELECT id, name, body, created_at FROM comments
      WHERE post_slug = ? AND status = 'approved'
      ORDER BY created_at ASC LIMIT 100`
   )
@@ -120,7 +110,7 @@ app.get("/comments/:slug", async (c) => {
 /* --- Admin: moderation queue --- */
 
 app.get("/admin/comments", async (c) => {
-  const admin = await adminUser(c);
+  const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
   if (no) return no;
   const { DB } = c.env;
@@ -146,7 +136,7 @@ app.get("/admin/comments", async (c) => {
 /* --- Admin: approve or mark spam --- */
 
 app.patch("/admin/comments/:id", async (c) => {
-  const admin = await adminUser(c);
+  const admin = await getAdminUser(c);
   const no = needAdmin(c, admin);
   if (no) return no;
   const { DB } = c.env;
@@ -163,14 +153,46 @@ app.patch("/admin/comments/:id", async (c) => {
     return c.json({ ok: false, error: "Status must be approved or spam." }, 400);
   }
 
-  const existing = await DB.prepare("SELECT post_slug, name FROM comments WHERE id = ?")
+  const existing = await DB.prepare(
+    "SELECT post_slug, name, email, body FROM comments WHERE id = ?"
+  )
     .bind(id)
-    .first<{ post_slug: string; name: string }>();
+    .first<{ post_slug: string; name: string; email: string; body: string }>();
   if (!existing) return c.json({ ok: false, error: "Comment not found." }, 404);
 
   await DB.prepare("UPDATE comments SET status = ? WHERE id = ?")
     .bind(status, id)
     .run();
+
+  // Approving makes the comment visible: @mentions in it now notify.
+  // (Best-effort, a failed notification never fails the moderation action.)
+  if (status === "approved") {
+    try {
+      const handles = parseMentions(existing.body || "");
+      if (handles.length) {
+        const mentioned = await resolveMentionedUsers(DB, handles);
+        if (mentioned.length) {
+          const actor = await DB.prepare(
+            "SELECT id FROM users WHERE email = ? AND status = 'active'"
+          )
+            .bind((existing.email || "").toLowerCase())
+            .first<{ id: string }>()
+            .catch(() => null);
+          const preview = (existing.body || "").replace(/\s+/g, " ").trim().slice(0, 200);
+          for (const u of mentioned) {
+            await emitNotification(DB, {
+              userId: u.id,
+              kind: "mention",
+              actorId: actor?.id || null,
+              targetType: "blog_comment",
+              targetId: id,
+              preview,
+            });
+          }
+        }
+      }
+    } catch {}
+  }
 
   await DB.prepare(
     "INSERT INTO audit_log (id, actor_id, action, detail) VALUES (?, ?, ?, ?)"

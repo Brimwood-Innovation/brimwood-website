@@ -1,4 +1,4 @@
-/* Brimwood Brand Kit v1.0 — design tokens (T6)
+/* Brimwood Brand Kit v1.0: design tokens (T6)
  * Source of truth: 07-Colours/Brimwood-Colours.txt in the kit.
  * Never hardcode these values elsewhere; reference the variables.
  * Typeface: Plus Jakarta Sans (06-Fonts, OFL licence). */
@@ -31,4 +31,29 @@
   --brimwood-radius-sm: 8px;
   --brimwood-radius-md: 14px;
   --brimwood-radius-lg: 22px;
+
+  /* Spacing scale (redesign T8, spec 5.1): one named set of steps for
+   * every new page, so spacing stops being per-component guesswork.
+   * Existing pages adopt these as they are touched. */
+  --brimwood-space-1: 0.25rem;
+  --brimwood-space-2: 0.5rem;
+  --brimwood-space-3: 0.75rem;
+  --brimwood-space-4: 1rem;
+  --brimwood-space-5: 1.5rem;
+  --brimwood-space-6: 2rem;
+  --brimwood-space-7: 3rem;
+  --brimwood-space-8: 4rem;
+  --brimwood-space-section: 5.5rem;
+
+  /* Type scale (redesign T8, spec 5.1): named sizes for display,
+   * headings, body, and small text. The display and heading steps keep
+   * the fluid clamps the v7 styles already used, now named once. */
+  --brimwood-text-display: clamp(34px, 5.4vw, 56px);
+  --brimwood-text-display-sm: clamp(28px, 4vw, 44px);
+  --brimwood-text-h2: clamp(26px, 3.6vw, 34px);
+  --brimwood-text-h2-sm: clamp(22px, 3vw, 30px);
+  --brimwood-text-h3: 18px;
+  --brimwood-text-body: 16px;
+  --brimwood-text-small: 14px;
+  --brimwood-text-caption: 12px;
 }

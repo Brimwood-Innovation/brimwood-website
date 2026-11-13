@@ -1,4 +1,4 @@
--- 0001_init.sql — users, invite_codes (report §11.2)
+-- 0001_init.sql: users, invite_codes (report §11.2)
 -- Conventions: TEXT PRIMARY KEY UUIDs, ISO-8601 UTC timestamps,
 -- soft status enums via CHECK, FKs with ON DELETE CASCADE.
 

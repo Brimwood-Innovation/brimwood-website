@@ -20,7 +20,7 @@ The skill is not prompting. It is knowing what good looks like, so you can tell 
 
 ## Building
 
-AI coding assistance for the builders shipping software. It writes the boring parts fast — boilerplate, tests, glue code — and the builder reviews everything. Nothing ships without a human reading it.
+AI coding assistance for the builders shipping software. It writes the boring parts fast, boilerplate, tests, glue code, and the builder reviews everything. Nothing ships without a human reading it.
 
 ## Research
 

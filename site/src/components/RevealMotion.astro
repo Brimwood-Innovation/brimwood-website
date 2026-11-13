@@ -1,0 +1,74 @@
+---
+/* RevealMotion (redesign T10, spec 5.5): the Motion integration for
+ * public pages. Pages opt in by rendering this component once and
+ * marking elements with data-reveal; elements inside a container
+ * marked data-reveal-group animate together with the stagger carried
+ * in the Motion configuration (the stagger() delay function passed
+ * to animate), never in JS-written transition-delay styles.
+ *
+ * Budget (measured at T10 from the Astro build output): the chunk
+ * this script produces is the whole Motion share. It imports the
+ * mini build's animate (the full "motion" animate measures about
+ * 71 KB raw and about 25 KB gzipped, which breaks both spec 5.5
+ * caps, so it is never imported) plus the tree-shaken inView and
+ * stagger helpers. The produced chunk measures about 9 KB raw and
+ * about 3.5 KB gzipped, inside the 15 KB gzipped Motion cap; with
+ * the HeroDots chunk the animation JavaScript on a public page
+ * stays inside the 30 KB raw cap. Only transform and opacity are
+ * animated.
+ *
+ * Fallbacks (spec 5.5): nothing is hidden by markup or CSS, so with
+ * JavaScript disabled every element renders in its end state. Under
+ * prefers-reduced-motion the script does nothing at all: no initial
+ * state is set and no animation runs, so the page is static. */
+---
+
+<script>
+  import { animate } from "motion/mini";
+  import { inView, stagger } from "motion";
+
+  const reduced =
+    window.matchMedia &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  if (!reduced) {
+    const HIDDEN = { opacity: 0, transform: "translateY(14px)" };
+    const SHOWN = {
+      opacity: [0, 1],
+      transform: ["translateY(14px)", "translateY(0px)"],
+    };
+
+    const singles: Element[] = [];
+    document.querySelectorAll("[data-reveal]").forEach((el) => {
+      // Start every reveal element from its hidden state; inView
+      // below animates each one to its end state as it arrives.
+      animate(el, HIDDEN, { duration: 0 });
+      if (!el.closest("[data-reveal-group]")) singles.push(el);
+    });
+    singles.forEach((el) => {
+      inView(
+        el,
+        () => {
+          animate(el, SHOWN, { duration: 0.55, ease: "easeOut" });
+        },
+        { amount: 0.15 },
+      );
+    });
+
+    document.querySelectorAll("[data-reveal-group]").forEach((group) => {
+      const items = Array.from(group.querySelectorAll("[data-reveal]"));
+      if (!items.length) return;
+      inView(
+        group,
+        () => {
+          animate(items, SHOWN, {
+            duration: 0.55,
+            ease: "easeOut",
+            delay: stagger(0.07),
+          });
+        },
+        { amount: 0.15 },
+      );
+    });
+  }
+</script>

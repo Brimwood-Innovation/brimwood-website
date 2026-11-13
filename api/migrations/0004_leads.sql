@@ -1,4 +1,4 @@
--- 0004_leads.sql — introduction requests, newsletter, email log, media, audit (report §11.2)
+-- 0004_leads.sql: introduction requests, newsletter, email log, media, audit (report §11.2)
 
 CREATE TABLE introduction_requests (
   id          TEXT PRIMARY KEY,

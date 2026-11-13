@@ -1,4 +1,4 @@
-/* CMS course sync (Phase 5 — CMS-to-D1 pipeline).
+/* CMS course sync (Phase 5: CMS-to-D1 pipeline).
  *
  * POST /api/admin/sync/courses
  *
@@ -12,19 +12,21 @@
  *
  * Sync semantics, per course (keyed by slug):
  * - course row: upsert by slug (stable id)
- * - modules: reconciled by position (sort_order); extras deleted (their lessons
- *   are removed by ON DELETE CASCADE)
+ * - modules: reconciled by position (sort_order); extras are archived
+ *   (archived_at), never deleted, and their lessons are archived too;
+ *   reflections are member writing (D6) and must survive
  * - lessons: reconciled by slug within the module, so lesson ids stay stable
  *   across re-syncs and member progress in lesson_progress is preserved;
- *   stale slugs deleted
+ *   stale slugs are archived (status = 'archived'), never deleted.
+ *   Reconciliation reads skip archived rows, so an archived module or lesson
+ *   that returns to the CMS starts as a fresh row; the archived row keeps
+ *   the member's reflections and progress.
  */
 import { Hono } from "hono";
-import { getCookie } from "hono/cookie";
 import type { Bindings } from "../index";
 import { cleanStr } from "../lib/validate";
 
 const app = new Hono<{ Bindings: Bindings }>();
-const COOKIE = "brimwood_sess";
 
 const LEVELS = ["foundations", "builder", "operator"];
 const VISIBILITIES = ["public", "members"];
@@ -45,32 +47,17 @@ function slugify(s: string): string {
   return slug || "untitled";
 }
 
-/** Manual constant-time string compare — see lib/safe-equal.ts. */
+/** Manual constant-time string compare (see lib/safe-equal.ts). */
 import { safeEqual } from "../lib/safe-equal";
+import { getAdminUser } from "../lib/auth";
+import { checkRateLimitD1 } from "../lib/ratelimit-d1";
 
 async function authorized(
   c: any
 ): Promise<{ ok: boolean; actor: string; actorId: string | null }> {
-  // 1. Admin session cookie (same pattern as admin.ts).
-  const token = getCookie(c, COOKIE);
-  if (token) {
-    const raw = await c.env.SESSIONS_KV.get("sess:" + token);
-    if (raw) {
-      try {
-        const s = JSON.parse(raw);
-        if (s.role === "admin") {
-          const u: any = await c.env.DB.prepare(
-            "SELECT id, email FROM users WHERE id = ? AND status = 'active'"
-          )
-            .bind(s.userId)
-            .first();
-          if (u) return { ok: true, actor: u.email, actorId: u.id };
-        }
-      } catch {
-        /* fall through to bearer check */
-      }
-    }
-  }
+  // 1. Admin session cookie (shared auth module, F5).
+  const admin = await getAdminUser(c);
+  if (admin) return { ok: true, actor: admin.email, actorId: admin.id };
   // 2. Bearer sync secret (GitHub Action; cannot do magic-link login).
   const secret = c.env.SYNC_SECRET;
   const header = c.req.header("authorization") || "";
@@ -91,6 +78,10 @@ app.post("/courses", async (c) => {
   if (!auth.ok) return c.json({ ok: false, error: "Not authorized" }, 403);
 
   const { DB } = c.env;
+  /* Rate-limit like every other mutation endpoint (60/hr per actor). */
+  if (!(await checkRateLimitD1(DB, "sync:" + auth.actor, 60, 3600))) {
+    return c.json({ ok: false, error: "Too many requests" }, 429);
+  }
   let data: any;
   try {
     data = await c.req.json();
@@ -153,9 +144,12 @@ app.post("/courses", async (c) => {
     if (!courseRow) return c.json({ ok: false, error: "Sync failed (course)" }, 500);
     const courseId = courseRow.id;
 
-    // Modules: reconcile by position.
+    // Modules: reconcile by position, skipping archived rows (tombstones
+    // from earlier CMS removals stay archived with their lessons).
     const existingMods = ((
-      await DB.prepare("SELECT id FROM modules WHERE course_id = ? ORDER BY sort_order")
+      await DB.prepare(
+        "SELECT id FROM modules WHERE course_id = ? AND archived_at IS NULL ORDER BY sort_order"
+      )
         .bind(courseId)
         .all()
     ).results ?? []) as { id: string }[];
@@ -186,7 +180,9 @@ app.post("/courses", async (c) => {
         return c.json({ ok: false, error: `Too many lessons in "${mTitle}"` }, 400);
       }
       const existingLessons = ((
-        await DB.prepare("SELECT id, slug FROM lessons WHERE module_id = ?")
+        await DB.prepare(
+          "SELECT id, slug FROM lessons WHERE module_id = ? AND status <> 'archived'"
+        )
           .bind(moduleId)
           .all()
       ).results ?? []) as { id: string; slug: string }[];
@@ -249,17 +245,34 @@ app.post("/courses", async (c) => {
         nLessons++;
       }
 
-      // Delete lessons whose slugs disappeared from the CMS.
+      // Archive lessons whose slugs disappeared from the CMS. Never
+      // delete: reflections are member writing (D6, ON DELETE RESTRICT) and
+      // the trigger trg_lessons_archive_not_delete would refuse anyway.
       for (const ex of existingLessons) {
         if (!seen.has(ex.slug)) {
-          await DB.prepare("DELETE FROM lessons WHERE id = ?").bind(ex.id).run();
+          await DB.prepare(
+            "UPDATE lessons SET status = 'archived', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?"
+          )
+            .bind(ex.id)
+            .run();
         }
       }
     }
 
-    // Delete modules past the end of the CMS list (lessons cascade).
+    // Archive modules past the end of the CMS list (never delete), and
+    // archive their lessons so no reader can reach them.
     for (let mi = modules.length; mi < existingMods.length; mi++) {
-      await DB.prepare("DELETE FROM modules WHERE id = ?").bind(existingMods[mi].id).run();
+      const modId = existingMods[mi].id;
+      await DB.prepare(
+        "UPDATE modules SET archived_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?"
+      )
+        .bind(modId)
+        .run();
+      await DB.prepare(
+        "UPDATE lessons SET status = 'archived', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE module_id = ? AND status <> 'archived'"
+      )
+        .bind(modId)
+        .run();
     }
   }
 

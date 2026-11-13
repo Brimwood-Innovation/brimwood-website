@@ -5,7 +5,7 @@
 # POST /api/admin/sync/courses, authenticated with the SYNC_SECRET repo secret.
 #
 # Required secrets:
-#   SYNC_SECRET — must match the worker secret of the same name
+#   SYNC_SECRET: must match the worker secret of the same name
 #   (set with: wrangler secret put SYNC_SECRET)
 name: Sync courses to D1
 
@@ -23,7 +23,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Sync courses to the API worker
         env:

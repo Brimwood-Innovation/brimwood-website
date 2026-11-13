@@ -19,6 +19,8 @@ export async function verifyTurnstile(
     const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
       method: "POST",
       body: form,
+      // Bound the upstream call: a hung siteverify must not stall the worker.
+      signal: AbortSignal.timeout(8000),
     });
     const data = (await res.json()) as { success?: boolean; "error-codes"?: string[] };
     if (data.success) return { ok: true };

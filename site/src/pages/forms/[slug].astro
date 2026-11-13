@@ -18,9 +18,10 @@ export async function getStaticPaths() {
 ---
 
 <Base
-  title="Form — Brimwood Innovation"
+  title="Form - Brimwood Innovation"
   description="Fill in this Brimwood Innovation form."
   path="/forms"
+  turnstile
 >
   <section class="block" style="max-width:640px;margin-inline:auto;">
     <div id="formLoading" style="text-align:center;padding:48px 0;">
@@ -35,23 +36,23 @@ export async function getStaticPaths() {
     <div id="formWrap" style="display:none;">
       <h1 class="sec" id="formTitle" style="font-size:clamp(28px,4vw,44px);margin-bottom:12px;"></h1>
       <p class="sec-lede" id="formDesc" style="display:none;margin-bottom:32px;"></p>
-      <form id="dynForm" style="text-align:left;"></form>
-      <p id="formErr" style="display:none;color:#b3261e;margin-top:16px;"></p>
+      <form id="dynForm" style="text-align:left;" aria-describedby="formErr"></form>
+      <p id="formErr" role="status" style="display:none;color:#b3261e;margin-top:16px;"></p>
     </div>
 
     <div id="formDone" style="display:none;text-align:center;padding:48px 0;">
       <div class="kicker" style="color:var(--emerald-deep);">Received</div>
       <h1 class="sec">Thank you.</h1>
-      <p class="sec-lede" style="margin-inline:auto;">Your response is on its way — we read every one personally.</p>
+      <p class="sec-lede" style="margin-inline:auto;">Your response is on its way, we read every one personally.</p>
     </div>
   </section>
 
-  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   <script>
     const API_BASE = import.meta.env.PUBLIC_API_BASE || '';
     const slug = location.pathname.split('/').filter(Boolean).pop() || '';
 
-    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
+    const esc = window.Brimwood.escapeHtml;
 
     async function init() {
       let form;
@@ -65,7 +66,7 @@ export async function getStaticPaths() {
         document.getElementById('formNotFound').style.display = 'block';
         return;
       }
-      document.title = form.title + ' — Brimwood Innovation';
+      document.title = form.title + ' - Brimwood Innovation';
       document.getElementById('formTitle').textContent = form.title;
       if (form.description) {
         const desc = document.getElementById('formDesc');

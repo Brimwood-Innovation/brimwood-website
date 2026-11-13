@@ -1,4 +1,4 @@
-# CMS to Academy Sync — Design Note
+# CMS to Academy Sync - Design Note
 
 **Status:** Documented 2026-10-02. Not yet implemented.
 

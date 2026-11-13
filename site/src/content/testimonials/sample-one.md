@@ -6,4 +6,4 @@ featured: true
 date: 2026-09-28
 ---
 
-<!-- SAMPLE TESTIMONIAL — the founder will replace this with a real member quote. -->
+<!-- SAMPLE TESTIMONIAL: the founder will replace this with a real member quote. -->

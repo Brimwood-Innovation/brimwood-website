@@ -1,0 +1,94 @@
+---
+/* Pillar page (redesign T9, spec 4.1, 4.4, 8; fix F4). One real route
+ * per pillar, rendered from the T7 collection: the pillar statement,
+ * its services grouped by tier in taxonomy order, ItemList and
+ * BreadcrumbList JSON-LD, and links to the other pillars. */
+import Public from "../../layouts/Public.astro";
+import Breadcrumbs from "../../components/Breadcrumbs.astro";
+import ServiceCard from "../../components/ServiceCard.astro";
+import RevealMotion from "../../components/RevealMotion.astro";
+import { getCollection } from "astro:content";
+import {
+  PILLARS,
+  breadcrumbJsonLd,
+  groupByTier,
+  itemListJsonLd,
+  pillarInfo,
+} from "../../lib/services";
+
+export async function getStaticPaths() {
+  const { PILLARS: pillars } = await import("../../lib/services");
+  return pillars.map((pillar) => ({
+    params: { pillar: pillar.slug },
+    props: { pillar },
+  }));
+}
+
+const { pillar } = Astro.props;
+const services = await getCollection("services");
+const own = services.filter((s) => s.data.pillar === pillar.slug);
+const tiers = groupByTier(own);
+const others = PILLARS.filter((p) => p.slug !== pillar.slug);
+
+const jsonld = {
+  "@context": "https://schema.org",
+  "@graph": [
+    itemListJsonLd(tiers.flatMap((tier) => tier.entries)),
+    breadcrumbJsonLd([
+      { name: "Home", path: "/" },
+      { name: "Services", path: "/services/" },
+      { name: pillar.name, path: `/services/${pillar.slug}/` },
+    ]),
+  ],
+};
+---
+
+<Public
+  title={`${pillar.name} services - Brimwood Innovation`}
+  description={pillar.statement}
+  path={`/services/${pillar.slug}/`}
+  jsonld={jsonld}
+>
+  <section class="block services-ui">
+    <Breadcrumbs
+      items={[
+        { name: "Home", path: "/" },
+        { name: "Services", path: "/services/" },
+        { name: pillar.name },
+      ]}
+    />
+    <div class="kicker">Services - {pillar.name}</div>
+    <h1 class="sec page-title">{pillar.name}</h1>
+    <p class="sec-lede">{pillar.statement}</p>
+
+    {tiers.map((tier) => (
+      <div class="svc-tier">
+        <h2 class="svc-tier-title">{tier.code} - {tier.label}</h2>
+        <div class="cards cards-3" data-reveal-group>
+          {tier.entries.map((entry) => <ServiceCard entry={entry} headingLevel="h3" />)}
+        </div>
+      </div>
+    ))}
+  </section>
+
+  <section class="block services-ui">
+    <h2 class="sec">Other pillars</h2>
+    <div class="cards cards-2" data-reveal-group>
+      {others.map((other) => (
+        <a class="card card-link svc-card" href={`/services/${other.slug}/`} data-reveal>
+          <h3 class="card-title">{other.name}</h3>
+          <p>{other.lede}</p>
+        </a>
+      ))}
+    </div>
+  </section>
+
+  <section class="block services-ui">
+    <div class="cta">
+      <h2>Start with a conversation</h2>
+      <p>Every engagement starts with an introduction. Scope and price are agreed in writing before work starts.</p>
+      <a class="btn" href="/#introduce">Request an introduction</a>
+    </div>
+  </section>
+  <RevealMotion />
+</Public>

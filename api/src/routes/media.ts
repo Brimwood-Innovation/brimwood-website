@@ -14,11 +14,11 @@
  *   caching aggressively is safe.
  */
 import { Hono } from "hono";
-import { getCookie } from "hono/cookie";
+import { requireAdmin, getAdminUser } from "../lib/auth";
+import { checkMagicBytes, publicMediaUrl } from "../lib/upload";
 import type { Bindings } from "../index";
 
 const app = new Hono<{ Bindings: Bindings }>();
-const COOKIE = "brimwood_sess";
 
 const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 const LIST_LIMIT = 60;
@@ -45,27 +45,7 @@ const EXT_TYPES: Record<string, string> = {
   mp4: "video/mp4",
 };
 
-async function adminUser(c: any): Promise<{ id: string; email: string } | null> {
-  const token = getCookie(c, COOKIE);
-  if (!token) return null;
-  const raw = await c.env.SESSIONS_KV.get("sess:" + token);
-  if (!raw) return null;
-  try {
-    const s = JSON.parse(raw);
-    if (s.role !== "admin") return null;
-    const u: any = await c.env.DB.prepare("SELECT email FROM users WHERE id = ?")
-      .bind(s.userId)
-      .first();
-    return { id: s.userId, email: u?.email || "unknown" };
-  } catch {
-    return null;
-  }
-}
 
-function needAdmin(c: any, admin: any) {
-  if (!admin) return c.json({ ok: false, error: "Admin only" }, 403);
-  return null;
-}
 
 async function audit(c: any, admin: { id: string; email: string }, action: string, detail: string) {
   await c.env.DB.prepare(
@@ -87,9 +67,8 @@ function cleanKey(raw: string | undefined): string | null {
 /* --- Admin: list objects --- */
 
 app.get("/admin/media", async (c) => {
-  const admin = await adminUser(c);
-  const no = needAdmin(c, admin);
-  if (no) return no;
+  const admin = await getAdminUser(c);
+  if (!admin) return c.json({ ok: false, error: "Admin only." }, 403);
 
   const prefix = (c.req.query("prefix") || "").slice(0, 100);
   if (prefix && !/^[a-zA-Z0-9._-]+$/.test(prefix)) {
@@ -118,9 +97,8 @@ app.get("/admin/media", async (c) => {
 /* --- Admin: upload --- */
 
 app.post("/admin/media", async (c) => {
-  const admin = await adminUser(c);
-  const no = needAdmin(c, admin);
-  if (no) return no;
+  const admin = await getAdminUser(c);
+  if (!admin) return c.json({ ok: false, error: "Admin only." }, 403);
 
   let file: File | null = null;
   try {
@@ -147,21 +125,27 @@ app.post("/admin/media", async (c) => {
 
   // Server-generated flat key: unique per upload, no client input in the path.
   const key = `media-${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${ext}`;
-  await c.env.MEDIA.put(key, await file.arrayBuffer(), {
+  // Hardening: file.type is browser-supplied, verify the actual content bytes
+  // before storing (polyglot / renamed-executable defense in depth).
+  const bytes = await file.arrayBuffer();
+  if (!checkMagicBytes(bytes, file.type)) {
+    return c.json({ ok: false, error: "File content doesn't match its type." }, 400);
+  }
+  await c.env.MEDIA.put(key, bytes, {
     httpMetadata: { contentType: file.type },
   });
   await audit(c, admin!, "media.upload", `${key} (${file.size} bytes)`);
 
-  const host = c.req.header("host") || "brimwood-api.adamsayani.workers.dev";
-  return c.json({ ok: true, key, url: `https://${host}/api/media/${key}` });
+  // Hardening: public URL from the runtime request origin, never the Host
+  // header (a poisoned Host would make clients store attacker URLs).
+  return c.json({ ok: true, key, url: publicMediaUrl(c, key) });
 });
 
 /* --- Admin: delete --- */
 
 app.delete("/admin/media/:key", async (c) => {
-  const admin = await adminUser(c);
-  const no = needAdmin(c, admin);
-  if (no) return no;
+  const admin = await getAdminUser(c);
+  if (!admin) return c.json({ ok: false, error: "Admin only." }, 403);
 
   const key = cleanKey(c.req.param("key"));
   if (!key) return c.json({ ok: false, error: "Not found" }, 404);
@@ -189,7 +173,7 @@ app.get("/media/:key", async (c) => {
   }
   // Keys are unique per upload → immutable, cache aggressively at the edge.
   headers.set("cache-control", "public, max-age=31536000, immutable");
-  // L1: SVGs can carry scripts — force download so they never execute in
+  // L1: SVGs can carry scripts, force download so they never execute in
   // the worker origin's context.
   if ((headers.get("content-type") || "").includes("svg")) {
     headers.set("content-disposition", "attachment");

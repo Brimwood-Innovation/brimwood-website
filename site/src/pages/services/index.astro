@@ -1,0 +1,108 @@
+---
+/* Services index (redesign T9, spec 4.1, 4.3, 8; fix F1, F4).
+ * Rendered from the T7 services collection: the two lead sellers
+ * first, then every service grouped by pillar and tier in taxonomy
+ * order, with ItemList and BreadcrumbList JSON-LD. The hero carries
+ * the repo's single HeroDots swarm on the corrected gradient
+ * (spec 5.2 and 5.3, contrast freeze held). */
+import Public from "../../layouts/Public.astro";
+import HeroDots from "../../components/HeroDots.astro";
+import Breadcrumbs from "../../components/Breadcrumbs.astro";
+import ServiceCard from "../../components/ServiceCard.astro";
+import RevealMotion from "../../components/RevealMotion.astro";
+import { getCollection } from "astro:content";
+import {
+  PILLARS,
+  breadcrumbJsonLd,
+  groupByTier,
+  itemListJsonLd,
+} from "../../lib/services";
+
+const services = await getCollection("services");
+const leads = services
+  .filter((s) => s.data.lead)
+  .sort((a, b) => {
+    /* Lead order per spec 4.3: Custom automation, then Website plus
+     * lead engine. Automate sorts ahead of Build for the leads only;
+     * the pillar groups below keep the Build first order. */
+    const rank = (s: typeof a) => (s.data.pillar === "automate" ? 0 : 1);
+    return rank(a) - rank(b);
+  });
+const byPillar = PILLARS.map((pillar) => ({
+  pillar,
+  tiers: groupByTier(services.filter((s) => s.data.pillar === pillar.slug)),
+}));
+const orderedForSchema = PILLARS.flatMap((pillar) =>
+  groupByTier(services.filter((s) => s.data.pillar === pillar.slug)).flatMap(
+    (tier) => tier.entries,
+  ),
+);
+
+const jsonld = {
+  "@context": "https://schema.org",
+  "@graph": [
+    itemListJsonLd(orderedForSchema),
+    breadcrumbJsonLd([
+      { name: "Home", path: "/" },
+      { name: "Services", path: "/services/" },
+    ]),
+  ],
+};
+---
+
+<Public
+  title="Services - Brimwood Innovation"
+  description="Brimwood Innovation builds technology for businesses in Toronto: websites and lead engines, custom automation, search and AI visibility, content and media, and founder consultancy, across five pillars: Build, Automate, Grow, Create, Guide."
+  path="/services/"
+  jsonld={jsonld}
+>
+  <div class="hero svc-hero">
+    <HeroDots />
+    <p class="eyebrow">Services</p>
+    <h1>We build the technology your business runs on</h1>
+    <p class="lede">
+      Seventeen services across five pillars: Build, Automate, Grow, Create,
+      and Guide. Every engagement starts with an introduction and a
+      conversation, and scope and price are agreed in writing before work
+      starts.
+    </p>
+    <a class="btn" href="/#introduce">Request an introduction</a>
+  </div>
+
+  <section class="block services-ui">
+    <Breadcrumbs items={[{ name: "Home", path: "/" }, { name: "Services" }]} />
+    <h2 class="sec">Start with the lead services</h2>
+    <p class="sec-lede">
+      Two services sell first: custom automation, and a website built as a
+      lead engine. Everything else supports them.
+    </p>
+    <div class="cards cards-2" data-reveal-group>
+      {leads.map((entry) => <ServiceCard entry={entry} headingLevel="h3" />)}
+    </div>
+  </section>
+
+  {byPillar.map(({ pillar, tiers }) => (
+    <section class="block services-ui">
+      <div class="kicker">{pillar.name}</div>
+      <h2 class="sec"><a href={`/services/${pillar.slug}/`}>{pillar.name}</a></h2>
+      <p class="sec-lede">{pillar.lede}</p>
+      {tiers.map((tier) => (
+        <div class="svc-tier">
+          <h3 class="svc-tier-title">{tier.code} - {tier.label}</h3>
+          <div class="cards cards-3" data-reveal-group>
+            {tier.entries.map((entry) => <ServiceCard entry={entry} headingLevel="h4" />)}
+          </div>
+        </div>
+      ))}
+    </section>
+  ))}
+
+  <section class="block services-ui">
+    <div class="cta">
+      <h2>Not sure where to start?</h2>
+      <p>Tell us the problem first. We will tell you plainly which service fits it, and what it would take.</p>
+      <a class="btn" href="/#introduce">Request an introduction</a>
+    </div>
+  </section>
+  <RevealMotion />
+</Public>

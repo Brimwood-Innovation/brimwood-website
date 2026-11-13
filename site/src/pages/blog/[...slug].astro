@@ -1,10 +1,21 @@
 ---
-/* Article page (T10): title, pillar, date, body, author. */
-import Base from "../../layouts/Base.astro";
+/* Article page (T10): title, pillar, date, body, author.
+ * Phase 2 slice 5: ported from the v5 UX deck's Article view screen
+ * (/blog/SLUG, in the deck's "The gaps, closed" section; the section 06
+ * More pages screens cover only the Journal index). The deck header is
+ * a meta line (Journal, reading time, Last updated) over the title; the
+ * old date, author, and tags lede comes off, per the Journal rule from
+ * slice 2: the what, never the who. The article ends, as the deck
+ * specifies, with the newsletter sign-up and related posts; comments
+ * keep their place after them, and the page closes with the intro
+ * action every public page ends with (deck section 05). Post bodies
+ * are author content and render exactly as before. */
+import Public from "../../layouts/Public.astro";
 import { getCollection, render } from "astro:content";
 
 export async function getStaticPaths() {
-  const posts = await getCollection("blog");
+  /* Drafts are never built: draft = seed copy awaiting founder approval. */
+  const posts = await getCollection("blog", ({ data }) => !data.draft);
   return posts.map((post) => ({
     params: { slug: post.id.replace(/\.md$/, "") },
     props: { post },
@@ -13,6 +24,7 @@ export async function getStaticPaths() {
 
 const { post } = Astro.props;
 const slug = post.id.replace(/\.md$/, "");
+const apiBase = import.meta.env.PUBLIC_API_BASE || "";
 const { Content } = await render(post);
 
 const pillars: Record<string, string> = {
@@ -21,123 +33,228 @@ const pillars: Record<string, string> = {
   "owner-mindset": "Owner mindset",
   "members-hub": "Members + hub",
 };
+
+/* Reading time from the raw post body, at 200 words per minute, minimum
+ * one minute. Same build-time helper as the Journal index (slice 2). */
+const readMinutes = (body: string | undefined) => {
+  const words = (body || "").split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.round(words / 200));
+};
+
+/* Last updated: the optional updatedDate, else the publish date. Post
+ * dates are date-only, so the deck format (Thu, Oct 8, 2026) is read in
+ * UTC to keep the printed day the stored day. */
+const lastUpdated = post.data.updatedDate ?? post.data.publishDate;
+const lastUpdatedLabel = lastUpdated.toLocaleDateString("en-CA", {
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+/* Related posts: same pillar first, then the newest of the rest, three
+ * at most. Drafts are never built, so they are never related either. */
+const related = (await getCollection("blog", ({ data }) => !data.draft))
+  .filter((p) => p.id !== post.id)
+  .sort((a, b) => {
+    const sameA = a.data.pillar === post.data.pillar ? 0 : 1;
+    const sameB = b.data.pillar === post.data.pillar ? 0 : 1;
+    if (sameA !== sameB) return sameA - sameB;
+    return b.data.publishDate.valueOf() - a.data.publishDate.valueOf();
+  })
+  .slice(0, 3);
 ---
 
-<Base
-  title={`${post.data.title} — Brimwood Innovation`}
+<Public
+  title={`${post.data.title} - Brimwood Innovation`}
   description={post.data.description}
-  path={`/blog/${slug}`}
->
-  <article class="prose">
-    <div class="kicker">{pillars[post.data.pillar]}{post.data.draft ? " · DRAFT" : ""}</div>
-    <h1>{post.data.title}</h1>
-    <p class="sec-lede">
-      {post.data.publishDate.toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric" })}
-      {" · "}{post.data.author}
-      {post.data.tags.length > 0 && <>{" · "}{post.data.tags.join(", ")}</>}
-    </p>
-    <Content />
-    <script type="application/ld+json">
-      {JSON.stringify({
-        "@context": "https://schema.org",
+  path={`/blog/${slug}/`}
+  ogType="article"
+  articleMeta={{
+    publishedTime: post.data.publishDate.toISOString(),
+    author: post.data.author,
+    tags: post.data.tags,
+  }}
+  jsonld={{
+    "@context": "https://schema.org",
+    "@graph": [
+      {
         "@type": "BlogPosting",
         headline: post.data.title,
         description: post.data.description,
         datePublished: post.data.publishDate.toISOString(),
-        author: { "@type": "Organization", name: "Brimwood Innovation" },
+        dateModified: lastUpdated.toISOString(),
+        author: { "@type": "Organization", name: post.data.author },
         publisher: {
           "@type": "Organization",
           name: "Brimwood Innovation",
           logo: { "@type": "ImageObject", url: "https://brimwoodinnovation.com/img/brimwood-logo-colour.svg" },
         },
         mainEntityOfPage: `https://brimwoodinnovation.com/blog/${slug}/`,
-      })}
-    </script>
-    <p style="margin-top:3rem;">
+      },
+      {
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "Home", item: "https://brimwoodinnovation.com/" },
+          { "@type": "ListItem", position: 2, name: "Journal", item: "https://brimwoodinnovation.com/blog" },
+          { "@type": "ListItem", position: 3, name: post.data.title, item: `https://brimwoodinnovation.com/blog/${slug}/` },
+        ],
+      },
+    ],
+  }}
+  turnstile
+>
+  <article class="prose journal-ui">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <ol>
+        <li><a href="/blog">Journal</a></li>
+        <li><span aria-current="page">{post.data.title}</span></li>
+      </ol>
+    </nav>
+    <div class="kicker">{pillars[post.data.pillar]}{post.data.draft ? " · DRAFT" : ""}</div>
+    <h1>{post.data.title}</h1>
+    <p class="article-meta">
+      Journal · {readMinutes(post.body)} min read · Last updated {lastUpdatedLabel}
+    </p>
+    <Content />
+    <p class="article-actions">
       <a class="btn btn-ghost" href="/blog">All posts</a>
+      <button class="btn btn-ghost" id="copyLinkBtn" type="button" data-copy-url={`https://brimwoodinnovation.com/blog/${slug}`}>
+        Copy link
+      </button>
+      <span class="copy-status" id="copyStatus" role="status"></span>
     </p>
   </article>
 
-  <section id="comments" style="margin-top:4rem;max-width:720px;">
-    <h2 class="sec" style="font-size:clamp(22px,3vw,30px);margin-bottom:8px;">Comments</h2>
-    <div id="commentList"><p class="sec-lede">Loading comments…</p></div>
-
-    <div class="cta" style="margin-top:2rem;">
-      <h3 style="margin-bottom:8px;">Join the conversation</h3>
-      <p style="margin-bottom:16px;">Comments are moderated — be kind and on topic.</p>
-      <form id="commentForm">
-        <label for="cName">Your name</label>
-        <input id="cName" type="text" name="name" placeholder="Jane Appleseed" required />
-        <label for="cEmail">Email <span style="font-weight:400;">(never published)</span></label>
-        <input id="cEmail" type="email" name="email" placeholder="you@example.com" required />
-        <label for="cBody">Comment</label>
-        <textarea id="cBody" name="body" rows="4" placeholder="Share your thoughts…" required minlength="10" maxlength="2000"></textarea>
-        <div class="cf-turnstile" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx" style="margin:16px 0;"></div>
-        <button class="btn" type="submit" id="commentBtn">Post comment</button>
-        <p class="form-err" id="commentErr" style="display:none;"></p>
+  <section class="block journal-ui" id="article-newsletter">
+    <div class="cta">
+      <h2>Get the newsletter.</h2>
+      <p>One email, now and then. Short notes on micro business, AI in practice, and the owner mindset. Enter your email and we will send a confirmation link. You are only subscribed after you click it.</p>
+      <form class="intro" id="jNewsForm">
+        <label for="jEmail">Email</label>
+        <input id="jEmail" type="email" name="email" placeholder="you@example.com" required />
+        <input type="text" name="website" id="jSite" tabindex="-1" autocomplete="off" class="honeypot" aria-hidden="true" />
+        <div class="cf-turnstile turnstile-box" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx"></div>
+        <button class="btn" type="submit">Subscribe</button>
+        <p class="form-err is-hidden" id="jNewsErr">Something went wrong on our end. Please email <a href="mailto:info@brimwoodinnovation.com">info@brimwoodinnovation.com</a> directly.</p>
       </form>
-      <div class="thanks" id="commentThanks">Thanks — your comment is awaiting moderation.</div>
+      <div class="thanks" id="jNewsThanks">Check your inbox. We sent a confirmation link. Click it and you are in.</div>
     </div>
   </section>
 
-  <script define:vars={{ slug, apiBase: import.meta.env.PUBLIC_API_BASE || "" }}>
-    const listEl = document.getElementById("commentList");
-    const esc = (s) => String(s || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const fmtDate = (iso) => {
-      try { return new Date(iso).toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric" }); }
-      catch { return ""; }
-    };
+  {related.length > 0 && (
+    <section class="block journal-ui">
+      <div class="kicker">Journal</div>
+      <h2 class="sec sec-h2">Related posts</h2>
+      <div class="cards cards-3">
+        {related.map((p) => (
+          <a class="card card-link" href={`/blog/${p.id.replace(/\.md$/, "")}/`}>
+            <div class="n">{pillars[p.data.pillar]}</div>
+            <h3>{p.data.title}</h3>
+            <p class="card-meta">{readMinutes(p.body)} min read</p>
+          </a>
+        ))}
+      </div>
+    </section>
+  )}
 
-    (async () => {
-      try {
-        const r = await fetch(apiBase + "/api/comments/" + encodeURIComponent(slug), {
-          headers: { accept: "application/json" },
-        });
-        const d = await r.json();
-        const comments = (d.ok && d.comments) || [];
-        listEl.innerHTML = comments.length === 0
-          ? "<p class='sec-lede'>No comments yet — be the first.</p>"
-          : comments.map((cm) => `
-            <div class="admin-card" style="margin-bottom:12px;">
-              <p style="margin:0 0 8px;"><strong>${esc(cm.name)}</strong>
-                <span class="admin-muted"> · ${esc(fmtDate(cm.created_at))}</span></p>
-              <p style="margin:0;white-space:pre-wrap;">${esc(cm.body)}</p>
-            </div>`).join("");
-      } catch {
-        listEl.innerHTML = "<p class='sec-lede'>Could not load comments.</p>";
-      }
+  <section id="comments" class="comments-wrap" data-slug={slug} data-api-base={apiBase}>
+    <h2 class="sec sec-h2-sm">Comments</h2>
+    <div id="commentList"><p class="sec-lede">Loading comments…</p></div>
+
+    <div class="cta cta-gap">
+      <h3 class="mb-8">Join the conversation</h3>
+      <p class="cta-sub">Comments are moderated, be kind and on topic.</p>
+      <form id="commentForm">
+        <label for="cName">Your name</label>
+        <input id="cName" type="text" name="name" placeholder="Jane Appleseed" required />
+        <label for="cEmail">Email <span class="label-note">(never published)</span></label>
+        <input id="cEmail" type="email" name="email" placeholder="you@example.com" required />
+        <label for="cBody">Comment</label>
+        <textarea id="cBody" name="body" rows="4" placeholder="Share your thoughts…" required minlength="10" maxlength="2000"></textarea>
+        <div class="cf-turnstile turnstile-box" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx"></div>
+        <button class="btn" type="submit" id="commentBtn">Post comment</button>
+        <p class="form-err is-hidden" id="commentErr" role="status"></p>
+      </form>
+      <div class="thanks" id="commentThanks" role="status">Thanks, your comment is awaiting moderation.</div>
+    </div>
+  </section>
+
+  <section class="block" id="introduce">
+    <div class="cta">
+      <h2>Membership is by invitation.</h2>
+      <p>If you build, you belong here. Request an introduction and tell us what you're working on.</p>
+      <a class="btn" href="/#introduce">Request an introduction</a>
+    </div>
+  </section>
+
+  <script is:inline src="/js/blog-comments.js"></script>
+  <script>
+    // Copy link (v5 deck, Article view): copies the canonical post URL and
+    // confirms in a status line. Falls back to a prompt-free textarea copy
+    // where the Clipboard API is unavailable.
+    (function () {
+      var btn = document.getElementById("copyLinkBtn");
+      var status = document.getElementById("copyStatus");
+      if (!btn || !status) return;
+      btn.addEventListener("click", function () {
+        var url = btn.getAttribute("data-copy-url") || location.href;
+        function done() {
+          status.textContent = "Link copied.";
+          setTimeout(function () { status.textContent = ""; }, 3000);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(done, function () { status.textContent = "Copy failed. The address bar has the link."; });
+          return;
+        }
+        var ta = document.createElement("textarea");
+        ta.value = url;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "absolute";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); done(); } catch (e) { status.textContent = "Copy failed. The address bar has the link."; }
+        document.body.removeChild(ta);
+      });
     })();
-
-    document.getElementById("commentForm").addEventListener("submit", async function (e) {
+  </script>
+  <script>
+    // --- article newsletter signup (same flow as /newsletter: POSTs to
+    // /api/newsletter; double opt-in; honeypot checked client-side) ---
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || '';
+    document.getElementById('jNewsForm').addEventListener('submit', async function(e){
       e.preventDefault();
-      const v = (id) => document.getElementById(id).value.trim();
-      const btn = document.getElementById("commentBtn");
-      const err = document.getElementById("commentErr");
-      err.style.display = "none";
+      const email = document.getElementById('jEmail').value.trim();
+      const btn = this.querySelector('button[type=submit]');
+      const err = document.getElementById('jNewsErr');
+      err.style.display = 'none';
       btn.disabled = true;
-      btn.textContent = "Posting…";
+      btn.textContent = 'Subscribing\u2026';
       try {
-        const res = await fetch(apiBase + "/api/comments", {
-          method: "POST",
-          headers: { "content-type": "application/json", accept: "application/json" },
+        if (document.getElementById('jSite').value){ // honeypot: bot, silently accept
+          document.getElementById('jNewsForm').style.display = 'none';
+          document.getElementById('jNewsThanks').style.display = 'block';
+          return;
+        }
+        const res = await fetch(API_BASE + '/api/newsletter', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'accept': 'application/json' },
           body: JSON.stringify({
-            post_slug: slug,
-            name: v("cName"),
-            email: v("cEmail"),
-            body: v("cBody"),
-            "cf-turnstile-response": (document.querySelector('#commentForm [name="cf-turnstile-response"]') || {}).value || "",
-          }),
+            email,
+            'cf-turnstile-response': (document.querySelector('#jNewsForm [name="cf-turnstile-response"]') || {}).value || ''
+          })
         });
-        const d = await res.json().catch(() => ({}));
-        if (!res.ok || !d.ok) throw new Error(d.error || "Could not post your comment.");
-        document.getElementById("commentForm").style.display = "none";
-        document.getElementById("commentThanks").style.display = "block";
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.error || 'subscribe failed');
+        document.getElementById('jNewsForm').style.display = 'none';
+        document.getElementById('jNewsThanks').style.display = 'block';
       } catch (ex) {
         btn.disabled = false;
-        btn.textContent = "Post comment";
-        err.textContent = ex.message;
-        err.style.display = "block";
+        btn.textContent = 'Subscribe';
+        err.style.display = 'block';
       }
     });
   </script>
-</Base>
+</Public>

@@ -1,7 +1,7 @@
 # brimwoodinnovation.com website
 
 Monorepo for the Brimwood Innovation website. Public repo:
-`Brimwood-Innovation/brimwood-website` — every change flows through
+`Brimwood-Innovation/brimwood-website` - every change flows through
 GitHub; there are no more zip uploads.
 
 ## Workflow (enforced)
@@ -23,34 +23,38 @@ git checkout main && git merge feature/my-change && git push  # ships to product
 
 ## Layout
 
-- `site/` — Astro public website (Cloudflare Pages). Being built; see
+- `site/` - Astro public website (Cloudflare Pages). Being built; see
   `tasks/plan.md`.
-- `api/` — Hono `brimwood-api` Worker (TypeScript): forms, newsletter,
+- `api/` - Hono `brimwood-api` Worker (TypeScript): forms, newsletter,
   auth, members, admin endpoints. Being built.
-- `admin/` — Decap CMS (MIT) config, served at `/admin`. Being built.
-- `docs/` — full-stack framework report v1.1 (the spec), runbooks.
-- `build/` — the current v7 static site root (live in production).
-  Migrates into `site/` during the build; until then it stays untouched.
-- `worker-introduction.js` — live Cloudflare Worker `brimwood-introduction`
+- `admin/` - Decap CMS (MIT) config, served at `/admin`. Being built.
+- `docs/` - runbooks, perf budgets and CMS notes.
+- `worker-introduction.js` - live Cloudflare Worker `brimwood-introduction`
   (route `brimwoodinnovation.com/api/*`): introduction form endpoint,
   newsletter double opt-in, Resend delivery, KV rate limiting. Absorbed
   into `api/` during the build; until then it stays untouched.
-- `preview/` — discarded hero animation experiments (reverted; kept for reference).
-- `CAPABILITY-MAP.md`, `CONSTRAINTS.md`, `tasks/` — spec, build constraints,
+- `CONSTRAINTS.md`, `tasks/` - spec, build constraints,
   implementation plan and task list (the `/spec` → `/plan` → `/build` trail).
 
 ## Deploying
 
-Deployments are automatic from GitHub — do not upload zips by hand.
+Deployments are automatic from GitHub - do not upload zips by hand.
 Pushing to `main` redeploys production within a minute or two; pushing
 any other branch produces a preview URL on the Cloudflare Pages dashboard.
 
 The old zip-upload flow is retired. `brimwood-coming-soon-*.zip` files in
 this directory are kept for history only.
 
+## Licence
+
+Code in this repo is dual-licensed under the MIT License OR the GNU
+Affero General Public License v3.0, at your choice. See `LICENSE`,
+`LICENSE-MIT` and `LICENSE-AGPL-3.0`. Brand assets, fonts and site
+content are not covered by the code licence - see `NOTICE`.
+
 ## Brand
 
 Branding follows the Brimwood Brand Kit v1.0
 (`~/workspace/company/brand/Brimwood-Brand-Kit-v1.0/`), the final authority for
-all public-facing content. Use kit assets exactly as delivered — never redraw,
+all public-facing content. Use kit assets exactly as delivered - never redraw,
 recolour, stretch, or add effects.

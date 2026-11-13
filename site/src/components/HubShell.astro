@@ -1,0 +1,183 @@
+---
+/* Shared member hub shell (Phase 3 slice 2, deck section 07).
+ * One shell on every signed-in screen: the deck sidebar on desktop
+ * (nine places, in deck order), the deck top bar (search, bell, avatar
+ * menu), and the deck phone tabs (Home, Feed, Space, Messages, Me).
+ * The shell switches by its own width, so one markup pattern serves
+ * desktop and phone, as the deck specifies.
+ *
+ * Honest gaps, not invented pages: avatar items with no page yet
+ * (Settings, Safety) render as plain text, never as links to a page
+ * that does not exist. Their slices land later; until then the shell
+ * shows the deck structure without promising a destination. Home
+ * gained its page in Phase 3 slice 3 (/hub) and is a real link now,
+ * as are Groups (slice 6), Events (slice 7, /hub/events), Space
+ * (slice 8, /hub/space, with check-in, guest passes and house info
+ * under it), People (slice 9, /hub/people) and Saved
+ * (slice 10, /hub/saved).
+ * Canonical hub routes since Phase 5 cycle 44: Messages lives at
+ * /hub/messages and the bell inbox at /hub/notifications, as the deck
+ * routes them. The old /messages and /notifications URLs 301-redirect
+ * to the new ones (site/public/_redirects), so notification deep links
+ * and saved links keep working.
+ * The public events index stays at /events; the hub Events place
+ * points at /hub/events, where members manage their RSVPs.
+ * The public site header and footer from Base stay above and below
+ * the shell, as in the Phase 2 slices; the shell is the in-page
+ * app frame, not a replacement layout.
+ * Phase 5 command palette: Ctrl K (or Cmd K) and the search pill open
+ * an in-page palette over the shell (people, feed posts, events,
+ * lessons, blog posts in one list, from the shipped /api/search and
+ * /api/people endpoints). The pill stays a plain link to /search, so
+ * without JavaScript it still reaches the full search page.
+ */
+interface Props {
+  /* Deck place shown as current in the sidebar or tabs, or
+   * "notifications" (bell) or "profile" (avatar menu). Pages that
+   * are signed-in screens but not a deck place pass nothing. */
+  current?: string;
+}
+const { current } = Astro.props;
+const apiBase = import.meta.env.PUBLIC_API_BASE || "";
+
+interface Place {
+  key: string;
+  label: string;
+  href: string | null;
+}
+const places: Place[] = [
+  { key: "home", label: "Home", href: "/hub" },
+  { key: "feed", label: "Feed", href: "/hub/feed" },
+  { key: "messages", label: "Messages", href: "/hub/messages" },
+  { key: "groups", label: "Groups", href: "/hub/groups" },
+  { key: "events", label: "Events", href: "/hub/events" },
+  { key: "space", label: "Space", href: "/hub/space" },
+  { key: "people", label: "People", href: "/hub/people" },
+  { key: "academy", label: "Academy", href: "/academy" },
+  { key: "saved", label: "Saved", href: "/hub/saved" },
+];
+const tabs: Place[] = [
+  { key: "home", label: "Home", href: "/hub" },
+  { key: "feed", label: "Feed", href: "/hub/feed" },
+  { key: "space", label: "Space", href: "/hub/space" },
+  { key: "messages", label: "Messages", href: "/hub/messages" },
+];
+const mePlaces: Place[] = [
+  { key: "groups", label: "Groups", href: "/hub/groups" },
+  { key: "events", label: "Events", href: "/hub/events" },
+  { key: "people", label: "People", href: "/hub/people" },
+  { key: "academy", label: "Academy", href: "/academy" },
+  { key: "saved", label: "Saved", href: "/hub/saved" },
+];
+const isCurrent = (key: string) => (current === key ? "page" : undefined);
+---
+
+<div class="hub-ui" data-api-base={apiBase}>
+  <div class="hub-frame">
+    <nav class="hub-nav" aria-label="Hub">
+      {
+        places.map((p) =>
+          p.href ? (
+            <a href={p.href} aria-current={isCurrent(p.key)}>
+              {p.label}
+            </a>
+          ) : (
+            <span class="hub-nav-soon" aria-disabled="true">
+              {p.label}
+            </span>
+          ),
+        )
+      }
+    </nav>
+
+    <div class="hub-top">
+      <a class="hub-search" href="/search">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><line x1="16.5" y1="16.5" x2="21" y2="21" /></svg>
+        Search the hub
+        <kbd>Ctrl K</kbd>
+      </a>
+      <a class="hub-bell" href="/hub/notifications" aria-label="Notifications" aria-current={isCurrent("notifications")}>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" /></svg>
+        <span class="hub-dot" id="hubNotifDot" hidden></span>
+      </a>
+      <details class="hub-account">
+        <summary class="hub-avatar" aria-label="Account menu">
+          <span id="hubAvatarInitials">Me</span>
+        </summary>
+        <div class="hub-menu">
+          <a href="/members/profile" aria-current={isCurrent("profile")}>Profile</a>
+          <span class="hub-menu-soon" aria-disabled="true">Settings</span>
+          <span class="hub-menu-soon" aria-disabled="true">Safety</span>
+          <button type="button" class="hub-signout">Sign out</button>
+        </div>
+      </details>
+    </div>
+
+    <div class="hub-body">
+      <slot />
+    </div>
+
+    <nav class="hub-tabs" aria-label="Hub">
+      {
+        tabs.map((p) =>
+          p.href ? (
+            <a href={p.href} aria-current={isCurrent(p.key)}>
+              {p.label}
+            </a>
+          ) : (
+            <span class="hub-tab-soon" aria-disabled="true">
+              {p.label}
+            </span>
+          ),
+        )
+      }
+      <details class="hub-me">
+        <summary class="hub-tab">Me</summary>
+        <div class="hub-me-menu">
+          {
+            mePlaces.map((p) =>
+              p.href ? (
+                <a href={p.href} aria-current={isCurrent(p.key)}>
+                  {p.label}
+                </a>
+              ) : (
+                <span class="hub-menu-soon" aria-disabled="true">
+                  {p.label}
+                </span>
+              ),
+            )
+          }
+          <hr />
+          <a href="/members/profile" aria-current={isCurrent("profile")}>Profile</a>
+          <span class="hub-menu-soon" aria-disabled="true">Settings</span>
+          <span class="hub-menu-soon" aria-disabled="true">Safety</span>
+          <button type="button" class="hub-signout">Sign out</button>
+        </div>
+      </details>
+    </nav>
+  </div>
+
+  <div class="hub-palette" id="hubPalette" hidden>
+    <div class="hub-palette-backdrop" data-palette-close></div>
+    <div class="hub-palette-box" role="dialog" aria-modal="true" aria-label="Quick search">
+      <label class="hub-palette-label" for="hubPaletteInput">Search the hub</label>
+      <input
+        id="hubPaletteInput"
+        class="hub-palette-input"
+        type="search"
+        placeholder="People, posts, events, lessons"
+        autocomplete="off"
+        maxlength="100"
+      />
+      <p class="hub-palette-status" id="hubPaletteStatus" role="status">Type at least two characters to search.</p>
+      <div class="hub-palette-results" id="hubPaletteResults"></div>
+      <p class="hub-palette-foot">
+        Arrow keys move, Enter opens, Esc closes.
+        <a href="/search">Full search page</a>
+      </p>
+    </div>
+  </div>
+</div>
+
+<script is:inline src="/js/hub-shell.js"></script>
+<script is:inline src="/js/command-palette.js"></script>

@@ -1,4 +1,4 @@
--- 0002_blog.sql — authors, categories, tags, posts (report §11.2)
+-- 0002_blog.sql: authors, categories, tags, posts (report §11.2)
 
 CREATE TABLE authors (
   id            TEXT PRIMARY KEY,

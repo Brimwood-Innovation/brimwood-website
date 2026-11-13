@@ -6,9 +6,9 @@
     "@cloudflare/workers-types": "^5.0.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3",
-    "wrangler": "^4.0.0"
+    "wrangler": "^4.149.0"
   },
-  "license": "MIT",
+  "license": "(MIT OR AGPL-3.0)",
   "name": "brimwood-api",
   "private": true,
   "scripts": {
@@ -18,5 +18,9 @@
     "test": "vitest run"
   },
   "type": "module",
-  "version": "0.1.0"
+  "version": "0.1.0",
+  "overrides": {
+    "vite": "^8.3.4",
+    "undici": "^8.12.2"
+  }
 }

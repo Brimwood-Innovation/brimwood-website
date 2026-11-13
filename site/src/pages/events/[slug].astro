@@ -1,9 +1,17 @@
 ---
-/* Event detail + RSVP form. Client-rendered: always fresh, no rebuild needed.
- * RSVP is Turnstile-protected server-side. */
-import Base from "../../layouts/Base.astro";
+/* Event detail + RSVP form. Client-rendered body: always fresh, no
+ * rebuild needed. RSVP is Turnstile-protected server-side.
+ * Phase 2 slice 3: the head is built per event from prototype section
+ * 06 and the section 04 structured data table (Event on events, times
+ * in America/Toronto): title, description, Event and BreadcrumbList
+ * JSON-LD. The body stays client-rendered from GET /api/events/SLUG,
+ * the same source as before, and the client script still refreshes the
+ * title and meta after load. */
+import Public from "../../layouts/Public.astro";
 
 const { slug } = Astro.params;
+const apiBase = import.meta.env.PUBLIC_API_BASE || "";
+const event = (Astro.props as { event?: any }).event;
 
 export async function getStaticPaths() {
   const apiBase = import.meta.env.PUBLIC_API_BASE || "";
@@ -11,23 +19,60 @@ export async function getStaticPaths() {
     const r = await fetch(apiBase + "/api/events", { headers: { accept: "application/json" } });
     const d = await r.json();
     if (d.ok && Array.isArray(d.events)) {
-      return d.events.map((e: any) => ({ params: { slug: e.slug } }));
+      return d.events.map((e: any) => ({ params: { slug: e.slug }, props: { event: e } }));
     }
   } catch {}
   return [];
 }
+
+const pageTitle = event ? `${event.title} - Events - Brimwood Innovation` : "Event - Brimwood Innovation";
+const pageDescription = event
+  ? `${event.title} at Brimwood Innovation, 1365 Gerrard St E, Toronto. Details and RSVP.`
+  : "Event details and RSVP.";
+
+const jsonld = event
+  ? {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Event",
+          name: event.title,
+          startDate: event.starts_at,
+          ...(event.ends_at ? { endDate: event.ends_at } : {}),
+          eventStatus: "https://schema.org/EventScheduled",
+          ...(event.location
+            ? { location: { "@type": "Place", name: event.location } }
+            : {}),
+          organizer: {
+            "@type": "Organization",
+            name: "Brimwood Innovation",
+            url: "https://brimwoodinnovation.com",
+          },
+          url: `https://brimwoodinnovation.com/events/${event.slug}`,
+        },
+        {
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "Home", item: "https://brimwoodinnovation.com/" },
+            { "@type": "ListItem", position: 2, name: "Events", item: "https://brimwoodinnovation.com/events" },
+            { "@type": "ListItem", position: 3, name: event.title, item: `https://brimwoodinnovation.com/events/${event.slug}` },
+          ],
+        },
+      ],
+    }
+  : undefined;
 ---
 
-<Base title="Event — Brimwood Innovation" description="Event details and RSVP." path={`/events/${slug}`}>
-  <section class="block" id="eventWrap">
+<Public title={pageTitle} description={pageDescription} path={`/events/${slug}`} turnstile jsonld={jsonld}>
+  <section class="block events-ui" id="eventWrap" data-slug={slug} data-api-base={apiBase}>
     <p class="sec-lede" id="eventLoading">Loading…</p>
-    <div id="eventBody" style="display:none;"></div>
+    <div id="eventBody" class="is-hidden"></div>
   </section>
 
-  <section class="block" id="rsvpSection" style="display:none;">
-    <div class="cta">
+  <section class="block is-hidden" id="rsvpSection">
+    <div class="cta" id="rsvp">
       <h2>Save your spot.</h2>
-      <p>Tell us who is coming. One RSVP per email — update it anytime by submitting again.</p>
+      <p>Tell us who is coming. One RSVP per email. Update it anytime by submitting again.</p>
       <form class="intro" id="rsvpForm">
         <label for="rName">Your name</label>
         <input id="rName" type="text" name="name" placeholder="Jane Appleseed" required />
@@ -35,86 +80,14 @@ export async function getStaticPaths() {
         <input id="rEmail" type="email" name="email" placeholder="you@example.com" required />
         <label for="rGuests">Guests (including you)</label>
         <input id="rGuests" type="number" name="guests" min="1" max="10" value="1" required />
-        <input type="text" name="website" id="rSite" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true" />
-        <div class="cf-turnstile" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx" style="margin:16px 0;"></div>
+        <input type="text" name="website" id="rSite" tabindex="-1" autocomplete="off" class="honeypot" aria-hidden="true" />
+        <div class="cf-turnstile turnstile-box" data-sitekey="0x4AAAAAAFLpQ6bCYUs0w0Lx"></div>
         <button class="btn" type="submit" id="rsvpBtn">RSVP</button>
-        <p class="form-err" id="rsvpErr" style="display:none"></p>
+        <p class="form-err is-hidden" id="rsvpErr" role="status"></p>
       </form>
-      <div class="thanks" id="rsvpThanks">You are on the list — check your inbox for confirmation.</div>
+      <div class="thanks" id="rsvpThanks" role="status">You are on the list. Check your inbox for confirmation. We will send a reminder 24 hours before it starts.</div>
     </div>
   </section>
 
-  <script define:vars={{ slug }}>
-    const API_BASE = import.meta.env.PUBLIC_API_BASE || '';
-    const esc = (s) => String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const fmt = (iso) => new Date(iso).toLocaleString('en-CA', {
-      weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit'
-    });
-
-    (async () => {
-      const body = document.getElementById('eventBody');
-      try {
-        const r = await fetch(API_BASE + '/api/events/' + encodeURIComponent(slug), {
-          headers: { accept: 'application/json' }
-        });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok || !d.ok) throw new Error('not found');
-        const e = d.event;
-        document.title = e.title + ' — Events — Brimwood Innovation';
-        document.getElementById('eventLoading').style.display = 'none';
-        body.style.display = 'block';
-        const full = e.capacity && e.rsvp_count >= e.capacity;
-        body.innerHTML =
-          '<div class="kicker">' + esc(fmt(e.starts_at)) + (e.location ? ' · ' + esc(e.location) : '') + '</div>' +
-          '<h1 class="sec" style="font-size:clamp(34px,5.4vw,56px);margin-bottom:18px;">' + esc(e.title) + '</h1>' +
-          (e.description_md ? '<div class="prose" style="padding:0;max-width:none;"><p style="white-space:pre-wrap;">' + esc(e.description_md) + '</p></div>' : '') +
-          '<p class="admin-muted" style="margin-top:16px;">' + e.rsvp_count + ' going' + (e.capacity ? ' · ' + e.capacity + ' spots' : '') + '</p>' +
-          '<p style="margin-top:12px;"><a href="/events" style="font-size:14px;">← All events</a></p>';
-        if (!full) {
-          document.getElementById('rsvpSection').style.display = 'block';
-        } else {
-          body.innerHTML += '<p class="sec-lede" style="margin-top:24px;font-weight:600;">This event is at capacity.</p>';
-        }
-      } catch {
-        document.getElementById('eventLoading').textContent = 'Event not found.';
-      }
-    })();
-
-    document.getElementById('rsvpForm').addEventListener('submit', async function(e) {
-      e.preventDefault();
-      const v = (id) => document.getElementById(id).value.trim();
-      const btn = document.getElementById('rsvpBtn');
-      const err = document.getElementById('rsvpErr');
-      err.style.display = 'none';
-      btn.disabled = true;
-      btn.textContent = 'Saving…';
-      try {
-        if (v('rSite')) { // honeypot: bot — silently accept
-          document.getElementById('rsvpForm').style.display = 'none';
-          document.getElementById('rsvpThanks').style.display = 'block';
-          return;
-        }
-        const res = await fetch(API_BASE + '/api/events/' + encodeURIComponent(slug) + '/rsvp', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'accept': 'application/json' },
-          body: JSON.stringify({
-            name: v('rName'),
-            email: v('rEmail'),
-            guests: v('rGuests'),
-            website: '',
-            'cf-turnstile-response': (document.querySelector('#rsvpForm [name="cf-turnstile-response"]') || {}).value || ''
-          })
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.ok) throw new Error(data.error || 'RSVP failed');
-        document.getElementById('rsvpForm').style.display = 'none';
-        document.getElementById('rsvpThanks').style.display = 'block';
-      } catch (ex) {
-        btn.disabled = false;
-        btn.textContent = 'RSVP';
-        err.textContent = ex.message;
-        err.style.display = 'block';
-      }
-    });
-  </script>
-</Base>
+  <script is:inline src="/js/event-rsvp.js"></script>
+</Public>

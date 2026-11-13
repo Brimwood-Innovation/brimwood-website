@@ -1,7 +1,7 @@
 # Cloudflare bootstrap runbook (T2)
 
-**Account:** `Adamsayani@outlook.com's Account` (`0721f0b5175c685d56651e435d9a14dc`)
-**Cost:** C$0 — D1, KV and R2 free tiers only. No paid upgrade without founder approval.
+**Account:** `<CLOUDFLARE_ACCOUNT_EMAIL>`'s Cloudflare account (`0721f0b5175c685d56651e435d9a14dc`)
+**Cost:** C$0 - D1, KV and R2 free tiers only. No paid upgrade without founder approval.
 
 ## 1. Authenticate wrangler
 
@@ -9,8 +9,7 @@
 wrangler login
 ```
 
-Opens a browser OAuth flow — the **founder** completes it (owner identity
-`adamsayani@outlook.com`). Verify:
+Opens a browser OAuth flow - the **founder** completes it (owner identity `<CLOUDFLARE_ACCOUNT_EMAIL>`). Verify:
 
 ```bash
 wrangler whoami
@@ -47,7 +46,7 @@ Existing resources untouched: `brimwood-coming-soon` Pages project,
 `brimwood-introduction` Worker, `brimwood-newsletter` KV namespace, DNS/SSL.
 
 Note: `wrangler login` OAuth was abandoned (browser-takeover disconnects ×2).
-CLI auth still pending — an API token will be needed for `wrangler deploy`
+CLI auth still pending - an API token will be needed for `wrangler deploy`
 and `d1 migrations apply --remote` (later tasks). The IDs above are enough
 for `api/wrangler.toml` bindings (T8).
 
@@ -66,4 +65,4 @@ for `api/wrangler.toml` bindings (T8).
 - Production branch: `develop`. Build: root `site`, `npm run build`, output `dist`.
 - Preview deployments: ON for all non-production branches (PR previews automatic).
 - No custom domain attached. `brimwood-coming-soon` (production) untouched.
-- First build failed as expected — `site/` scaffold lands in T7.
+- First build failed as expected - `site/` scaffold lands in T7.

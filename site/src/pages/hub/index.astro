@@ -1,0 +1,276 @@
+---
+/* Member hub home (Phase 3 slice 3, deck section 07, /hub screen).
+ * The deck's four cards, filled only with data the shipped API returns:
+ * Today at the hub (public facts plus live space data from Phase 3
+ * slice 8: today's bookings and the check-in count), Your next event
+ * (GET /api/events), Continue learning (GET /api/progress plus the
+ * course detail and progress detail for the resume link), and This
+ * week's rituals (GET /api/rituals, the standing weekly rhythm with
+ * each ritual's weekday and local time).
+ * No streaks and no activity feed (D7, C14, per the deck caption).
+ * Members-only: a signed-out visitor gets the sign-in gate, the same
+ * pattern as the feed and dashboard pages. Brand Kit v1.0.
+ */
+import Base from "../../layouts/Base.astro";
+import HubShell from "../../components/HubShell.astro";
+---
+
+<Base
+  title="Hub - Brimwood Innovation"
+  description="Your hub home. Today at the hub, your next event, continue learning, and this week's rituals."
+  path="/hub"
+>
+  <HubShell current="home">
+  <section class="block">
+    <div id="hub-loading"><p class="sec-lede">Loading…</p></div>
+
+    <div id="hub-login" style="display:none;text-align:center;padding:48px 0;">
+      <div class="kicker">Members</div>
+      <h2 class="sec">Sign in to see your hub.</h2>
+      <p class="sec-lede" style="margin-inline:auto;">
+        The hub is members-only. <a href="/members">Sign in</a> to see your home page.
+      </p>
+    </div>
+
+    <div id="hub-home" style="display:none;">
+      <div class="kicker">Hub home</div>
+      <h1 class="sec" id="hubGreeting" style="font-size:clamp(30px,4.6vw,44px);margin-bottom:8px;">Good day.</h1>
+      <p class="sec-lede" id="hubSub"></p>
+
+      <div class="cards" style="margin-top:24px;">
+        <!-- Today at the hub: public facts plus live space data
+             (Phase 3 slice 8): today's bookings and the check-in
+             count, a count only, never names. -->
+        <article class="card">
+          <div class="n">Today at the hub</div>
+          <dl class="hub-home-facts">
+            <div><dt>Where</dt><dd>1365 Gerrard St E, second floor</dd></div>
+            <div><dt>Demo nights</dt><dd>Wednesdays, 6:30 p.m.</dd></div>
+          </dl>
+          <p class="hub-home-note" id="hubTodayBody">Loading…</p>
+          <p style="margin-top:12px;"><a class="btn btn-secondary btn-sm" href="/hub/space">Book a room</a></p>
+        </article>
+
+        <!-- Your next event: filled from GET /api/events. -->
+        <article class="card" id="hubEventCard">
+          <div class="n">Your next event</div>
+          <p class="hub-home-note" id="hubEventBody">Loading…</p>
+        </article>
+
+        <!-- Continue learning: filled from /api/progress. -->
+        <article class="card" id="hubLearnCard">
+          <div class="n">Continue learning</div>
+          <p class="hub-home-note" id="hubLearnBody">Loading…</p>
+        </article>
+
+        <!-- This week's rituals: filled from GET /api/rituals. -->
+        <article class="card" id="hubRitualsCard">
+          <div class="n">This week's rituals</div>
+          <div id="hubRitualsBody"><p class="hub-home-note">Loading…</p></div>
+          <p class="hub-home-note">Ritual threads appear in the feed.</p>
+          <p style="margin-top:12px;"><a class="btn btn-secondary btn-sm" href="/hub/feed">Add yours</a></p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <style>
+    .hub-home-facts { display: grid; gap: 10px; margin: 0 0 12px; font-size: 14.5px; }
+    .hub-home-facts div { display: flex; justify-content: space-between; gap: 12px; }
+    .hub-home-facts dt { color: var(--stone); }
+    .hub-home-facts dd { margin: 0; font-weight: 600; text-align: right; }
+    .hub-home-row {
+      display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+      padding: 10px 0; font-size: 14.5px; border-bottom: 1px solid rgba(18, 26, 22, 0.08);
+    }
+    .hub-home-row:last-of-type { border-bottom: 0; }
+    .hub-home-row > :first-child { flex: 1; min-width: 8em; }
+    .hub-home-note { font-size: 13.5px; color: var(--stone); margin: 12px 0 0; }
+    .hub-home-progress {
+      height: 8px; background: var(--mint); border-radius: 4px; overflow: hidden; margin: 12px 0;
+    }
+    .hub-home-progress i { display: block; height: 100%; background: var(--emerald); border-radius: 4px; }
+  </style>
+
+  <script>
+    const API_BASE = import.meta.env.PUBLIC_API_BASE || "";
+    const $ = (id) => document.getElementById(id);
+    // Canonical escaper: window.Brimwood.escapeHtml (site/public/js/escape.js), loaded by Base before this script.
+    const esc = window.Brimwood.escapeHtml;
+    const api = (p) =>
+      fetch(API_BASE + p, { credentials: "include", headers: { accept: "application/json" } });
+
+    /* Deck format (prototype section 06): "Wed, Oct 14, 6:30 p.m.".
+     * Times show in America/Toronto, the stored zone (R5). */
+    const fmtEvent = (iso) => new Date(iso).toLocaleString("en-CA", {
+      timeZone: "America/Toronto",
+      weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+    });
+    const fmtDay = (iso) => new Date(iso).toLocaleDateString("en-CA", {
+      timeZone: "America/Toronto",
+      weekday: "short", month: "short", day: "numeric",
+    });
+    const sameTorontoDay = (a, b) => {
+      const f = (d) => new Date(d).toLocaleDateString("en-CA", { timeZone: "America/Toronto" });
+      return f(a) === f(b);
+    };
+
+    function renderEvent(ev) {
+      const card = $("hubEventCard");
+      if (!ev) {
+        $("hubEventBody").textContent = "No upcoming events yet.";
+        card.insertAdjacentHTML("beforeend",
+          `<p style="margin-top:12px;"><a class="btn btn-secondary btn-sm" href="/events">Browse events</a></p>`);
+        return;
+      }
+      const seats = ev.capacity != null
+        ? `<p class="hub-home-note">${esc(ev.rsvp_count || 0)} of ${esc(ev.capacity)} seats taken.</p>`
+        : "";
+      const full = ev.capacity != null && (ev.rsvp_count || 0) >= ev.capacity;
+      card.innerHTML =
+        `<div class="n">Your next event</div>` +
+        `<h3>${esc(ev.title)}</h3>` +
+        `<p class="hub-home-note" style="margin-top:4px;">${esc(fmtEvent(ev.starts_at))}${ev.location ? ` · ${esc(ev.location)}` : ""}</p>` +
+        seats +
+        (full ? `<p style="margin-top:12px;"><span class="badge badge-dark">Full</span></p>` : "") +
+        `<p style="margin-top:12px;"><a class="btn btn-secondary btn-sm" href="/events/${esc(ev.slug)}">View event</a></p>`;
+    }
+
+    function renderLearn(current) {
+      const body = $("hubLearnBody");
+      const card = $("hubLearnCard");
+      if (!current) {
+        body.textContent = "You are not enrolled in anything yet. Pick a course to get started.";
+        card.insertAdjacentHTML("beforeend",
+          `<p style="margin-top:12px;"><a class="btn btn-secondary btn-sm" href="/academy">Browse courses</a></p>`);
+        return;
+      }
+      const { enrolment, lessonNo, lesson } = current;
+      const pct = enrolment.total_lessons
+        ? Math.round((enrolment.done_lessons / enrolment.total_lessons) * 100)
+        : 0;
+      card.innerHTML =
+        `<div class="n">Continue learning</div>` +
+        `<h3>${esc(enrolment.title)}</h3>` +
+        `<p class="hub-home-note" style="margin-top:4px;">Lesson ${esc(lessonNo)} of ${esc(enrolment.total_lessons)}</p>` +
+        `<div class="hub-home-progress" role="progressbar" aria-label="${esc(enrolment.title)}" aria-valuemin="0" aria-valuemax="${esc(enrolment.total_lessons)}" aria-valuenow="${esc(enrolment.done_lessons)}"><i style="width:${pct}%"></i></div>` +
+        `<p style="margin-top:12px;"><a class="btn btn-primary btn-sm" href="/academy/${esc(enrolment.slug)}/${esc(lesson.id)}">Resume lesson ${esc(lessonNo)}</a></p>`;
+    }
+
+    (async () => {
+      try {
+        const me = await (await api("/api/profiles/me")).json();
+        if (!me || !me.ok || !me.user) throw 0;
+
+        $("hub-loading").style.display = "none";
+        $("hub-home").style.display = "block";
+
+        /* Greeting: time of day in America/Toronto, first name only. */
+        const hour = Number(new Date().toLocaleString("en-CA", {
+          timeZone: "America/Toronto", hour: "numeric", hour12: false,
+        })) % 24;
+        const part = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
+        const first = String(me.user.display_name || "member").trim().split(/\s+/)[0];
+        $("hubGreeting").textContent = `Good ${part}, ${first}.`;
+
+        /* Today at the hub: today's bookings plus the check-in count
+         * (Phase 3 slice 8). Bookings are the caller's own; the count
+         * is aggregate only, never names. */
+        try {
+          const [b, t] = await Promise.all([
+            (await api("/api/space/bookings/mine")).json(),
+            (await api("/api/space/checkins/today")).json(),
+          ]);
+          const now = new Date();
+          const mine = ((b && b.ok && b.bookings) || []).filter(
+            (bk) => (bk.status === "confirmed" || bk.status === "checked_in") &&
+              sameTorontoDay(bk.starts_at, now),
+          );
+          const count = (t && t.ok && typeof t.count === "number") ? t.count : null;
+          const lines = [];
+          mine.forEach((bk) => {
+            lines.push(`Your booking: ${bk.resource_name}, ${fmtEvent(bk.starts_at).split(", ").slice(2).join(", ")} to ${fmtEvent(bk.ends_at).split(", ").slice(2).join(", ")}.`);
+          });
+          if (count !== null) {
+            lines.push(count === 0
+              ? "No members checked in yet today."
+              : `${count} member${count === 1 ? "" : "s"} checked in today.`);
+          }
+          if (!lines.length) lines.push("No bookings today. Book a room for your next work session.");
+          $("hubTodayBody").textContent = lines.join(" ");
+        } catch {
+          $("hubTodayBody").textContent = "Book a room for your next work session.";
+        }
+
+        /* Next event first: the sub line names it when it is tonight. */
+        let next = null;
+        try {
+          const d = await (await api("/api/events")).json();
+          if (d && d.ok && Array.isArray(d.events) && d.events.length) next = d.events[0];
+        } catch {}
+        renderEvent(next);
+        const now = new Date();
+        $("hubSub").textContent = next && sameTorontoDay(next.starts_at, now)
+          ? `${fmtDay(now)}. ${next.title} is tonight.`
+          : fmtDay(now);
+
+        /* Continue learning: first incomplete enrolment, first lesson
+         * not yet completed, in module order. */
+        try {
+          const p = await (await api("/api/progress")).json();
+          const enrolments = (p && p.ok && p.enrolments) || [];
+          const current = enrolments.find((e) => e.done_lessons < e.total_lessons);
+          if (!current && enrolments.length) {
+            $("hubLearnBody").textContent = "All caught up. Every enrolled course is complete.";
+            $("hubLearnCard").insertAdjacentHTML("beforeend",
+              `<p style="margin-top:12px;"><a class="btn btn-secondary btn-sm" href="/academy">Browse courses</a></p>`);
+          } else if (!current) {
+            renderLearn(null);
+          } else {
+            const [course, detail] = await Promise.all([
+              (await api(`/api/courses/${encodeURIComponent(current.slug)}`)).json(),
+              (await api("/api/progress/detail")).json(),
+            ]);
+            const doneIds = new Set((detail && detail.done) || []);
+            const flat = [];
+            (course.modules || []).forEach((m) => (m.lessons || []).forEach((l) => flat.push(l)));
+            const idx = flat.findIndex((l) => !doneIds.has(l.id));
+            const lesson = idx >= 0 ? flat[idx] : flat[flat.length - 1];
+            if (lesson) {
+              renderLearn({ enrolment: current, lessonNo: (idx >= 0 ? idx : flat.length - 1) + 1, lesson });
+            } else {
+              renderLearn(null);
+            }
+          }
+        } catch {
+          $("hubLearnBody").textContent = "Could not load your progress.";
+        }
+
+        /* This week's rituals: the standing weekly rhythm from
+         * GET /api/rituals, Monday first in the API's order. */
+        try {
+          const d = await (await api("/api/rituals")).json();
+          const rituals = (d && d.ok && d.rituals) || [];
+          const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+          const fmtTime = (t) => {
+            const [h, m] = String(t).split(":").map(Number);
+            const ap = h >= 12 ? "p.m." : "a.m.";
+            const hh = h % 12 === 0 ? 12 : h % 12;
+            return `${hh}:${String(m).padStart(2, "0")} ${ap}`;
+          };
+          $("hubRitualsBody").innerHTML = rituals.length
+            ? rituals.map((r) =>
+              `<div class="hub-home-row"><span>${esc(r.title)}</span><span class="thread-sub">${esc(days[r.weekday] || "")}, ${esc(fmtTime(r.local_time))}${r.group ? ` · ${esc(r.group.name)}` : ""}</span></div>`
+            ).join("")
+            : `<p class="hub-home-note">No rituals scheduled this week yet.</p>`;
+        } catch {
+          $("hubRitualsBody").innerHTML = `<p class="hub-home-note">Could not load this week's rituals.</p>`;
+        }
+      } catch {
+        $("hub-loading").style.display = "none";
+        $("hub-login").style.display = "block";
+      }
+    })();
+  </script>
+  </HubShell>
+</Base>

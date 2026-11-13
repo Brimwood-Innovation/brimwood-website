@@ -1,4 +1,4 @@
-/* Route tests: comments — validation, moderation default, privacy, admin gates. */
+/* Route tests: comments: validation, moderation default, privacy, admin gates. */
 import { describe, it, expect } from "vitest";
 import app from "./comments";
 import {
@@ -114,7 +114,7 @@ describe("POST /comments validation", () => {
 });
 
 describe("GET /comments/:slug privacy", () => {
-  it("selects only name/body/created_at — email can never leak", async () => {
+  it("selects only name/body/created_at: email can never leak", async () => {
     const env = mockEnv();
     let seen = "";
     env.DB.handler = (sql) => {
@@ -160,6 +160,7 @@ describe("admin moderation gates", () => {
     const env = mockEnv();
     const h = adminSession(env);
     env.DB.handler = (sql) => {
+      if (/from\s+users/i.test(sql)) return { row: { id: "admin-1", email: "admin@example.com", role: "admin", status: "active" } };
       if (/group\s+by/i.test(sql)) return { results: [{ status: "pending", n: 2 }] };
       return { results: [{ id: "c1", status: "pending" }] };
     };
@@ -196,6 +197,7 @@ describe("admin moderation gates", () => {
     const env = mockEnv();
     const h = adminSession(env);
     env.DB.handler = (sql) => {
+      if (/from\s+users/i.test(sql)) return { row: { id: "admin-1", email: "admin@example.com", role: "admin", status: "active" } };
       if (/from\s+comments\s+where\s+id/i.test(sql)) return { row: { post_slug: "p", name: "Ada" } };
     };
     const res = await app.request(
